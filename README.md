@@ -208,19 +208,37 @@ FangClaw-go uses TOML configuration files, located by default at `~/.fangclaw-go
 ### Example Configuration
 
 ```toml
-[general]
-data_dir = "~/.fangclaw-go"
+# API Server
+api_listen = "127.0.0.1:4200"
 
-[models]
-default_provider = "openai"
-default_model = "gpt-4o"
+# Default Model (API key is loaded from environment variable)
+[default_model]
+provider = "openrouter"
+model = "openai/gpt-4o"
+api_key_env = "OPENROUTER_API_KEY"
 
-[providers.openai]
-api_key = "sk-..."
+# Memory Settings
+[memory]
+decay_rate = 0.05
 
-[providers.anthropic]
-api_key = "sk-ant-..."
+# Security Settings
+[security]
+rate_limit_per_minute = 60
+
+# Logging
+[log]
+level = "info"
 ```
+
+> **Note**: API keys should be stored in environment variables, not in the config file. 
+> Set your API key in `~/.fangclaw-go/.fangclaw-go.env`:
+> ```bash
+> OPENROUTER_API_KEY=sk-...
+> # or
+> OPENAI_API_KEY=sk-...
+> # or
+> ANTHROPIC_API_KEY=sk-ant-...
+> ```
 
 ---
 
