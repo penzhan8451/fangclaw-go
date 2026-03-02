@@ -19,6 +19,27 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
+func findStaticDir() string {
+	possiblePaths := []string{
+		filepath.Join("web", "static"),
+		filepath.Join("..", "web", "static"),
+		filepath.Join(".", "web", "static"),
+		"/usr/local/share/fangclaw-go/web/static",
+	}
+
+	for _, p := range possiblePaths {
+		if _, err := os.Stat(filepath.Join(p, "index.html")); err == nil {
+			absPath, _ := filepath.Abs(p)
+			fmt.Printf("Found static files at: %s\n", absPath)
+			return p
+		}
+	}
+
+	defaultPath := filepath.Join("web", "static")
+	fmt.Printf("Warning: Using default static path: %s\n", defaultPath)
+	return defaultPath
+}
+
 func loggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -97,7 +118,7 @@ func NewServer(k *kernel.Kernel, cfg *ServerConfig) *Server {
 	RegisterStreamRoutes(mux, k)
 
 	// Serve static files for Web dashboard
-	staticDir := filepath.Join("web", "static")
+	staticDir := findStaticDir()
 	fs := http.FileServer(http.Dir(staticDir))
 	mux.Handle("/", http.StripPrefix("/", fs))
 
