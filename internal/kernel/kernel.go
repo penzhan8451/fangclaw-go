@@ -12,6 +12,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/configreload"
 	"github.com/penzhan8451/fangclaw-go/internal/delivery"
 	"github.com/penzhan8451/fangclaw-go/internal/eventbus"
+	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
 	"github.com/penzhan8451/fangclaw-go/internal/pairing"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
@@ -30,6 +31,7 @@ type Kernel struct {
 	skillLoader    *skills.Loader
 	registry       *channels.Registry
 	agentRegistry  *AgentRegistry
+	handRegistry   *hands.Registry
 	triggerEngine  *triggers.TriggerEngine
 	approvalMgr    *approvals.ApprovalManager
 	deliveryReg    *delivery.DeliveryRegistry
@@ -91,7 +93,9 @@ func NewKernel(config types.KernelConfig) (*Kernel, error) {
 	}
 
 	registry := channels.NewRegistry()
-	agentRegistry := NewAgentRegistry()
+	agentRegistry := NewAgentRegistry(dataDir)
+	agentRegistry.LoadFromDisk()
+	handRegistry := hands.NewRegistry()
 	triggerEngine := triggers.NewTriggerEngine()
 	approvalPolicy := approvals.DefaultApprovalPolicy()
 	approvalMgr := approvals.NewApprovalManager(approvalPolicy)
@@ -113,6 +117,7 @@ func NewKernel(config types.KernelConfig) (*Kernel, error) {
 		skillLoader:    skillLoader,
 		registry:       registry,
 		agentRegistry:  agentRegistry,
+		handRegistry:   handRegistry,
 		triggerEngine:  triggerEngine,
 		approvalMgr:    approvalMgr,
 		deliveryReg:    deliveryReg,
@@ -197,6 +202,10 @@ func (k *Kernel) AgentRegistry() *AgentRegistry {
 	return k.agentRegistry
 }
 
+func (k *Kernel) HandRegistry() *hands.Registry {
+	return k.handRegistry
+}
+
 func (k *Kernel) TriggerEngine() *triggers.TriggerEngine {
 	return k.triggerEngine
 }
@@ -237,6 +246,99 @@ func Boot(dataDir string) (*Kernel, error) {
 	}
 
 	return NewKernel(config)
+}
+
+// ActivateHand activates a hand and spawns an agent.
+func (k *Kernel) ActivateHand(handID string, config map[string]interface{}) (*hands.HandInstance, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	def, ok := k.handRegistry.GetDefinition(handID)
+	if !ok {
+		return nil, fmt.Errorf("hand not found: %s", handID)
+	}
+
+	instance, err := k.handRegistry.ActivateHand(handID, def.Agent.Name, config)
+	if err != nil {
+		return nil, err
+	}
+
+	agentID := types.NewAgentID()
+	manifest := types.AgentManifest{
+		Name:         def.Agent.Name,
+		Description:  def.Agent.Description,
+		SystemPrompt: def.Agent.SystemPrompt,
+		Model: types.ModelConfig{
+			Provider:  def.Agent.Provider,
+			Model:     def.Agent.Model,
+			APIKeyEnv: def.Agent.APIKeyEnv,
+		},
+		Tools: def.Tools,
+	}
+
+	entry := &AgentEntry{
+		ID:         agentID,
+		Name:       def.Agent.Name,
+		State:      types.AgentStateRunning,
+		Mode:       "auto",
+		Tags:       []string{"hand:" + handID, "hand_instance:" + instance.InstanceID},
+		Manifest:   manifest,
+		CreatedAt:  instance.ActivatedAt,
+		LastActive: instance.ActivatedAt,
+	}
+
+	if err := k.agentRegistry.Register(entry); err != nil {
+		return nil, err
+	}
+
+	if err := k.handRegistry.UpdateInstanceAgent(instance.InstanceID, agentID.String()); err != nil {
+		return nil, err
+	}
+
+	updatedInstance, _ := k.handRegistry.GetInstance(instance.InstanceID)
+	return updatedInstance, nil
+}
+
+// DeactivateHand deactivates a hand and kills the agent.
+func (k *Kernel) DeactivateHand(instanceID string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	instance, ok := k.handRegistry.GetInstance(instanceID)
+	if !ok {
+		return fmt.Errorf("hand instance not found: %s", instanceID)
+	}
+
+	if err := k.handRegistry.DeactivateInstance(instanceID); err != nil {
+		return err
+	}
+
+	if instance.AgentID != "" {
+		agentID, err := types.ParseAgentID(instance.AgentID)
+		if err == nil {
+			if _, err := k.agentRegistry.Remove(agentID); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// PauseHand pauses a hand instance.
+func (k *Kernel) PauseHand(instanceID string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	return k.handRegistry.PauseInstance(instanceID)
+}
+
+// ResumeHand resumes a paused hand instance.
+func (k *Kernel) ResumeHand(instanceID string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	return k.handRegistry.ResumeInstance(instanceID)
 }
 
 // expandPath expands a path with ~ to the user's home directory.

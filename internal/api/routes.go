@@ -9,9 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
@@ -112,6 +110,9 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/hands/{id}", r.handleGetHand)
 	mux.HandleFunc("POST /api/hands/{id}/activate", r.handleActivateHand)
 	mux.HandleFunc("POST /api/hands/{id}/install-deps", r.handleInstallHandDeps)
+	mux.HandleFunc("POST /api/hands/instances/{instanceID}/deactivate", r.handleDeactivateHand)
+	mux.HandleFunc("POST /api/hands/instances/{instanceID}/pause", r.handlePauseHand)
+	mux.HandleFunc("POST /api/hands/instances/{instanceID}/resume", r.handleResumeHand)
 
 	// Budget endpoints
 	mux.HandleFunc("GET /api/budget", r.handleBudget)
@@ -167,7 +168,7 @@ func (r *Router) handleStatus(w http.ResponseWriter, req *http.Request) {
 		Status:     "running",
 		Version:    "0.1.0",
 		ListenAddr: ":4200",
-		AgentCount: 0,
+		AgentCount: r.kernel.AgentRegistry().Count(),
 		ModelCount: 1,
 		Uptime:     "0s",
 	})
@@ -208,17 +209,72 @@ func (r *Router) handleCreateAgent(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleGetAgent(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
-	respondJSON(w, http.StatusOK, map[string]string{"id": id})
+	idStr := req.PathValue("id")
+	id, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent id")
+		return
+	}
+
+	agent := r.kernel.AgentRegistry().Get(id)
+	if agent == nil {
+		respondError(w, http.StatusNotFound, "agent not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, agent)
 }
 
 func (r *Router) handleUpdateAgent(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
-	respondJSON(w, http.StatusOK, map[string]string{"id": id})
+	idStr := req.PathValue("id")
+	id, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent id")
+		return
+	}
+
+	var reqBody struct {
+		State *string `json:"state"`
+		Mode  *string `json:"mode"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if reqBody.State != nil {
+		state := types.AgentState(*reqBody.State)
+		if err := r.kernel.AgentRegistry().SetState(id, state); err != nil {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+	}
+
+	if reqBody.Mode != nil {
+		if err := r.kernel.AgentRegistry().SetMode(id, *reqBody.Mode); err != nil {
+			respondError(w, http.StatusNotFound, err.Error())
+			return
+		}
+	}
+
+	agent := r.kernel.AgentRegistry().Get(id)
+	respondJSON(w, http.StatusOK, agent)
 }
 
 func (r *Router) handleDeleteAgent(w http.ResponseWriter, req *http.Request) {
-	_ = req.PathValue("id")
+	idStr := req.PathValue("id")
+	id, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent id")
+		return
+	}
+
+	_, err = r.kernel.AgentRegistry().Remove(id)
+	if err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
 	respondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -743,81 +799,152 @@ func getDefaultHands() []map[string]string {
 }
 
 func (r *Router) handleListHands(w http.ResponseWriter, req *http.Request) {
-	hands := loadHandsFromFile()
+	handDefs := r.kernel.HandRegistry().ListDefinitions()
+	instances := r.kernel.HandRegistry().ListInstances()
 
-	var instances []map[string]interface{}
-	for _, hand := range hands {
-		if hand["status"] == "active" || hand["status"] == "paused" {
-			instances = append(instances, map[string]interface{}{
-				"instance_id": hand["id"],
-				"hand_id":     hand["id"],
-				"name":        hand["name"],
-				"status":      hand["status"],
+	var handsResult []map[string]interface{}
+	for _, hand := range handDefs {
+		handsResult = append(handsResult, map[string]interface{}{
+			"id":          hand.ID,
+			"name":        hand.Name,
+			"description": hand.Description,
+			"category":    hand.Category,
+			"icon":        hand.Icon,
+			"requires":    hand.Requires,
+			"settings":    hand.Settings,
+		})
+	}
+
+	var instancesResult []map[string]interface{}
+	for _, inst := range instances {
+		instancesResult = append(instancesResult, map[string]interface{}{
+			"instance_id":  inst.InstanceID,
+			"hand_id":      inst.HandID,
+			"agent_id":     inst.AgentID,
+			"agent_name":   inst.AgentName,
+			"status":       inst.Status,
+			"config":       inst.Config,
+			"activated_at": inst.ActivatedAt,
+			"updated_at":   inst.UpdatedAt,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"hands":     handsResult,
+		"instances": instancesResult,
+	})
+}
+
+func (r *Router) handleActiveHands(w http.ResponseWriter, req *http.Request) {
+	instances := r.kernel.HandRegistry().ListInstances()
+
+	var activeInstances []map[string]interface{}
+	for _, inst := range instances {
+		if inst.Status == hands.HandStatusActive || inst.Status == hands.HandStatusPaused {
+			activeInstances = append(activeInstances, map[string]interface{}{
+				"instance_id": inst.InstanceID,
+				"hand_id":     inst.HandID,
+				"agent_id":    inst.AgentID,
+				"agent_name":  inst.AgentName,
+				"status":      inst.Status,
 			})
 		}
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"hands":     hands,
-		"instances": instances,
-	})
-}
-
-func (r *Router) handleActiveHands(w http.ResponseWriter, req *http.Request) {
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"instances": []interface{}{},
+		"instances": activeInstances,
 	})
 }
 
 func (r *Router) handleGetHand(w http.ResponseWriter, req *http.Request) {
+	handID := req.PathValue("id")
+
+	hand, ok := r.kernel.HandRegistry().GetDefinition(handID)
+	if !ok {
+		respondError(w, http.StatusNotFound, "hand not found")
+		return
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"id":          "researcher",
-		"name":        "Researcher",
-		"description": "Research agent hand",
-		"icon":        "🔬",
+		"id":          hand.ID,
+		"name":        hand.Name,
+		"description": hand.Description,
+		"category":    hand.Category,
+		"icon":        hand.Icon,
+		"tools":       hand.Tools,
+		"requires":    hand.Requires,
+		"settings":    hand.Settings,
+		"agent":       hand.Agent,
+		"dashboard":   hand.Dashboard,
 	})
 }
 
 func (r *Router) handleActivateHand(w http.ResponseWriter, req *http.Request) {
 	handID := req.PathValue("id")
 
-	hands := loadHandsFromFile()
-	var handName string
-	for _, h := range hands {
-		if h["id"] == handID {
-			handName = h["name"]
-			break
+	var config map[string]interface{}
+	if req.Body != http.NoBody {
+		if err := json.NewDecoder(req.Body).Decode(&config); err != nil {
+			config = make(map[string]interface{})
 		}
-	}
-	if handName == "" {
-		handName = handID
+		defer req.Body.Close()
 	}
 
-	agentID := types.AgentID(uuid.New())
-	entry := &kernel.AgentEntry{
-		ID:         agentID,
-		Name:       handName,
-		State:      types.AgentStateRunning,
-		Mode:       "auto",
-		Tags:       []string{"hand:" + handID},
-		CreatedAt:  time.Now(),
-		LastActive: time.Now(),
-	}
-
-	err := r.kernel.AgentRegistry().Register(entry)
+	instance, err := r.kernel.ActivateHand(handID, config)
 	if err != nil {
-		respondJSON(w, http.StatusOK, map[string]interface{}{
-			"success":     true,
-			"instance_id": handID,
-			"agent_name":  handName,
-		})
+		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"success":     true,
-		"instance_id": handID,
-		"agent_name":  handName,
+		"instance_id": instance.InstanceID,
+		"hand_id":     instance.HandID,
+		"agent_id":    instance.AgentID,
+		"agent_name":  instance.AgentName,
+		"status":      instance.Status,
+	})
+}
+
+func (r *Router) handleDeactivateHand(w http.ResponseWriter, req *http.Request) {
+	instanceID := req.PathValue("instanceID")
+
+	err := r.kernel.DeactivateHand(instanceID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
+}
+
+func (r *Router) handlePauseHand(w http.ResponseWriter, req *http.Request) {
+	instanceID := req.PathValue("instanceID")
+
+	err := r.kernel.PauseHand(instanceID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
+}
+
+func (r *Router) handleResumeHand(w http.ResponseWriter, req *http.Request) {
+	instanceID := req.PathValue("instanceID")
+
+	err := r.kernel.ResumeHand(instanceID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
 	})
 }
 

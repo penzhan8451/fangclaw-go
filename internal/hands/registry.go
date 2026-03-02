@@ -32,7 +32,15 @@ func NewRegistry() *Registry {
 		handSkills:   make(map[string]string),
 	}
 	r.registerDefaultHands()
+	r.loadBundledDefinitions()
 	return r
+}
+
+// loadBundledDefinitions loads the bundled Hand definitions.
+func (r *Registry) loadBundledDefinitions() {
+	for _, def := range GetBundledHands() {
+		r.definitions[def.ID] = def
+	}
 }
 
 // GetApprovalGate returns the approval gate.
