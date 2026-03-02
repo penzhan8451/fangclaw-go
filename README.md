@@ -1,0 +1,256 @@
+<h1 align="center">FangClaw</h1>
+<h3 align="center">The Go Implementation of OpenFang</h3>
+
+<p align="center">
+  A feature-complete, Go-based Agent Operating System built from the OpenFang project. Open-source, production-ready, and battle-tested.<br/>
+  <strong>One binary. Agents that actually work for you.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/RightNow-AI/openfang">OpenFang (Original Rust Project)</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/language-Go-blue?style=flat-square" alt="Go" />
+  <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT" />
+  <img src="https://img.shields.io/badge/version-0.2.0-green?style=flat-square" alt="v0.2.0" />
+</p>
+
+---
+
+## What is FangClaw?
+
+FangClaw-go is a **Go language implementation of the OpenFang project**, (https://github.com/RightNow-AI/openfang)
+
+Traditional agent frameworks wait for you to type something. FangClaw-go runs **autonomous agents that work for you** — on schedules, 24/7, building knowledge graphs, monitoring targets, generating leads, managing your social media, and reporting results to your dashboard.
+
+The entire system compiles to a single binary. One install, one command, your agents are live.
+
+```bash
+git clone https://github.com/your-username/fangclaw-go.git
+cd fangclaw-go
+go build -o fangclaw-go ./cmd/fangclaw-go
+./fangclaw-go setup
+./fangclaw-go start
+```
+
+---
+
+## Features
+
+### Core Features
+
+- 🤖 **Smart Agent Management** - Complete Agent lifecycle management
+- 💬 **Multi-Channel Communication** - Supports Telegram, Discord, Slack, DingTalk, Feishu, QQ, WhatsApp, and more
+- 🎯 **Workflow Orchestration** - Flexible workflow definition and execution
+- 🔧 **Skill System** - Extensible skill loading and execution
+- 📊 **Event Bus** - Complete publish/subscribe event system
+- 💾 **Memory Storage** - Structured and semantic memory support
+- 🔐 **Security & Authentication** - Complete permission and authentication system
+
+### Advanced Features
+
+- 🔌 **WhatsApp Gateway** - Integrated WhatsApp Web gateway (requires Node.js)
+- 🧙 **Wizard System**
+  - NL Wizard - Natural language generation of Agent configuration
+  - Setup Wizard - Interactive command-line setup wizard
+- 🔄 **Hot Configuration Reload** - Supports runtime configuration updates
+- 📱 **Device Pairing** - QR code device pairing management
+- 📈 **Usage Metering** - Complete usage statistics and metering
+- ⏰ **Scheduler System** - Cron scheduling and background task execution
+
+---
+
+## Project Structure
+
+```
+fangclaw-go/
+├── cmd/fangclaw-go/          # Main program entry
+├── internal/
+│   ├── a2a/               # Agent-to-Agent communication
+│   ├── api/               # HTTP API service
+│   ├── approvals/         # Approval system
+│   ├── audit/             # Audit logging
+│   ├── auth/              # Authentication system
+│   ├── autoreply/         # Auto-reply engine
+│   ├── background/        # Background task execution
+│   ├── browser/           # Browser automation
+│   ├── capabilities/      # Capabilities system
+│   ├── channels/          # Multi-channel adapters
+│   ├── config/            # Configuration management
+│   ├── configreload/      # Hot configuration reload
+│   ├── cron/              # Cron scheduling
+│   ├── delivery/          # Message delivery
+│   ├── embedding/         # Embedding models
+│   ├── error/             # Error handling
+│   ├── eventbus/          # Event bus
+│   ├── hands/             # Hands system
+│   ├── heartbeat/         # Heartbeat detection
+│   ├── kernel/            # Core Kernel
+│   ├── mcp/               # Model Context Protocol
+│   ├── memory/            # Memory storage
+│   ├── metering/          # Usage metering
+│   ├── oauth/             # OAuth authentication
+│   ├── p2p/               # P2P network
+│   ├── pairing/           # Device pairing
+│   ├── process/           # Process management
+│   ├── runtime/           # Agent/LLM runtime
+│   ├── scheduler/         # Task scheduling
+│   ├── security/          # Security system
+│   ├── skills/            # Skills system
+│   ├── supervisor/        # Supervisor system
+│   ├── triggers/          # Triggers
+│   ├── tui/               # Terminal UI
+│   ├── types/             # Core type definitions
+│   ├── vault/             # Secret vault
+│   ├── vector/            # Vector storage
+│   ├── workflow/          # Workflow system
+│   ├── whatsappgateway/   # WhatsApp gateway
+│   ├── wizard/            # NL Wizard
+│   └── setupwizard/       # Setup Wizard
+```
+
+---
+
+## Quick Start
+
+### Installation
+
+```bash
+git clone https://github.com/your-username/fangclaw-go.git
+cd fangclaw-go
+go build -o fangclaw-go ./cmd/fangclaw-go
+```
+
+### First-time Setup
+
+Run the setup wizard:
+
+```bash
+./fangclaw-go setup
+```
+
+The wizard will guide you through:
+1. Selecting an LLM provider (OpenAI, Anthropic, Groq, Ollama)
+2. Configuring API Key
+3. Selecting default model
+4. Setting data directory
+
+### Starting the Service
+
+```bash
+./fangclaw-go start
+```
+
+### Next Steps After Starting
+
+Once the daemon is running, you have several options:
+
+#### 1. **Explore Available Hands**
+First, list all 7 bundled autonomous capability packages:
+```bash
+./fangclaw-go hand list
+```
+
+#### 2. **Activate a Hand**
+Activate autonomous capabilities that work for you 24/7:
+```bash
+# Activate the Researcher hand
+./fangclaw-go hand activate researcher
+
+# Check hand status
+./fangclaw-go hand status researcher
+
+# Pause a hand
+./fangclaw-go hand pause researcher
+
+# Deactivate a hand
+./fangclaw-go hand deactivate researcher
+```
+
+#### 3. **Start Chatting**
+Begin an interactive chat (doesn't require activating a hand first):
+```bash
+# Chat with default agent
+./fangclaw-go chat
+
+# Chat with a specific Hand (uses specialized system prompts)
+./fangclaw-go chat researcher    # Deep research specialist
+./fangclaw-go chat lead          # Sales prospecting
+./fangclaw-go chat collector     # OSINT intelligence
+./fangclaw-go chat predictor     # Superforecasting
+./fangclaw-go chat clip          # YouTube processing
+./fangclaw-go chat twitter       # Social media management
+./fangclaw-go chat browser       # Web automation
+```
+
+#### 4. **Access the Dashboard**
+Open your browser to:
+- **Dashboard**: http://127.0.0.1:4200/
+- **API Status**: http://127.0.0.1:4200/api/health
+
+#### 5. **Check System Status**
+```bash
+./fangclaw-go status
+```
+
+#### 6. **View Logs**
+```bash
+./fangclaw-go logs
+```
+
+---
+
+## Configuration
+
+FangClaw-go uses TOML configuration files, located by default at `~/.fangclaw-go/config.toml`.
+
+### Example Configuration
+
+```toml
+[general]
+data_dir = "~/.fangclaw-go"
+
+[models]
+default_provider = "openai"
+default_model = "gpt-4o"
+
+[providers.openai]
+api_key = "sk-..."
+
+[providers.anthropic]
+api_key = "sk-ant-..."
+```
+
+---
+
+## About FangClaw-go
+
+FangClaw-go is a Go language reimplementation based on the [OpenFang](https://github.com/RightNow-AI/openfang) project. OpenFang is a feature-complete Agent Operating System built in Rust, with 137K+ lines of code, 14 crates, and 1,767+ tests.
+
+We thank all contributors to the OpenFang project!
+
+---
+
+## Contributing
+
+Contributions are welcome! Please submit Issues or Pull Requests.
+
+---
+
+## License
+
+This project is based on the OpenFang project and uses the MIT license.
+
+---
+
+## Links
+
+- [OpenFang (Original Rust Project)](https://github.com/RightNow-AI/openfang)
+- [OpenFang Documentation](https://openfang.sh/docs)
+
+---
+
+<p align="center">
+  <strong>Built with Go. Based on OpenFang. Agents that actually work for you.</strong>
+</p>
