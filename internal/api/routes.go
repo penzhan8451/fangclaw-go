@@ -2,14 +2,20 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/penzhan8451/fangclaw-go/internal/config"
+	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
@@ -95,8 +101,6 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 
 	// OpenAI-compatible endpoints
 	mux.HandleFunc("GET /v1/models", r.handleListModels)
-	mux.HandleFunc("POST /v1/chat/completions", r.handleChatCompletions)
-
 	// Additional frontend endpoints
 	mux.HandleFunc("GET /api/commands", r.handleCommands)
 	mux.HandleFunc("GET /api/config", r.handleConfig)
@@ -416,11 +420,6 @@ func (r *Router) handleListModels(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func (r *Router) handleChatCompletions(w http.ResponseWriter, req *http.Request) {
-	// This is handled by the existing openai_compat.go implementation
-	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
 func (r *Router) handleCommands(w http.ResponseWriter, req *http.Request) {
 	respondJSON(w, http.StatusOK, []map[string]string{
 		{"cmd": "/help", "desc": "Show available commands"},
@@ -487,12 +486,126 @@ func (r *Router) handleCompactSession(w http.ResponseWriter, req *http.Request) 
 }
 
 func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
+	agentID := req.PathValue("id")
+
+	var reqBody struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	driver, err := getLLMDriver()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var messages []llm.Message
+
+	if hand, _ := hands.GetBundledHand(agentID); hand != nil {
+		systemPrompt := getHandSystemPrompt(agentID)
+		if systemPrompt != "" {
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: systemPrompt,
+			})
+		}
+	}
+
+	messages = append(messages, llm.Message{
+		Role:    "user",
+		Content: reqBody.Message,
+	})
+
+	llmReq := &llm.Request{
+		Messages:    messages,
+		Temperature: 0.7,
+	}
+
+	ctx := context.Background()
+	resp, err := driver.Chat(ctx, llmReq)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"response": resp.Content,
 		"message": map[string]string{
 			"role":    "assistant",
-			"content": "I received your message.",
+			"content": resp.Content,
 		},
 	})
+}
+
+func getLLMDriver() (llm.Driver, error) {
+	cfg, err := config.Load("")
+	if err == nil && cfg.DefaultModel.Provider != "" && cfg.DefaultModel.Model != "" {
+		provider := cfg.DefaultModel.Provider
+		model := cfg.DefaultModel.Model
+		apiKeyEnv := cfg.DefaultModel.APIKeyEnv
+		if apiKeyEnv == "" {
+			apiKeyEnv = strings.ToUpper(provider) + "_API_KEY"
+		}
+		apiKey := os.Getenv(apiKeyEnv)
+		if apiKey != "" {
+			driver, err := llm.NewDriver(provider, apiKey, model)
+			if err == nil {
+				return driver, nil
+			}
+		}
+	}
+
+	provider := "openrouter"
+	model := "meta-llama/llama-3.1-8b-instruct"
+	apiKey := os.Getenv("OPENROUTER_API_KEY")
+
+	if apiKey == "" {
+		provider = "openai"
+		model = "gpt-4o"
+		apiKey = os.Getenv("OPENAI_API_KEY")
+	}
+
+	if apiKey == "" {
+		provider = "anthropic"
+		model = "claude-sonnet-4-20250514"
+		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+	}
+
+	if apiKey == "" {
+		provider = "groq"
+		model = "groq/llama-3.3-70b-versatile"
+		apiKey = os.Getenv("GROQ_API_KEY")
+	}
+
+	if apiKey == "" {
+		return nil, fmt.Errorf("no API key found. Set OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY")
+	}
+
+	return llm.NewDriver(provider, apiKey, model)
+}
+
+func getHandSystemPrompt(handID string) string {
+	switch handID {
+	case "researcher":
+		return hands.ResearcherSystemPrompt
+	case "lead":
+		return hands.LeadSystemPrompt
+	case "collector":
+		return hands.CollectorSystemPrompt
+	case "predictor":
+		return hands.PredictorSystemPrompt
+	case "clip":
+		return hands.ClipSystemPrompt
+	case "twitter":
+		return hands.TwitterSystemPrompt
+	case "browser":
+		return hands.BrowserSystemPrompt
+	default:
+		return ""
+	}
 }
 
 func (r *Router) handleStopAgent(w http.ResponseWriter, req *http.Request) {

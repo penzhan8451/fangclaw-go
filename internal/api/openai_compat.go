@@ -1,13 +1,17 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 )
 
 // OpenAICompatibleHandler implements OpenAI-compatible API endpoints.
@@ -115,25 +119,40 @@ func (h *OpenAICompatibleHandler) ModelsHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	models := []ModelObject{
-		{
-			ID:      "fangclaw",
+	agents := h.kernel.AgentRegistry().List()
+	created := time.Now().Unix()
+
+	models := []ModelObject{}
+	for _, agent := range agents {
+		models = append(models, ModelObject{
+			ID:      fmt.Sprintf("fangclaw:%s", agent.Name),
 			Object:  "model",
-			Created: time.Now().Unix(),
+			Created: created,
 			OwnedBy: "fangclaw",
-		},
-		{
-			ID:      "gpt-4",
+		})
+		models = append(models, ModelObject{
+			ID:      agent.Name,
 			Object:  "model",
-			Created: time.Now().Unix(),
-			OwnedBy: "openai",
-		},
-		{
-			ID:      "gpt-3.5-turbo",
-			Object:  "model",
-			Created: time.Now().Unix(),
-			OwnedBy: "openai",
-		},
+			Created: created,
+			OwnedBy: "fangclaw",
+		})
+	}
+
+	if len(models) == 0 {
+		models = []ModelObject{
+			{
+				ID:      "fangclaw:default",
+				Object:  "model",
+				Created: created,
+				OwnedBy: "fangclaw",
+			},
+			{
+				ID:      "default",
+				Object:  "model",
+				Created: created,
+				OwnedBy: "fangclaw",
+			},
+		}
 	}
 
 	response := ModelListResponse{
@@ -175,14 +194,71 @@ func (h *OpenAICompatibleHandler) ChatCompletionsHandler(w http.ResponseWriter, 
 		return
 	}
 
-	// Handle streaming
-	if req.Stream {
-		h.handleStreamingChat(w, r, lastMessage, req.Model)
+	// Resolve agent from model name
+	_, agentName := h.resolveAgent(req.Model)
+
+	driver, err := getLLMDriver()
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	// Handle non-streaming - placeholder response
-	response := "This is a placeholder response from FangClaw. The full LLM integration is coming soon!"
+	var messages []llm.Message
+
+	if hand, _ := hands.GetBundledHand(agentName); hand != nil {
+		systemPrompt := getHandSystemPrompt(agentName)
+		if systemPrompt != "" {
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: systemPrompt,
+			})
+		}
+	}
+
+	// Add messages from request
+	for _, msg := range req.Messages {
+		var content string
+		switch v := msg.Content.(type) {
+		case string:
+			content = v
+		}
+		if content == "" {
+			continue
+		}
+		messages = append(messages, llm.Message{
+			Role:    msg.Role,
+			Content: content,
+		})
+	}
+
+	// Handle streaming (暂时禁用，先实现非流式)
+	// if req.Stream {
+	// 	h.handleStreamingChat(w, r, driver, messages, agentName)
+	// 	return
+	// }
+
+	// Non-streaming
+	llmReq := &llm.Request{
+		Messages:    messages,
+		Temperature: 0.7,
+	}
+
+	if req.Temperature != nil {
+		llmReq.Temperature = *req.Temperature
+	}
+	if req.MaxTokens != nil {
+		llmReq.MaxTokens = *req.MaxTokens
+	}
+	if req.TopP != nil {
+		llmReq.TopP = *req.TopP
+	}
+
+	ctx := context.Background()
+	resp, err := driver.Chat(ctx, llmReq)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
 
 	// Build OpenAI-compatible response
 	completionResp := ChatCompletionResponse{
@@ -195,19 +271,42 @@ func (h *OpenAICompatibleHandler) ChatCompletionsHandler(w http.ResponseWriter, 
 				Index: 0,
 				Message: ChoiceMessage{
 					Role:    "assistant",
-					Content: response,
+					Content: resp.Content,
 				},
 				FinishReason: "stop",
 			},
 		},
 		Usage: UsageInfo{
-			PromptTokens:     100,
-			CompletionTokens: len(response) / 4,
-			TotalTokens:      100 + len(response)/4,
+			PromptTokens:     resp.Usage.InputTokens,
+			CompletionTokens: resp.Usage.OutputTokens,
+			TotalTokens:      resp.Usage.TotalTokens,
 		},
 	}
 
 	WriteJSON(w, http.StatusOK, completionResp)
+}
+
+func (h *OpenAICompatibleHandler) resolveAgent(model string) (string, string) {
+	var agentName string
+
+	if strings.HasPrefix(model, "fangclaw:") {
+		agentName = strings.TrimPrefix(model, "fangclaw:")
+	} else {
+		agentName = model
+	}
+
+	agents := h.kernel.AgentRegistry().List()
+	for _, agent := range agents {
+		if agent.Name == agentName {
+			return "", agent.Name
+		}
+	}
+
+	if len(agents) > 0 {
+		return "", agents[0].Name
+	}
+
+	return "", "default"
 }
 
 // handleStreamingChat handles streaming chat completions.
