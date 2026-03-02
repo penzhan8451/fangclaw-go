@@ -12,8 +12,8 @@ fangclaw-go
 # Output of the go coverage tool
 *.out
 
-# Dependency directories
-vendor/
+# Dependency directories (Go modules only)
+/vendor/
 
 # Go workspace file
 go.work
