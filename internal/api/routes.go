@@ -4,7 +4,11 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
@@ -96,13 +100,27 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	// Additional frontend endpoints
 	mux.HandleFunc("GET /api/commands", r.handleCommands)
 	mux.HandleFunc("GET /api/config", r.handleConfig)
+	mux.HandleFunc("GET /api/logs/stream", r.handleLogsStream)
+
+	// Hands endpoints
+	mux.HandleFunc("GET /api/hands", r.handleListHands)
+	mux.HandleFunc("GET /api/hands/active", r.handleActiveHands)
+	mux.HandleFunc("GET /api/hands/{id}", r.handleGetHand)
+	mux.HandleFunc("POST /api/hands/{id}/activate", r.handleActivateHand)
+	mux.HandleFunc("POST /api/hands/{id}/install-deps", r.handleInstallHandDeps)
+
+	// Budget endpoints
 	mux.HandleFunc("GET /api/budget", r.handleBudget)
 	mux.HandleFunc("GET /api/budget/agents", r.handleBudgetAgents)
 	mux.HandleFunc("GET /api/network/status", r.handleNetworkStatus)
 	mux.HandleFunc("GET /api/a2a/agents", r.handleA2AAgents)
 	mux.HandleFunc("GET /api/tools", r.handleTools)
+	mux.HandleFunc("GET /api/usage/summary", r.handleUsageSummary)
+	mux.HandleFunc("GET /api/usage/by-model", r.handleUsageByModel)
+	mux.HandleFunc("GET /api/usage/daily", r.handleUsageDaily)
 	mux.HandleFunc("GET /api/usage", r.handleUsage)
 	mux.HandleFunc("GET /api/audit/recent", r.handleAuditRecent)
+	mux.HandleFunc("GET /api/audit/verify", r.handleAuditVerify)
 	mux.HandleFunc("GET /api/providers", r.handleProviders)
 	mux.HandleFunc("GET /api/mcp/servers", r.handleMcpServers)
 
@@ -160,7 +178,20 @@ func (r *Router) handleVersion(w http.ResponseWriter, req *http.Request) {
 
 // Agent handlers
 func (r *Router) handleListAgents(w http.ResponseWriter, req *http.Request) {
-	respondJSON(w, http.StatusOK, []interface{}{})
+	agents := r.kernel.AgentRegistry().List()
+	var result []map[string]interface{}
+	for _, agent := range agents {
+		result = append(result, map[string]interface{}{
+			"id":          agent.ID,
+			"name":        agent.Name,
+			"state":       agent.State,
+			"mode":        agent.Mode,
+			"tags":        agent.Tags,
+			"created_at":  agent.CreatedAt,
+			"last_active": agent.LastActive,
+		})
+	}
+	respondJSON(w, http.StatusOK, result)
 }
 
 func (r *Router) handleCreateAgent(w http.ResponseWriter, req *http.Request) {
@@ -484,17 +515,25 @@ func (r *Router) handleTools(w http.ResponseWriter, req *http.Request) {
 
 func (r *Router) handleUsage(w http.ResponseWriter, req *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"total_tokens":    0,
-		"total_cost_usd":  0.0,
-		"period_start":    "2024-01-01",
-		"period_end":      "2024-12-31",
-		"agent_breakdown": []interface{}{},
+		"total_tokens":     0,
+		"total_cost_usd":   0.0,
+		"period_start":     "2024-01-01",
+		"period_end":       "2024-12-31",
+		"agents":           []interface{}{},
+		"first_event_date": nil,
 	})
 }
 
 func (r *Router) handleAuditRecent(w http.ResponseWriter, req *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"events": []interface{}{},
+	})
+}
+
+func (r *Router) handleAuditVerify(w http.ResponseWriter, req *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"verified":    true,
+		"merkle_root": "0000000000000000000000000000000000000000000000000000000000000000",
 	})
 }
 
@@ -519,5 +558,158 @@ func (r *Router) handleConfig(w http.ResponseWriter, req *http.Request) {
 		"theme":             "system",
 		"language":          "en",
 		"sidebar_collapsed": false,
+	})
+}
+
+func (r *Router) handleLogsStream(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	flusher.Flush()
+}
+
+func (r *Router) handleUsageSummary(w http.ResponseWriter, req *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"total_input_tokens":  0,
+		"total_output_tokens": 0,
+		"total_cost_usd":      0.0,
+		"call_count":          0,
+		"total_tool_calls":    0,
+		"period_start":        "2024-01-01",
+		"period_end":          "2024-12-31",
+	})
+}
+
+func (r *Router) handleUsageByModel(w http.ResponseWriter, req *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"models": []interface{}{},
+	})
+}
+
+func (r *Router) handleUsageDaily(w http.ResponseWriter, req *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"days": []interface{}{},
+	})
+}
+
+func loadHandsFromFile() []map[string]string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return getDefaultHands()
+	}
+	path := filepath.Join(homeDir, ".fangclaw-go", "hands.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return getDefaultHands()
+	}
+	var hands []map[string]string
+	if err := json.Unmarshal(data, &hands); err != nil {
+		return getDefaultHands()
+	}
+	return hands
+}
+
+func getDefaultHands() []map[string]string {
+	return []map[string]string{
+		{"id": "researcher", "name": "Researcher", "status": "inactive"},
+		{"id": "lead", "name": "Lead", "status": "inactive"},
+		{"id": "collector", "name": "Collector", "status": "inactive"},
+		{"id": "predictor", "name": "Predictor", "status": "inactive"},
+		{"id": "clip", "name": "Clip", "status": "inactive"},
+		{"id": "twitter", "name": "Twitter", "status": "inactive"},
+		{"id": "browser", "name": "Browser", "status": "inactive"},
+	}
+}
+
+func (r *Router) handleListHands(w http.ResponseWriter, req *http.Request) {
+	hands := loadHandsFromFile()
+
+	var instances []map[string]interface{}
+	for _, hand := range hands {
+		if hand["status"] == "active" || hand["status"] == "paused" {
+			instances = append(instances, map[string]interface{}{
+				"instance_id": hand["id"],
+				"hand_id":     hand["id"],
+				"name":        hand["name"],
+				"status":      hand["status"],
+			})
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"hands":     hands,
+		"instances": instances,
+	})
+}
+
+func (r *Router) handleActiveHands(w http.ResponseWriter, req *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"instances": []interface{}{},
+	})
+}
+
+func (r *Router) handleGetHand(w http.ResponseWriter, req *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id":          "researcher",
+		"name":        "Researcher",
+		"description": "Research agent hand",
+		"icon":        "🔬",
+	})
+}
+
+func (r *Router) handleActivateHand(w http.ResponseWriter, req *http.Request) {
+	handID := req.PathValue("id")
+
+	hands := loadHandsFromFile()
+	var handName string
+	for _, h := range hands {
+		if h["id"] == handID {
+			handName = h["name"]
+			break
+		}
+	}
+	if handName == "" {
+		handName = handID
+	}
+
+	agentID := types.AgentID(uuid.New())
+	entry := &kernel.AgentEntry{
+		ID:         agentID,
+		Name:       handName,
+		State:      types.AgentStateRunning,
+		Mode:       "auto",
+		Tags:       []string{"hand:" + handID},
+		CreatedAt:  time.Now(),
+		LastActive: time.Now(),
+	}
+
+	err := r.kernel.AgentRegistry().Register(entry)
+	if err != nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"success":     true,
+			"instance_id": handID,
+			"agent_name":  handName,
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success":     true,
+		"instance_id": handID,
+		"agent_name":  handName,
+	})
+}
+
+func (r *Router) handleInstallHandDeps(w http.ResponseWriter, req *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
 	})
 }

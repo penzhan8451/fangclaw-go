@@ -20,24 +20,21 @@ import (
 )
 
 func findStaticDir() string {
-	possiblePaths := []string{
-		filepath.Join("web", "static"),
-		filepath.Join("..", "web", "static"),
-		filepath.Join(".", "web", "static"),
-		"/usr/local/share/fangclaw-go/web/static",
-	}
-
-	for _, p := range possiblePaths {
-		if _, err := os.Stat(filepath.Join(p, "index.html")); err == nil {
-			absPath, _ := filepath.Abs(p)
-			fmt.Printf("Found static files at: %s\n", absPath)
-			return p
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		staticPath := filepath.Join(execDir, "internal", "api", "static")
+		if _, err := os.Stat(staticPath); err == nil {
+			return staticPath
 		}
 	}
 
-	defaultPath := filepath.Join("web", "static")
-	fmt.Printf("Warning: Using default static path: %s\n", defaultPath)
-	return defaultPath
+	staticPath := filepath.Join("internal", "api", "static")
+	if _, err := os.Stat(staticPath); err == nil {
+		return staticPath
+	}
+
+	return staticPath
 }
 
 func loggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -120,7 +117,16 @@ func NewServer(k *kernel.Kernel, cfg *ServerConfig) *Server {
 	// Serve static files for Web dashboard
 	staticDir := findStaticDir()
 	fs := http.FileServer(http.Dir(staticDir))
-	mux.Handle("/", http.StripPrefix("/", fs))
+
+	// Custom handler to serve index.html for root path
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			indexPath := filepath.Join(staticDir, "index.html")
+			http.ServeFile(w, r, indexPath)
+			return
+		}
+		fs.ServeHTTP(w, r)
+	})
 
 	return server
 }
