@@ -19,7 +19,7 @@ function workflowsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        this.workflows = await FangClaw-goAPI.get('/api/workflows');
+        this.workflows = await FangClawGoAPI.get('/api/workflows');
       } catch(e) {
         this.workflows = [];
         this.loadError = e.message || 'Could not load workflows.';
@@ -35,7 +35,7 @@ function workflowsPage() {
       });
       try {
         var wfName = this.newWf.name;
-        await FangClaw-goAPI.post('/api/workflows', { name: wfName, description: this.newWf.description, steps: steps });
+        await FangClawGoAPI.post('/api/workflows', { name: wfName, description: this.newWf.description, steps: steps });
         this.showCreateModal = false;
         this.newWf = { name: '', description: '', steps: [{ name: '', agent_name: '', mode: 'sequential', prompt: '{{input}}' }] };
         FangClaw-goToast.success('Workflow "' + wfName + '" created');
@@ -56,7 +56,7 @@ function workflowsPage() {
       this.running = true;
       this.runResult = '';
       try {
-        var res = await FangClaw-goAPI.post('/api/workflows/' + this.runModal.id + '/run', { input: this.runInput });
+        var res = await FangClawGoAPI.post('/api/workflows/' + this.runModal.id + '/run', { input: this.runInput });
         this.runResult = res.output || JSON.stringify(res, null, 2);
         FangClaw-goToast.success('Workflow completed');
       } catch(e) {
@@ -68,7 +68,7 @@ function workflowsPage() {
 
     async viewRuns(wf) {
       try {
-        var runs = await FangClaw-goAPI.get('/api/workflows/' + wf.id + '/runs');
+        var runs = await FangClawGoAPI.get('/api/workflows/' + wf.id + '/runs');
         this.runResult = JSON.stringify(runs, null, 2);
         this.runModal = wf;
       } catch(e) {

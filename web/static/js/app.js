@@ -1,4 +1,4 @@
-// FangClaw-go App — Alpine.js init, hash router, global store
+// OpenFang App — Alpine.js init, hash router, global store
 'use strict';
 
 // Marked.js configuration
@@ -89,7 +89,7 @@ function toolIcon(toolName) {
 document.addEventListener('alpine:init', function() {
   // Restore saved API key on load
   var savedKey = localStorage.getItem('openfang-api-key');
-  if (savedKey) FangClaw-goAPI.setAuthToken(savedKey);
+  if (savedKey) FangClawGoAPI.setAuthToken(savedKey);
 
   Alpine.store('app', {
     agents: [],
@@ -112,7 +112,7 @@ document.addEventListener('alpine:init', function() {
 
     async refreshAgents() {
       try {
-        var agents = await FangClaw-goAPI.get('/api/agents');
+        var agents = await FangClawGoAPI.get('/api/agents');
         this.agents = Array.isArray(agents) ? agents : [];
         this.agentCount = this.agents.length;
       } catch(e) { /* silent */ }
@@ -120,7 +120,7 @@ document.addEventListener('alpine:init', function() {
 
     async checkStatus() {
       try {
-        var s = await FangClaw-goAPI.get('/api/status');
+        var s = await FangClawGoAPI.get('/api/status');
         this.connected = true;
         this.booting = false;
         this.lastError = '';
@@ -129,14 +129,14 @@ document.addEventListener('alpine:init', function() {
       } catch(e) {
         this.connected = false;
         this.lastError = e.message || 'Unknown error';
-        console.warn('[FangClaw-go] Status check failed:', e.message);
+        console.warn('[OpenFang] Status check failed:', e.message);
       }
     },
 
     async checkOnboarding() {
       if (localStorage.getItem('openfang-onboarded')) return;
       try {
-        var config = await FangClaw-goAPI.get('/api/config');
+        var config = await FangClawGoAPI.get('/api/config');
         var apiKey = config && config.api_key;
         var noKey = !apiKey || apiKey === 'not set' || apiKey === '';
         if (noKey && this.agentCount === 0) {
@@ -157,7 +157,7 @@ document.addEventListener('alpine:init', function() {
       try {
         // Use a protected endpoint (not in the public allowlist) to detect
         // whether the server requires an API key.
-        await FangClaw-goAPI.get('/api/tools');
+        await FangClawGoAPI.get('/api/tools');
         this.showAuthPrompt = false;
       } catch(e) {
         if (e.message && (e.message.indexOf('Not authorized') >= 0 || e.message.indexOf('401') >= 0 || e.message.indexOf('Missing Authorization') >= 0 || e.message.indexOf('Unauthorized') >= 0)) {
@@ -165,7 +165,7 @@ document.addEventListener('alpine:init', function() {
           var saved = localStorage.getItem('openfang-api-key');
           if (saved) {
             // Saved key might be stale — clear it and show prompt
-            FangClaw-goAPI.setAuthToken('');
+            FangClawGoAPI.setAuthToken('');
             localStorage.removeItem('openfang-api-key');
           }
           this.showAuthPrompt = true;
@@ -175,14 +175,14 @@ document.addEventListener('alpine:init', function() {
 
     submitApiKey(key) {
       if (!key || !key.trim()) return;
-      FangClaw-goAPI.setAuthToken(key.trim());
+      FangClawGoAPI.setAuthToken(key.trim());
       localStorage.setItem('openfang-api-key', key.trim());
       this.showAuthPrompt = false;
       this.refreshAgents();
     },
 
     clearApiKey() {
-      FangClaw-goAPI.setAuthToken('');
+      FangClawGoAPI.setAuthToken('');
       localStorage.removeItem('openfang-api-key');
     }
   });
@@ -268,7 +268,7 @@ function app() {
       });
 
       // Connection state listener
-      FangClaw-goAPI.onConnectionChange(function(state) {
+      FangClawGoAPI.onConnectionChange(function(state) {
         Alpine.store('app').connectionState = state;
       });
 
@@ -313,7 +313,7 @@ function app() {
       this.connected = store.connected;
       this.version = store.version;
       this.agentCount = store.agentCount;
-      this.wsConnected = FangClaw-goAPI.isWsConnected();
+      this.wsConnected = FangClawGoAPI.isWsConnected();
     }
   };
 }

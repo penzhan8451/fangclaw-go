@@ -179,8 +179,8 @@ function settingsPage() {
 
     async loadSysInfo() {
       try {
-        var ver = await FangClaw-goAPI.get('/api/version');
-        var status = await FangClaw-goAPI.get('/api/status');
+        var ver = await FangClawGoAPI.get('/api/version');
+        var status = await FangClawGoAPI.get('/api/status');
         this.sysInfo = {
           version: ver.version || '-',
           platform: ver.platform || '-',
@@ -195,27 +195,27 @@ function settingsPage() {
 
     async loadUsage() {
       try {
-        var data = await FangClaw-goAPI.get('/api/usage');
+        var data = await FangClawGoAPI.get('/api/usage');
         this.usageData = data.agents || [];
       } catch(e) { this.usageData = []; }
     },
 
     async loadTools() {
       try {
-        var data = await FangClaw-goAPI.get('/api/tools');
+        var data = await FangClawGoAPI.get('/api/tools');
         this.tools = data.tools || [];
       } catch(e) { this.tools = []; }
     },
 
     async loadConfig() {
       try {
-        this.config = await FangClaw-goAPI.get('/api/config');
+        this.config = await FangClawGoAPI.get('/api/config');
       } catch(e) { this.config = {}; }
     },
 
     async loadProviders() {
       try {
-        var data = await FangClaw-goAPI.get('/api/providers');
+        var data = await FangClawGoAPI.get('/api/providers');
         this.providers = data.providers || [];
         for (var i = 0; i < this.providers.length; i++) {
           var p = this.providers[i];
@@ -228,7 +228,7 @@ function settingsPage() {
 
     async loadModels() {
       try {
-        var data = await FangClaw-goAPI.get('/api/models');
+        var data = await FangClawGoAPI.get('/api/models');
         this.models = data.models || [];
       } catch(e) { this.models = []; }
     },
@@ -238,7 +238,7 @@ function settingsPage() {
       if (!id) return;
       this.customModelStatus = 'Adding...';
       try {
-        await FangClaw-goAPI.post('/api/models/custom', {
+        await FangClawGoAPI.post('/api/models/custom', {
           id: id,
           provider: this.customModelProvider || 'openrouter',
           context_window: this.customModelContext || 128000,
@@ -256,8 +256,8 @@ function settingsPage() {
     async loadConfigSchema() {
       try {
         var results = await Promise.all([
-          FangClaw-goAPI.get('/api/config/schema').catch(function() { return {}; }),
-          FangClaw-goAPI.get('/api/config')
+          FangClawGoAPI.get('/api/config/schema').catch(function() { return {}; }),
+          FangClawGoAPI.get('/api/config')
         ]);
         this.configSchema = results[0].sections || null;
         this.configValues = results[1] || {};
@@ -276,7 +276,7 @@ function settingsPage() {
       var key = section + '.' + field;
       this.configSaving[key] = true;
       try {
-        await FangClaw-goAPI.post('/api/config/set', { path: key, value: value });
+        await FangClawGoAPI.post('/api/config/set', { path: key, value: value });
         this.configDirty[key] = false;
         FangClaw-goToast.success('Saved ' + key);
       } catch(e) {
@@ -374,7 +374,7 @@ function settingsPage() {
       var key = this.providerKeyInputs[provider.id];
       if (!key || !key.trim()) { FangClaw-goToast.error('Please enter an API key'); return; }
       try {
-        await FangClaw-goAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key.trim() });
+        await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key.trim() });
         FangClaw-goToast.success('API key saved for ' + provider.display_name);
         this.providerKeyInputs[provider.id] = '';
         await this.loadProviders();
@@ -386,7 +386,7 @@ function settingsPage() {
 
     async removeProviderKey(provider) {
       try {
-        await FangClaw-goAPI.del('/api/providers/' + encodeURIComponent(provider.id) + '/key');
+        await FangClawGoAPI.del('/api/providers/' + encodeURIComponent(provider.id) + '/key');
         FangClaw-goToast.success('API key removed for ' + provider.display_name);
         await this.loadProviders();
         await this.loadModels();
@@ -399,7 +399,7 @@ function settingsPage() {
       this.copilotOAuth.polling = true;
       this.copilotOAuth.userCode = '';
       try {
-        var resp = await FangClaw-goAPI.post('/api/providers/github-copilot/oauth/start', {});
+        var resp = await FangClawGoAPI.post('/api/providers/github-copilot/oauth/start', {});
         this.copilotOAuth.userCode = resp.user_code;
         this.copilotOAuth.verificationUri = resp.verification_uri;
         this.copilotOAuth.pollId = resp.poll_id;
@@ -417,7 +417,7 @@ function settingsPage() {
       setTimeout(async function() {
         if (!self.copilotOAuth.pollId) return;
         try {
-          var resp = await FangClaw-goAPI.get('/api/providers/github-copilot/oauth/poll/' + self.copilotOAuth.pollId);
+          var resp = await FangClawGoAPI.get('/api/providers/github-copilot/oauth/poll/' + self.copilotOAuth.pollId);
           if (resp.status === 'complete') {
             FangClaw-goToast.success('GitHub Copilot authenticated successfully!');
             self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
@@ -447,7 +447,7 @@ function settingsPage() {
       this.providerTesting[provider.id] = true;
       this.providerTestResults[provider.id] = null;
       try {
-        var result = await FangClaw-goAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
+        var result = await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
         this.providerTestResults[provider.id] = result;
         if (result.status === 'ok') {
           FangClaw-goToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
@@ -470,7 +470,7 @@ function settingsPage() {
       }
       this.providerUrlSaving[provider.id] = true;
       try {
-        var result = await FangClaw-goAPI.put('/api/providers/' + encodeURIComponent(provider.id) + '/url', { base_url: url });
+        var result = await FangClawGoAPI.put('/api/providers/' + encodeURIComponent(provider.id) + '/url', { base_url: url });
         if (result.reachable) {
           FangClaw-goToast.success(provider.display_name + ' URL saved &mdash; reachable (' + (result.latency_ms || '?') + 'ms)');
         } else {
@@ -487,7 +487,7 @@ function settingsPage() {
     async loadSecurity() {
       this.secLoading = true;
       try {
-        this.securityData = await FangClaw-goAPI.get('/api/security');
+        this.securityData = await FangClawGoAPI.get('/api/security');
       } catch(e) {
         this.securityData = null;
       }
@@ -550,7 +550,7 @@ function settingsPage() {
       this.verifyingChain = true;
       this.chainResult = null;
       try {
-        var res = await FangClaw-goAPI.get('/api/audit/verify');
+        var res = await FangClawGoAPI.get('/api/audit/verify');
         this.chainResult = res;
       } catch(e) {
         this.chainResult = { valid: false, error: e.message };
@@ -563,7 +563,7 @@ function settingsPage() {
       this.peersLoading = true;
       this.peersLoadError = '';
       try {
-        var data = await FangClaw-goAPI.get('/api/peers');
+        var data = await FangClawGoAPI.get('/api/peers');
         this.peers = (data.peers || []).map(function(p) {
           return {
             node_id: p.node_id,
@@ -587,7 +587,7 @@ function settingsPage() {
       this._peerPollTimer = setInterval(async function() {
         if (self.tab !== 'network') { self.stopPeerPolling(); return; }
         try {
-          var data = await FangClaw-goAPI.get('/api/peers');
+          var data = await FangClawGoAPI.get('/api/peers');
           self.peers = (data.peers || []).map(function(p) {
             return {
               node_id: p.node_id,
@@ -610,7 +610,7 @@ function settingsPage() {
     async autoDetect() {
       this.detecting = true;
       try {
-        var data = await FangClaw-goAPI.get('/api/migrate/detect');
+        var data = await FangClawGoAPI.get('/api/migrate/detect');
         if (data.detected && data.scan) {
           this.sourcePath = data.path;
           this.scanResult = data.scan;
@@ -628,7 +628,7 @@ function settingsPage() {
       if (!this.sourcePath) return;
       this.scanning = true;
       try {
-        var data = await FangClaw-goAPI.post('/api/migrate/scan', { path: this.sourcePath });
+        var data = await FangClawGoAPI.post('/api/migrate/scan', { path: this.sourcePath });
         if (data.error) {
           FangClaw-goToast.error('Scan error: ' + data.error);
           this.scanning = false;
@@ -647,7 +647,7 @@ function settingsPage() {
       try {
         var target = this.targetPath;
         if (!target) target = '';
-        var data = await FangClaw-goAPI.post('/api/migrate', {
+        var data = await FangClawGoAPI.post('/api/migrate', {
           source: 'openclaw',
           source_dir: this.sourcePath || (this.scanResult ? this.scanResult.path : ''),
           target_dir: target,

@@ -70,19 +70,19 @@ function overviewPage() {
 
     async loadHealth() {
       try {
-        this.health = await FangClaw-goAPI.get('/api/health');
+        this.health = await FangClawGoAPI.get('/api/health');
       } catch(e) { this.health = { status: 'unreachable' }; }
     },
 
     async loadStatus() {
       try {
-        this.status = await FangClaw-goAPI.get('/api/status');
+        this.status = await FangClawGoAPI.get('/api/status');
       } catch(e) { this.status = {}; throw e; }
     },
 
     async loadUsage() {
       try {
-        var data = await FangClaw-goAPI.get('/api/usage');
+        var data = await FangClawGoAPI.get('/api/usage');
         var agents = data.agents || [];
         var totalTokens = 0;
         var totalTools = 0;
@@ -105,35 +105,35 @@ function overviewPage() {
 
     async loadAudit() {
       try {
-        var data = await FangClaw-goAPI.get('/api/audit/recent?n=8');
+        var data = await FangClawGoAPI.get('/api/audit/recent?n=8');
         this.recentAudit = data.entries || [];
       } catch(e) { this.recentAudit = []; }
     },
 
     async loadChannels() {
       try {
-        var data = await FangClaw-goAPI.get('/api/channels');
+        var data = await FangClawGoAPI.get('/api/channels');
         this.channels = (data.channels || []).filter(function(ch) { return ch.has_token; });
       } catch(e) { this.channels = []; }
     },
 
     async loadProviders() {
       try {
-        var data = await FangClaw-goAPI.get('/api/providers');
+        var data = await FangClawGoAPI.get('/api/providers');
         this.providers = data.providers || [];
       } catch(e) { this.providers = []; }
     },
 
     async loadMcpServers() {
       try {
-        var data = await FangClaw-goAPI.get('/api/mcp/servers');
+        var data = await FangClawGoAPI.get('/api/mcp/servers');
         this.mcpServers = data.servers || [];
       } catch(e) { this.mcpServers = []; }
     },
 
     async loadSkills() {
       try {
-        var data = await FangClaw-goAPI.get('/api/skills');
+        var data = await FangClawGoAPI.get('/api/skills');
         this.skillCount = (data.skills || []).length;
       } catch(e) { this.skillCount = 0; }
     },

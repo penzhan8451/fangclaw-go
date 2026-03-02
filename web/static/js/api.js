@@ -1,8 +1,8 @@
-// FangClaw-go API Client — Fetch wrapper, WebSocket manager, auth injection, toast notifications
+// FangClawGo API Client — Fetch wrapper, WebSocket manager, auth injection, toast notifications
 'use strict';
 
 // ── Toast Notification System ──
-var FangClaw-goToast = (function() {
+var FangClawGoToast = (function() {
   var _container = null;
   var _toastId = 0;
 
@@ -129,7 +129,7 @@ function friendlyError(status, serverMsg) {
 }
 
 // ── API Client ──
-var FangClaw-goAPI = (function() {
+var FangClawGoAPI = (function() {
   var BASE = window.location.origin;
   var WS_BASE = BASE.replace(/^http/, 'ws');
   var _authToken = '';
@@ -220,7 +220,7 @@ var FangClaw-goAPI = (function() {
         _reconnectAttempts = 0;
         setConnectionState('connected');
         if (_reconnectAttempt > 0) {
-          FangClaw-goToast.success('Reconnected');
+          FangClawGoToast.success('Reconnected');
           _reconnectAttempt = 0;
         }
         if (_wsCallbacks.onOpen) _wsCallbacks.onOpen();
@@ -241,7 +241,7 @@ var FangClaw-goAPI = (function() {
           _reconnectAttempt = _reconnectAttempts;
           setConnectionState('reconnecting');
           if (_reconnectAttempts === 1) {
-            FangClaw-goToast.warn('Connection lost, reconnecting...');
+            FangClawGoToast.warn('Connection lost, reconnecting...');
           }
           var delay = Math.min(1000 * Math.pow(2, _reconnectAttempts - 1), 10000);
           _reconnectTimer = setTimeout(function() { _doConnect(_wsAgentId); }, delay);
@@ -249,7 +249,7 @@ var FangClaw-goAPI = (function() {
         }
         if (_wsAgentId && _reconnectAttempts >= MAX_RECONNECT) {
           setConnectionState('disconnected');
-          FangClaw-goToast.error('Connection lost — switched to HTTP mode', 0);
+          FangClawGoToast.error('Connection lost — switched to HTTP mode', 0);
         }
         if (_wsCallbacks.onClose) _wsCallbacks.onClose();
       };

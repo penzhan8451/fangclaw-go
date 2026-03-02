@@ -26,7 +26,7 @@ function sessionsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        var data = await FangClaw-goAPI.get('/api/sessions');
+        var data = await FangClawGoAPI.get('/api/sessions');
         var sessions = data.sessions || [];
         var agents = Alpine.store('app').agents;
         var agentMap = {};
@@ -66,7 +66,7 @@ function sessionsPage() {
       var self = this;
       FangClaw-goToast.confirm('Delete Session', 'This will permanently remove the session and its messages.', async function() {
         try {
-          await FangClaw-goAPI.del('/api/sessions/' + sessionId);
+          await FangClawGoAPI.del('/api/sessions/' + sessionId);
           self.sessions = self.sessions.filter(function(s) { return s.session_id !== sessionId; });
           FangClaw-goToast.success('Session deleted');
         } catch(e) {
@@ -81,7 +81,7 @@ function sessionsPage() {
       this.memLoading = true;
       this.memLoadError = '';
       try {
-        var data = await FangClaw-goAPI.get('/api/memory/agents/' + this.memAgentId + '/kv');
+        var data = await FangClawGoAPI.get('/api/memory/agents/' + this.memAgentId + '/kv');
         this.kvPairs = data.kv_pairs || [];
       } catch(e) {
         this.kvPairs = [];
@@ -95,7 +95,7 @@ function sessionsPage() {
       var value;
       try { value = JSON.parse(this.newValue); } catch(e) { value = this.newValue; }
       try {
-        await FangClaw-goAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.newKey), { value: value });
+        await FangClawGoAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.newKey), { value: value });
         this.showAdd = false;
         FangClaw-goToast.success('Key "' + this.newKey + '" saved');
         this.newKey = '';
@@ -110,7 +110,7 @@ function sessionsPage() {
       var self = this;
       FangClaw-goToast.confirm('Delete Key', 'Delete key "' + key + '"? This cannot be undone.', async function() {
         try {
-          await FangClaw-goAPI.del('/api/memory/agents/' + self.memAgentId + '/kv/' + encodeURIComponent(key));
+          await FangClawGoAPI.del('/api/memory/agents/' + self.memAgentId + '/kv/' + encodeURIComponent(key));
           FangClaw-goToast.success('Key "' + key + '" deleted');
           await self.loadKv();
         } catch(e) {
@@ -134,7 +134,7 @@ function sessionsPage() {
       var value;
       try { value = JSON.parse(this.editingValue); } catch(e) { value = this.editingValue; }
       try {
-        await FangClaw-goAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.editingKey), { value: value });
+        await FangClawGoAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.editingKey), { value: value });
         FangClaw-goToast.success('Key "' + this.editingKey + '" updated');
         this.editingKey = null;
         this.editingValue = '';

@@ -178,7 +178,7 @@ function agentsPage() {
     async loadSpawnProfiles() {
       if (this.spawnProfilesLoaded) return;
       try {
-        var data = await FangClaw-goAPI.get('/api/profiles');
+        var data = await FangClawGoAPI.get('/api/profiles');
         this.spawnProfiles = data.profiles || [];
         this.spawnProfilesLoaded = true;
       } catch(e) { this.spawnProfiles = []; }
@@ -285,8 +285,8 @@ function agentsPage() {
       this.tplLoadError = '';
       try {
         var results = await Promise.all([
-          FangClaw-goAPI.get('/api/templates'),
-          FangClaw-goAPI.get('/api/providers').catch(function() { return { providers: [] }; })
+          FangClawGoAPI.get('/api/templates'),
+          FangClawGoAPI.get('/api/providers').catch(function() { return { providers: [] }; })
         ]);
         this.tplTemplates = results[0].templates || [];
         this.tplProviders = results[1].providers || [];
@@ -304,7 +304,7 @@ function agentsPage() {
 
     closeChat() {
       this.activeChatAgent = null;
-      FangClaw-goAPI.wsDisconnect();
+      FangClawGoAPI.wsDisconnect();
     },
 
     showDetail(agent) {
@@ -328,7 +328,7 @@ function agentsPage() {
       var self = this;
       FangClaw-goToast.confirm('Stop Agent', 'Stop agent "' + agent.name + '"? The agent will be shut down.', async function() {
         try {
-          await FangClaw-goAPI.del('/api/agents/' + agent.id);
+          await FangClawGoAPI.del('/api/agents/' + agent.id);
           FangClaw-goToast.success('Agent "' + agent.name + '" stopped');
           self.showDetailModal = false;
           await Alpine.store('app').refreshAgents();
@@ -345,7 +345,7 @@ function agentsPage() {
         var errors = [];
         for (var i = 0; i < list.length; i++) {
           try {
-            await FangClaw-goAPI.del('/api/agents/' + list[i].id);
+            await FangClawGoAPI.del('/api/agents/' + list[i].id);
           } catch(e) { errors.push(list[i].name + ': ' + e.message); }
         }
         await Alpine.store('app').refreshAgents();
@@ -414,7 +414,7 @@ function agentsPage() {
 
     async setMode(agent, mode) {
       try {
-        await FangClaw-goAPI.put('/api/agents/' + agent.id + '/mode', { mode: mode });
+        await FangClawGoAPI.put('/api/agents/' + agent.id + '/mode', { mode: mode });
         agent.mode = mode;
         FangClaw-goToast.success('Mode set to ' + mode);
         await Alpine.store('app').refreshAgents();
@@ -433,7 +433,7 @@ function agentsPage() {
       }
 
       try {
-        var res = await FangClaw-goAPI.post('/api/agents', { manifest_toml: toml });
+        var res = await FangClawGoAPI.post('/api/agents', { manifest_toml: toml });
         if (res.agent_id) {
           // Post-spawn: update identity + write SOUL.md if personality preset selected
           var patchBody = {};
@@ -443,10 +443,10 @@ function agentsPage() {
           if (this.selectedPreset) patchBody.vibe = this.selectedPreset;
 
           if (Object.keys(patchBody).length) {
-            FangClaw-goAPI.patch('/api/agents/' + res.agent_id + '/config', patchBody).catch(function(e) { console.warn('Post-spawn config patch failed:', e.message); });
+            FangClawGoAPI.patch('/api/agents/' + res.agent_id + '/config', patchBody).catch(function(e) { console.warn('Post-spawn config patch failed:', e.message); });
           }
           if (this.soulContent.trim()) {
-            FangClaw-goAPI.put('/api/agents/' + res.agent_id + '/files/SOUL.md', { content: '# Soul\n' + this.soulContent }).catch(function(e) { console.warn('SOUL.md write failed:', e.message); });
+            FangClawGoAPI.put('/api/agents/' + res.agent_id + '/files/SOUL.md', { content: '# Soul\n' + this.soulContent }).catch(function(e) { console.warn('SOUL.md write failed:', e.message); });
           }
 
           this.showSpawnModal = false;
@@ -470,7 +470,7 @@ function agentsPage() {
       if (!this.detailAgent) return;
       this.filesLoading = true;
       try {
-        var data = await FangClaw-goAPI.get('/api/agents/' + this.detailAgent.id + '/files');
+        var data = await FangClawGoAPI.get('/api/agents/' + this.detailAgent.id + '/files');
         this.agentFiles = data.files || [];
       } catch(e) {
         this.agentFiles = [];
@@ -487,7 +487,7 @@ function agentsPage() {
         return;
       }
       try {
-        var data = await FangClaw-goAPI.get('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(file.name));
+        var data = await FangClawGoAPI.get('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(file.name));
         this.editingFile = file.name;
         this.fileContent = data.content || '';
       } catch(e) {
@@ -499,7 +499,7 @@ function agentsPage() {
       if (!this.editingFile || !this.detailAgent) return;
       this.fileSaving = true;
       try {
-        await FangClaw-goAPI.put('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(this.editingFile), { content: this.fileContent });
+        await FangClawGoAPI.put('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(this.editingFile), { content: this.fileContent });
         FangClaw-goToast.success(this.editingFile + ' saved');
         await this.loadAgentFiles();
       } catch(e) {
@@ -518,7 +518,7 @@ function agentsPage() {
       if (!this.detailAgent) return;
       this.configSaving = true;
       try {
-        await FangClaw-goAPI.patch('/api/agents/' + this.detailAgent.id + '/config', this.configForm);
+        await FangClawGoAPI.patch('/api/agents/' + this.detailAgent.id + '/config', this.configForm);
         FangClaw-goToast.success('Config updated');
         await Alpine.store('app').refreshAgents();
       } catch(e) {
@@ -531,7 +531,7 @@ function agentsPage() {
     async cloneAgent(agent) {
       var newName = (agent.name || 'agent') + '-copy';
       try {
-        var res = await FangClaw-goAPI.post('/api/agents/' + agent.id + '/clone', { new_name: newName });
+        var res = await FangClawGoAPI.post('/api/agents/' + agent.id + '/clone', { new_name: newName });
         if (res.agent_id) {
           FangClaw-goToast.success('Cloned as "' + res.name + '"');
           await Alpine.store('app').refreshAgents();
@@ -545,9 +545,9 @@ function agentsPage() {
     // -- Template methods --
     async spawnFromTemplate(name) {
       try {
-        var data = await FangClaw-goAPI.get('/api/templates/' + encodeURIComponent(name));
+        var data = await FangClawGoAPI.get('/api/templates/' + encodeURIComponent(name));
         if (data.manifest_toml) {
-          var res = await FangClaw-goAPI.post('/api/agents', { manifest_toml: data.manifest_toml });
+          var res = await FangClawGoAPI.post('/api/agents', { manifest_toml: data.manifest_toml });
           if (res.agent_id) {
             FangClaw-goToast.success('Agent "' + (res.name || name) + '" spawned from template');
             await Alpine.store('app').refreshAgents();
@@ -568,7 +568,7 @@ function agentsPage() {
       toml += 'system_prompt = """\n' + t.system_prompt + '\n"""\n';
 
       try {
-        var res = await FangClaw-goAPI.post('/api/agents', { manifest_toml: toml });
+        var res = await FangClawGoAPI.post('/api/agents', { manifest_toml: toml });
         if (res.agent_id) {
           FangClaw-goToast.success('Agent "' + t.name + '" spawned');
           await Alpine.store('app').refreshAgents();

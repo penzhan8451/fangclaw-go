@@ -62,7 +62,7 @@ function schedulerPage() {
     },
 
     async loadJobs() {
-      var data = await FangClaw-goAPI.get('/api/cron/jobs');
+      var data = await FangClawGoAPI.get('/api/cron/jobs');
       var raw = data.jobs || [];
       // Normalize cron API response to flat fields the UI expects
       this.jobs = raw.map(function(j) {
@@ -91,7 +91,7 @@ function schedulerPage() {
       this.trigLoading = true;
       this.trigLoadError = '';
       try {
-        var data = await FangClaw-goAPI.get('/api/triggers');
+        var data = await FangClawGoAPI.get('/api/triggers');
         this.triggers = Array.isArray(data) ? data : [];
       } catch(e) {
         this.triggers = [];
@@ -162,7 +162,7 @@ function schedulerPage() {
           delivery: { kind: 'last_channel' },
           enabled: this.newJob.enabled
         };
-        await FangClaw-goAPI.post('/api/cron/jobs', body);
+        await FangClawGoAPI.post('/api/cron/jobs', body);
         this.showCreateForm = false;
         this.newJob = { name: '', cron: '', agent_id: '', message: '', enabled: true };
         FangClaw-goToast.success('Schedule "' + jobName + '" created');
@@ -176,7 +176,7 @@ function schedulerPage() {
     async toggleJob(job) {
       try {
         var newState = !job.enabled;
-        await FangClaw-goAPI.put('/api/cron/jobs/' + job.id + '/enable', { enabled: newState });
+        await FangClawGoAPI.put('/api/cron/jobs/' + job.id + '/enable', { enabled: newState });
         job.enabled = newState;
         FangClaw-goToast.success('Schedule ' + (newState ? 'enabled' : 'paused'));
       } catch(e) {
@@ -189,7 +189,7 @@ function schedulerPage() {
       var jobName = job.name || job.id;
       FangClaw-goToast.confirm('Delete Schedule', 'Delete "' + jobName + '"? This cannot be undone.', async function() {
         try {
-          await FangClaw-goAPI.del('/api/cron/jobs/' + job.id);
+          await FangClawGoAPI.del('/api/cron/jobs/' + job.id);
           self.jobs = self.jobs.filter(function(j) { return j.id !== job.id; });
           FangClaw-goToast.success('Schedule "' + jobName + '" deleted');
         } catch(e) {
@@ -201,7 +201,7 @@ function schedulerPage() {
     async runNow(job) {
       this.runningJobId = job.id;
       try {
-        var result = await FangClaw-goAPI.post('/api/schedules/' + job.id + '/run', {});
+        var result = await FangClawGoAPI.post('/api/schedules/' + job.id + '/run', {});
         if (result.status === 'completed') {
           FangClaw-goToast.success('Schedule "' + (job.name || 'job') + '" executed successfully');
           job.last_run = new Date().toISOString();
@@ -239,7 +239,7 @@ function schedulerPage() {
     async toggleTrigger(trigger) {
       try {
         var newState = !trigger.enabled;
-        await FangClaw-goAPI.put('/api/triggers/' + trigger.id, { enabled: newState });
+        await FangClawGoAPI.put('/api/triggers/' + trigger.id, { enabled: newState });
         trigger.enabled = newState;
         FangClaw-goToast.success('Trigger ' + (newState ? 'enabled' : 'disabled'));
       } catch(e) {
@@ -251,7 +251,7 @@ function schedulerPage() {
       var self = this;
       FangClaw-goToast.confirm('Delete Trigger', 'Delete this trigger? This cannot be undone.', async function() {
         try {
-          await FangClaw-goAPI.del('/api/triggers/' + trigger.id);
+          await FangClawGoAPI.del('/api/triggers/' + trigger.id);
           self.triggers = self.triggers.filter(function(t) { return t.id !== trigger.id; });
           FangClaw-goToast.success('Trigger deleted');
         } catch(e) {

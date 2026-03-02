@@ -89,7 +89,7 @@ function channelsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        var data = await FangClaw-goAPI.get('/api/channels');
+        var data = await FangClawGoAPI.get('/api/channels');
         this.allChannels = (data.channels || []).map(function(ch) {
           ch.connected = ch.configured && ch.has_token;
           return ch;
@@ -111,7 +111,7 @@ function channelsPage() {
 
     async refreshStatus() {
       try {
-        var data = await FangClaw-goAPI.get('/api/channels');
+        var data = await FangClawGoAPI.get('/api/channels');
         var byName = {};
         (data.channels || []).forEach(function(ch) { byName[ch.name] = ch; });
         this.allChannels.forEach(function(c) {
@@ -169,7 +169,7 @@ function channelsPage() {
       this.qr.connected = false;
       this.qr.expired = false;
       try {
-        var result = await FangClaw-goAPI.post('/api/channels/whatsapp/qr/start', {});
+        var result = await FangClawGoAPI.post('/api/channels/whatsapp/qr/start', {});
         this.qr.available = result.available || false;
         this.qr.dataUrl = result.qr_data_url || '';
         this.qr.sessionId = result.session_id || '';
@@ -194,7 +194,7 @@ function channelsPage() {
       if (this.qrPollTimer) clearInterval(this.qrPollTimer);
       this.qrPollTimer = setInterval(async function() {
         try {
-          var result = await FangClaw-goAPI.get('/api/channels/whatsapp/qr/status?session_id=' + encodeURIComponent(self.qr.sessionId));
+          var result = await FangClawGoAPI.get('/api/channels/whatsapp/qr/status?session_id=' + encodeURIComponent(self.qr.sessionId));
           if (result.connected) {
             clearInterval(self.qrPollTimer);
             self.qrPollTimer = null;
@@ -221,13 +221,13 @@ function channelsPage() {
       var name = this.setupModal.name;
       this.configuring = true;
       try {
-        await FangClaw-goAPI.post('/api/channels/' + name + '/configure', {
+        await FangClawGoAPI.post('/api/channels/' + name + '/configure', {
           fields: this.formValues
         });
         this.setupStep = 2;
         // Auto-test after save
         try {
-          var testResult = await FangClaw-goAPI.post('/api/channels/' + name + '/test', {});
+          var testResult = await FangClawGoAPI.post('/api/channels/' + name + '/test', {});
           if (testResult.status === 'ok') {
             this.testPassed = true;
             this.setupStep = 3;
@@ -252,7 +252,7 @@ function channelsPage() {
       var self = this;
       FangClaw-goToast.confirm('Remove Channel', 'Remove ' + displayName + ' configuration? This will deactivate the channel.', async function() {
         try {
-          await FangClaw-goAPI.delete('/api/channels/' + name + '/configure');
+          await FangClawGoAPI.delete('/api/channels/' + name + '/configure');
           FangClaw-goToast.success(displayName + ' removed and deactivated.');
           await self.refreshStatus();
           self.setupModal = null;
@@ -267,7 +267,7 @@ function channelsPage() {
       var name = this.setupModal.name;
       this.testing[name] = true;
       try {
-        var result = await FangClaw-goAPI.post('/api/channels/' + name + '/test', {});
+        var result = await FangClawGoAPI.post('/api/channels/' + name + '/test', {});
         if (result.status === 'ok') {
           this.testPassed = true;
           this.setupStep = 3;

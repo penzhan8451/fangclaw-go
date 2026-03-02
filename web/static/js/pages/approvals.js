@@ -22,7 +22,7 @@ function approvalsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        var data = await FangClaw-goAPI.get('/api/approvals');
+        var data = await FangClawGoAPI.get('/api/approvals');
         this.approvals = data.approvals || [];
       } catch(e) {
         this.loadError = e.message || 'Could not load approvals.';
@@ -32,7 +32,7 @@ function approvalsPage() {
 
     async approve(id) {
       try {
-        await FangClaw-goAPI.post('/api/approvals/' + id + '/approve', {});
+        await FangClawGoAPI.post('/api/approvals/' + id + '/approve', {});
         FangClaw-goToast.success('Approved');
         await this.loadData();
       } catch(e) {
@@ -44,7 +44,7 @@ function approvalsPage() {
       var self = this;
       FangClaw-goToast.confirm('Reject Action', 'Are you sure you want to reject this action?', async function() {
         try {
-          await FangClaw-goAPI.post('/api/approvals/' + id + '/reject', {});
+          await FangClawGoAPI.post('/api/approvals/' + id + '/reject', {});
           FangClaw-goToast.success('Rejected');
           await self.loadData();
         } catch(e) {

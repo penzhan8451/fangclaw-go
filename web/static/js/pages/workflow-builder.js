@@ -41,7 +41,7 @@ function workflowBuilder() {
       var self = this;
       // Load agents for the agent step dropdown
       try {
-        var list = await FangClaw-goAPI.get('/api/agents');
+        var list = await FangClawGoAPI.get('/api/agents');
         self.agents = Array.isArray(list) ? list : [];
       } catch(_) {
         self.agents = [];
@@ -360,7 +360,7 @@ function workflowBuilder() {
         steps.push(step);
       }
       try {
-        await FangClaw-goAPI.post('/api/workflows', {
+        await FangClawGoAPI.post('/api/workflows', {
           name: this.workflowName || 'untitled',
           description: this.workflowDescription || '',
           steps: steps

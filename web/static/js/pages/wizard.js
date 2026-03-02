@@ -183,7 +183,7 @@ function wizardPage() {
       this.tryItMessages.push({ role: 'user', text: text });
       this.tryItSending = true;
       try {
-        var res = await FangClaw-goAPI.post('/api/agents/' + this.createdAgent.id + '/message', { message: text });
+        var res = await FangClawGoAPI.post('/api/agents/' + this.createdAgent.id + '/message', { message: text });
         this.tryItMessages.push({ role: 'agent', text: res.response || '(no response)' });
         localStorage.setItem('of-first-msg', 'true');
       } catch(e) {
@@ -299,7 +299,7 @@ function wizardPage() {
 
     async loadProviders() {
       try {
-        var data = await FangClaw-goAPI.get('/api/providers');
+        var data = await FangClawGoAPI.get('/api/providers');
         this.providers = data.providers || [];
         // Pre-select first unconfigured provider, or first one
         var unconfigured = this.providers.filter(function(p) {
@@ -374,7 +374,7 @@ function wizardPage() {
       }
       this.savingKey = true;
       try {
-        await FangClaw-goAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key });
+        await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key });
         this.apiKeyInput = '';
         this.keySaved = true;
         this.setupSummary.provider = provider.display_name;
@@ -394,7 +394,7 @@ function wizardPage() {
       this.testingProvider = true;
       this.testResult = null;
       try {
-        var result = await FangClaw-goAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
+        var result = await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
         this.testResult = result;
         if (result.status === 'ok') {
           FangClaw-goToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
@@ -446,7 +446,7 @@ function wizardPage() {
 
       this.creatingAgent = true;
       try {
-        var res = await FangClaw-goAPI.post('/api/agents', { manifest_toml: toml });
+        var res = await FangClawGoAPI.post('/api/agents', { manifest_toml: toml });
         if (res.agent_id) {
           this.createdAgent = { id: res.agent_id, name: res.name || name };
           this.setupSummary.agent = res.name || name;
@@ -510,7 +510,7 @@ function wizardPage() {
         var fields = {};
         fields[ch.token_env.toLowerCase()] = token;
         fields.token = token;
-        await FangClaw-goAPI.post('/api/channels/' + ch.name + '/configure', { fields: fields });
+        await FangClawGoAPI.post('/api/channels/' + ch.name + '/configure', { fields: fields });
         this.channelConfigured = true;
         this.setupSummary.channel = ch.display_name;
         FangClaw-goToast.success(ch.display_name + ' configured and activated.');

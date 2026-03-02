@@ -141,7 +141,7 @@ function chatPage() {
     // Fetch dynamic slash commands from server
     fetchCommands: function() {
       var self = this;
-      FangClaw-goAPI.get('/api/commands').then(function(data) {
+      FangClawGoAPI.get('/api/commands').then(function(data) {
         if (data.commands && data.commands.length) {
           // Build a set of known cmds to avoid duplicates
           var existing = {};
@@ -197,7 +197,7 @@ function chatPage() {
           break;
         case '/new':
           if (self.currentAgent) {
-            FangClaw-goAPI.post('/api/agents/' + self.currentAgent.id + '/session/reset', {}).then(function() {
+            FangClawGoAPI.post('/api/agents/' + self.currentAgent.id + '/session/reset', {}).then(function() {
               self.messages = [];
               FangClaw-goToast.success('Session reset');
             }).catch(function(e) { FangClaw-goToast.error('Reset failed: ' + e.message); });
@@ -206,7 +206,7 @@ function chatPage() {
         case '/compact':
           if (self.currentAgent) {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Compacting session...', meta: '', tools: [] });
-            FangClaw-goAPI.post('/api/agents/' + self.currentAgent.id + '/session/compact', {}).then(function(res) {
+            FangClawGoAPI.post('/api/agents/' + self.currentAgent.id + '/session/compact', {}).then(function(res) {
               self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Compaction complete', meta: '', tools: [] });
               self.scrollToBottom();
             }).catch(function(e) { FangClaw-goToast.error('Compaction failed: ' + e.message); });
@@ -214,7 +214,7 @@ function chatPage() {
           break;
         case '/stop':
           if (self.currentAgent) {
-            FangClaw-goAPI.post('/api/agents/' + self.currentAgent.id + '/stop', {}).then(function(res) {
+            FangClawGoAPI.post('/api/agents/' + self.currentAgent.id + '/stop', {}).then(function(res) {
               self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Run cancelled', meta: '', tools: [] });
               self.sending = false;
               self.scrollToBottom();
@@ -250,31 +250,31 @@ function chatPage() {
           break;
         case '/context':
           // Send via WS command
-          if (self.currentAgent && FangClaw-goAPI.isWsConnected()) {
-            FangClaw-goAPI.wsSend({ type: 'command', command: 'context', args: '' });
+          if (self.currentAgent && FangClawGoAPI.isWsConnected()) {
+            FangClawGoAPI.wsSend({ type: 'command', command: 'context', args: '' });
           } else {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected. Connect to an agent first.', meta: '', tools: [] });
             self.scrollToBottom();
           }
           break;
         case '/verbose':
-          if (self.currentAgent && FangClaw-goAPI.isWsConnected()) {
-            FangClaw-goAPI.wsSend({ type: 'command', command: 'verbose', args: cmdArgs });
+          if (self.currentAgent && FangClawGoAPI.isWsConnected()) {
+            FangClawGoAPI.wsSend({ type: 'command', command: 'verbose', args: cmdArgs });
           } else {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected. Connect to an agent first.', meta: '', tools: [] });
             self.scrollToBottom();
           }
           break;
         case '/queue':
-          if (self.currentAgent && FangClaw-goAPI.isWsConnected()) {
-            FangClaw-goAPI.wsSend({ type: 'command', command: 'queue', args: '' });
+          if (self.currentAgent && FangClawGoAPI.isWsConnected()) {
+            FangClawGoAPI.wsSend({ type: 'command', command: 'queue', args: '' });
           } else {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected.', meta: '', tools: [] });
             self.scrollToBottom();
           }
           break;
         case '/status':
-          FangClaw-goAPI.get('/api/status').then(function(s) {
+          FangClawGoAPI.get('/api/status').then(function(s) {
             self.messages.push({ id: ++msgId, role: 'system', text: '**System Status**\n- Agents: ' + (s.agent_count || 0) + '\n- Uptime: ' + (s.uptime_seconds || 0) + 's\n- Version: ' + (s.version || '?'), meta: '', tools: [] });
             self.scrollToBottom();
           }).catch(function() {});
@@ -282,7 +282,7 @@ function chatPage() {
         case '/model':
           if (self.currentAgent) {
             if (cmdArgs) {
-              FangClaw-goAPI.put('/api/agents/' + self.currentAgent.id + '/model', { model: cmdArgs }).then(function() {
+              FangClawGoAPI.put('/api/agents/' + self.currentAgent.id + '/model', { model: cmdArgs }).then(function() {
                 self.currentAgent.model_name = cmdArgs;
                 self.messages.push({ id: ++msgId, role: 'system', text: 'Model switched to: `' + cmdArgs + '`', meta: '', tools: [] });
                 self.scrollToBottom();
@@ -300,14 +300,14 @@ function chatPage() {
           self.messages = [];
           break;
         case '/exit':
-          FangClaw-goAPI.wsDisconnect();
+          FangClawGoAPI.wsDisconnect();
           self._wsAgent = null;
           self.currentAgent = null;
           self.messages = [];
           window.dispatchEvent(new Event('close-chat'));
           break;
         case '/budget':
-          FangClaw-goAPI.get('/api/budget').then(function(b) {
+          FangClawGoAPI.get('/api/budget').then(function(b) {
             var fmt = function(v) { return v > 0 ? '$' + v.toFixed(2) : 'unlimited'; };
             self.messages.push({ id: ++msgId, role: 'system', text: '**Budget Status**\n' +
               '- Hourly: $' + (b.hourly_spend||0).toFixed(4) + ' / ' + fmt(b.hourly_limit) + '\n' +
@@ -317,7 +317,7 @@ function chatPage() {
           }).catch(function() {});
           break;
         case '/peers':
-          FangClaw-goAPI.get('/api/network/status').then(function(ns) {
+          FangClawGoAPI.get('/api/network/status').then(function(ns) {
             self.messages.push({ id: ++msgId, role: 'system', text: '**OFP Network**\n' +
               '- Status: ' + (ns.enabled ? 'Enabled' : 'Disabled') + '\n' +
               '- Connected peers: ' + (ns.connected_peers||0) + ' / ' + (ns.total_peers||0), meta: '', tools: [] });
@@ -325,7 +325,7 @@ function chatPage() {
           }).catch(function() {});
           break;
         case '/a2a':
-          FangClaw-goAPI.get('/api/a2a/agents').then(function(res) {
+          FangClawGoAPI.get('/api/a2a/agents').then(function(res) {
             var agents = res.agents || [];
             if (!agents.length) {
               self.messages.push({ id: ++msgId, role: 'system', text: 'No external A2A agents discovered.', meta: '', tools: [] });
@@ -374,7 +374,7 @@ function chatPage() {
     async loadSession(agentId) {
       var self = this;
       try {
-        var data = await FangClaw-goAPI.get('/api/agents/' + agentId + '/session');
+        var data = await FangClawGoAPI.get('/api/agents/' + agentId + '/session');
         if (data.messages && data.messages.length) {
           self.messages = data.messages.map(function(m) {
             var role = m.role === 'User' ? 'user' : (m.role === 'System' ? 'system' : 'agent');
@@ -403,7 +403,7 @@ function chatPage() {
     // Multi-session: load session list for current agent
     async loadSessions(agentId) {
       try {
-        var data = await FangClaw-goAPI.get('/api/agents/' + agentId + '/sessions');
+        var data = await FangClawGoAPI.get('/api/agents/' + agentId + '/sessions');
         this.sessions = data.sessions || [];
       } catch(e) { this.sessions = []; }
     },
@@ -414,7 +414,7 @@ function chatPage() {
       var label = prompt('Session name (optional):');
       if (label === null) return; // cancelled
       try {
-        await FangClaw-goAPI.post('/api/agents/' + this.currentAgent.id + '/sessions', {
+        await FangClawGoAPI.post('/api/agents/' + this.currentAgent.id + '/sessions', {
           label: label.trim() || undefined
         });
         await this.loadSessions(this.currentAgent.id);
@@ -431,7 +431,7 @@ function chatPage() {
     async switchSession(sessionId) {
       if (!this.currentAgent) return;
       try {
-        await FangClaw-goAPI.post('/api/agents/' + this.currentAgent.id + '/sessions/' + sessionId + '/switch', {});
+        await FangClawGoAPI.post('/api/agents/' + this.currentAgent.id + '/sessions/' + sessionId + '/switch', {});
         this.messages = [];
         await this.loadSession(this.currentAgent.id);
         await this.loadSessions(this.currentAgent.id);
@@ -448,7 +448,7 @@ function chatPage() {
       this._wsAgent = agentId;
       var self = this;
 
-      FangClaw-goAPI.wsConnect(agentId, {
+      FangClawGoAPI.wsConnect(agentId, {
         onOpen: function() {
           Alpine.store('app').wsConnected = true;
         },
@@ -773,7 +773,7 @@ function chatPage() {
           var att = this.attachments[i];
           att.uploading = true;
           try {
-            var uploadRes = await FangClaw-goAPI.upload(this.currentAgent.id, att.file);
+            var uploadRes = await FangClawGoAPI.upload(this.currentAgent.id, att.file);
             fileRefs.push('[File: ' + att.file.name + ']');
             uploadedFiles.push({ file_id: uploadRes.file_id, filename: uploadRes.filename, content_type: uploadRes.content_type });
           } catch(e) {
@@ -818,14 +818,14 @@ function chatPage() {
       // Try WebSocket first
       var wsPayload = { type: 'message', content: finalText };
       if (uploadedFiles && uploadedFiles.length) wsPayload.attachments = uploadedFiles;
-      if (FangClaw-goAPI.wsSend(wsPayload)) {
+      if (FangClawGoAPI.wsSend(wsPayload)) {
         this.messages.push({ id: ++msgId, role: 'agent', text: '', meta: '', thinking: true, streaming: true, tools: [], ts: Date.now() });
         this.scrollToBottom();
         return;
       }
 
       // HTTP fallback
-      if (!FangClaw-goAPI.isWsConnected()) {
+      if (!FangClawGoAPI.isWsConnected()) {
         FangClaw-goToast.info('Using HTTP mode (no streaming)');
       }
       this.messages.push({ id: ++msgId, role: 'agent', text: '', meta: '', thinking: true, tools: [], ts: Date.now() });
@@ -834,7 +834,7 @@ function chatPage() {
       try {
         var httpBody = { message: finalText };
         if (uploadedFiles && uploadedFiles.length) httpBody.attachments = uploadedFiles;
-        var res = await FangClaw-goAPI.post('/api/agents/' + this.currentAgent.id + '/message', httpBody);
+        var res = await FangClawGoAPI.post('/api/agents/' + this.currentAgent.id + '/message', httpBody);
         this.messages = this.messages.filter(function(m) { return !m.thinking; });
         var httpMeta = (res.input_tokens || 0) + ' in / ' + (res.output_tokens || 0) + ' out';
         if (res.cost_usd != null) httpMeta += ' | $' + res.cost_usd.toFixed(4);
@@ -858,7 +858,7 @@ function chatPage() {
     stopAgent: function() {
       if (!this.currentAgent) return;
       var self = this;
-      FangClaw-goAPI.post('/api/agents/' + this.currentAgent.id + '/stop', {}).then(function(res) {
+      FangClawGoAPI.post('/api/agents/' + this.currentAgent.id + '/stop', {}).then(function(res) {
         self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Run cancelled', meta: '', tools: [], ts: Date.now() });
         self.sending = false;
         self.scrollToBottom();
@@ -872,8 +872,8 @@ function chatPage() {
       var name = this.currentAgent.name;
       FangClaw-goToast.confirm('Stop Agent', 'Stop agent "' + name + '"? The agent will be shut down.', async function() {
         try {
-          await FangClaw-goAPI.del('/api/agents/' + self.currentAgent.id);
-          FangClaw-goAPI.wsDisconnect();
+          await FangClawGoAPI.del('/api/agents/' + self.currentAgent.id);
+          FangClawGoAPI.wsDisconnect();
           self._wsAgent = null;
           self.currentAgent = null;
           self.messages = [];
@@ -1011,7 +1011,7 @@ function chatPage() {
         // Upload audio file
         var ext = blob.type.includes('webm') ? 'webm' : blob.type.includes('ogg') ? 'ogg' : 'mp3';
         var file = new File([blob], 'voice_' + Date.now() + '.' + ext, { type: blob.type });
-        var upload = await FangClaw-goAPI.upload(this.currentAgent.id, file);
+        var upload = await FangClawGoAPI.upload(this.currentAgent.id, file);
 
         // Remove the "Transcribing..." message
         this.messages = this.messages.filter(function(m) { return !m.thinking || m.role !== 'system'; });
