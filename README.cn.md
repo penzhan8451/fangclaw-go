@@ -1,4 +1,4 @@
-<h1 align="center">FangClaw</h1>
+<h1 align="center">FangClaw-Go</h1>
 <h3 align="center">The Go Implementation of OpenFang</h3>
 
 <p align="center">

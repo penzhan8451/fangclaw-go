@@ -1,4 +1,4 @@
-// OpenFang Skills Page — OpenClaw/ClawHub ecosystem + local skills + MCP servers
+// FangClaw-go Skills Page — OpenClaw/ClawHub ecosystem + local skills + MCP servers
 'use strict';
 
 function skillsPage() {
@@ -80,7 +80,7 @@ function skillsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/skills');
+        var data = await FangClaw-goAPI.get('/api/skills');
         this.skills = (data.skills || []).map(function(s) {
           return {
             name: s.name,
@@ -128,7 +128,7 @@ function skillsPage() {
       this.clawhubLoading = true;
       this.clawhubError = '';
       try {
-        var data = await OpenFangAPI.get('/api/clawhub/search?q=' + encodeURIComponent(this.clawhubSearch.trim()) + '&limit=20');
+        var data = await FangClaw-goAPI.get('/api/clawhub/search?q=' + encodeURIComponent(this.clawhubSearch.trim()) + '&limit=20');
         this.clawhubResults = data.items || [];
         if (data.error) this.clawhubError = data.error;
       } catch(e) {
@@ -153,7 +153,7 @@ function skillsPage() {
       this.clawhubError = '';
       this.clawhubNextCursor = null;
       try {
-        var data = await OpenFangAPI.get('/api/clawhub/browse?sort=' + this.clawhubSort + '&limit=20');
+        var data = await FangClaw-goAPI.get('/api/clawhub/browse?sort=' + this.clawhubSort + '&limit=20');
         this.clawhubBrowseResults = data.items || [];
         this.clawhubNextCursor = data.next_cursor || null;
         if (data.error) this.clawhubError = data.error;
@@ -169,7 +169,7 @@ function skillsPage() {
       if (!this.clawhubNextCursor || this.clawhubLoading) return;
       this.clawhubLoading = true;
       try {
-        var data = await OpenFangAPI.get('/api/clawhub/browse?sort=' + this.clawhubSort + '&limit=20&cursor=' + encodeURIComponent(this.clawhubNextCursor));
+        var data = await FangClaw-goAPI.get('/api/clawhub/browse?sort=' + this.clawhubSort + '&limit=20&cursor=' + encodeURIComponent(this.clawhubNextCursor));
         this.clawhubBrowseResults = this.clawhubBrowseResults.concat(data.items || []);
         this.clawhubNextCursor = data.next_cursor || null;
       } catch(e) {
@@ -184,10 +184,10 @@ function skillsPage() {
       this.skillDetail = null;
       this.installResult = null;
       try {
-        var data = await OpenFangAPI.get('/api/clawhub/skill/' + encodeURIComponent(slug));
+        var data = await FangClaw-goAPI.get('/api/clawhub/skill/' + encodeURIComponent(slug));
         this.skillDetail = data;
       } catch(e) {
-        OpenFangToast.error('Failed to load skill details');
+        FangClaw-goToast.error('Failed to load skill details');
       }
       this.detailLoading = false;
     },
@@ -202,12 +202,12 @@ function skillsPage() {
       this.installingSlug = slug;
       this.installResult = null;
       try {
-        var data = await OpenFangAPI.post('/api/clawhub/install', { slug: slug });
+        var data = await FangClaw-goAPI.post('/api/clawhub/install', { slug: slug });
         this.installResult = data;
         if (data.warnings && data.warnings.length > 0) {
-          OpenFangToast.success('Skill "' + data.name + '" installed with ' + data.warnings.length + ' warning(s)');
+          FangClaw-goToast.success('Skill "' + data.name + '" installed with ' + data.warnings.length + ' warning(s)');
         } else {
-          OpenFangToast.success('Skill "' + data.name + '" installed successfully');
+          FangClaw-goToast.success('Skill "' + data.name + '" installed successfully');
         }
         // Update installed state in detail modal if open
         if (this.skillDetail && this.skillDetail.slug === slug) {
@@ -217,11 +217,11 @@ function skillsPage() {
       } catch(e) {
         var msg = e.message || 'Install failed';
         if (msg.includes('already_installed')) {
-          OpenFangToast.error('Skill is already installed');
+          FangClaw-goToast.error('Skill is already installed');
         } else if (msg.includes('SecurityBlocked')) {
-          OpenFangToast.error('Skill blocked by security scan');
+          FangClaw-goToast.error('Skill blocked by security scan');
         } else {
-          OpenFangToast.error('Install failed: ' + msg);
+          FangClaw-goToast.error('Install failed: ' + msg);
         }
       }
       this.installingSlug = null;
@@ -230,13 +230,13 @@ function skillsPage() {
     // Uninstall
     uninstallSkill: function(name) {
       var self = this;
-      OpenFangToast.confirm('Uninstall Skill', 'Uninstall skill "' + name + '"? This cannot be undone.', async function() {
+      FangClaw-goToast.confirm('Uninstall Skill', 'Uninstall skill "' + name + '"? This cannot be undone.', async function() {
         try {
-          await OpenFangAPI.post('/api/skills/uninstall', { name: name });
-          OpenFangToast.success('Skill "' + name + '" uninstalled');
+          await FangClaw-goAPI.post('/api/skills/uninstall', { name: name });
+          FangClaw-goToast.success('Skill "' + name + '" uninstalled');
           await self.loadSkills();
         } catch(e) {
-          OpenFangToast.error('Failed to uninstall skill: ' + e.message);
+          FangClaw-goToast.error('Failed to uninstall skill: ' + e.message);
         }
       });
     },
@@ -244,17 +244,17 @@ function skillsPage() {
     // Create prompt-only skill
     async createDemoSkill(skill) {
       try {
-        await OpenFangAPI.post('/api/skills/create', {
+        await FangClaw-goAPI.post('/api/skills/create', {
           name: skill.name,
           description: skill.description,
           runtime: 'prompt_only',
           prompt_context: skill.prompt_context || skill.description
         });
-        OpenFangToast.success('Skill "' + skill.name + '" created');
+        FangClaw-goToast.success('Skill "' + skill.name + '" created');
         this.tab = 'installed';
         await this.loadSkills();
       } catch(e) {
-        OpenFangToast.error('Failed to create skill: ' + e.message);
+        FangClaw-goToast.error('Failed to create skill: ' + e.message);
       }
     },
 
@@ -262,7 +262,7 @@ function skillsPage() {
     async loadMcpServers() {
       this.mcpLoading = true;
       try {
-        var data = await OpenFangAPI.get('/api/mcp/servers');
+        var data = await FangClaw-goAPI.get('/api/mcp/servers');
         this.mcpServers = data;
       } catch(e) {
         this.mcpServers = { configured: [], connected: [], total_configured: 0, total_connected: 0 };

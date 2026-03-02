@@ -1,4 +1,4 @@
-// OpenFang Agents Page — Multi-step spawn wizard, detail view with tabs, file editor, personality presets
+// FangClaw-go Agents Page — Multi-step spawn wizard, detail view with tabs, file editor, personality presets
 'use strict';
 
 function agentsPage() {
@@ -178,7 +178,7 @@ function agentsPage() {
     async loadSpawnProfiles() {
       if (this.spawnProfilesLoaded) return;
       try {
-        var data = await OpenFangAPI.get('/api/profiles');
+        var data = await FangClaw-goAPI.get('/api/profiles');
         this.spawnProfiles = data.profiles || [];
         this.spawnProfilesLoaded = true;
       } catch(e) { this.spawnProfiles = []; }
@@ -285,8 +285,8 @@ function agentsPage() {
       this.tplLoadError = '';
       try {
         var results = await Promise.all([
-          OpenFangAPI.get('/api/templates'),
-          OpenFangAPI.get('/api/providers').catch(function() { return { providers: [] }; })
+          FangClaw-goAPI.get('/api/templates'),
+          FangClaw-goAPI.get('/api/providers').catch(function() { return { providers: [] }; })
         ]);
         this.tplTemplates = results[0].templates || [];
         this.tplProviders = results[1].providers || [];
@@ -304,7 +304,7 @@ function agentsPage() {
 
     closeChat() {
       this.activeChatAgent = null;
-      OpenFangAPI.wsDisconnect();
+      FangClaw-goAPI.wsDisconnect();
     },
 
     showDetail(agent) {
@@ -326,14 +326,14 @@ function agentsPage() {
 
     killAgent(agent) {
       var self = this;
-      OpenFangToast.confirm('Stop Agent', 'Stop agent "' + agent.name + '"? The agent will be shut down.', async function() {
+      FangClaw-goToast.confirm('Stop Agent', 'Stop agent "' + agent.name + '"? The agent will be shut down.', async function() {
         try {
-          await OpenFangAPI.del('/api/agents/' + agent.id);
-          OpenFangToast.success('Agent "' + agent.name + '" stopped');
+          await FangClaw-goAPI.del('/api/agents/' + agent.id);
+          FangClaw-goToast.success('Agent "' + agent.name + '" stopped');
           self.showDetailModal = false;
           await Alpine.store('app').refreshAgents();
         } catch(e) {
-          OpenFangToast.error('Failed to stop agent: ' + e.message);
+          FangClaw-goToast.error('Failed to stop agent: ' + e.message);
         }
       });
     },
@@ -341,18 +341,18 @@ function agentsPage() {
     killAllAgents() {
       var list = this.filteredAgents;
       if (!list.length) return;
-      OpenFangToast.confirm('Stop All Agents', 'Stop ' + list.length + ' agent(s)? All agents will be shut down.', async function() {
+      FangClaw-goToast.confirm('Stop All Agents', 'Stop ' + list.length + ' agent(s)? All agents will be shut down.', async function() {
         var errors = [];
         for (var i = 0; i < list.length; i++) {
           try {
-            await OpenFangAPI.del('/api/agents/' + list[i].id);
+            await FangClaw-goAPI.del('/api/agents/' + list[i].id);
           } catch(e) { errors.push(list[i].name + ': ' + e.message); }
         }
         await Alpine.store('app').refreshAgents();
         if (errors.length) {
-          OpenFangToast.error('Some agents failed to stop: ' + errors.join(', '));
+          FangClaw-goToast.error('Some agents failed to stop: ' + errors.join(', '));
         } else {
-          OpenFangToast.success(list.length + ' agent(s) stopped');
+          FangClaw-goToast.success(list.length + ' agent(s) stopped');
         }
       });
     },
@@ -372,7 +372,7 @@ function agentsPage() {
 
     nextStep() {
       if (this.spawnStep === 1 && !this.spawnForm.name.trim()) {
-        OpenFangToast.warn('Please enter an agent name');
+        FangClaw-goToast.warn('Please enter an agent name');
         return;
       }
       if (this.spawnStep < 5) this.spawnStep++;
@@ -414,12 +414,12 @@ function agentsPage() {
 
     async setMode(agent, mode) {
       try {
-        await OpenFangAPI.put('/api/agents/' + agent.id + '/mode', { mode: mode });
+        await FangClaw-goAPI.put('/api/agents/' + agent.id + '/mode', { mode: mode });
         agent.mode = mode;
-        OpenFangToast.success('Mode set to ' + mode);
+        FangClaw-goToast.success('Mode set to ' + mode);
         await Alpine.store('app').refreshAgents();
       } catch(e) {
-        OpenFangToast.error('Failed to set mode: ' + e.message);
+        FangClaw-goToast.error('Failed to set mode: ' + e.message);
       }
     },
 
@@ -428,12 +428,12 @@ function agentsPage() {
       var toml = this.spawnMode === 'wizard' ? this.generateToml() : this.spawnToml;
       if (!toml.trim()) {
         this.spawning = false;
-        OpenFangToast.warn('Manifest is empty \u2014 enter agent config first');
+        FangClaw-goToast.warn('Manifest is empty \u2014 enter agent config first');
         return;
       }
 
       try {
-        var res = await OpenFangAPI.post('/api/agents', { manifest_toml: toml });
+        var res = await FangClaw-goAPI.post('/api/agents', { manifest_toml: toml });
         if (res.agent_id) {
           // Post-spawn: update identity + write SOUL.md if personality preset selected
           var patchBody = {};
@@ -443,24 +443,24 @@ function agentsPage() {
           if (this.selectedPreset) patchBody.vibe = this.selectedPreset;
 
           if (Object.keys(patchBody).length) {
-            OpenFangAPI.patch('/api/agents/' + res.agent_id + '/config', patchBody).catch(function(e) { console.warn('Post-spawn config patch failed:', e.message); });
+            FangClaw-goAPI.patch('/api/agents/' + res.agent_id + '/config', patchBody).catch(function(e) { console.warn('Post-spawn config patch failed:', e.message); });
           }
           if (this.soulContent.trim()) {
-            OpenFangAPI.put('/api/agents/' + res.agent_id + '/files/SOUL.md', { content: '# Soul\n' + this.soulContent }).catch(function(e) { console.warn('SOUL.md write failed:', e.message); });
+            FangClaw-goAPI.put('/api/agents/' + res.agent_id + '/files/SOUL.md', { content: '# Soul\n' + this.soulContent }).catch(function(e) { console.warn('SOUL.md write failed:', e.message); });
           }
 
           this.showSpawnModal = false;
           this.spawnForm.name = '';
           this.spawnToml = '';
           this.spawnStep = 1;
-          OpenFangToast.success('Agent "' + (res.name || 'new') + '" spawned');
+          FangClaw-goToast.success('Agent "' + (res.name || 'new') + '" spawned');
           await Alpine.store('app').refreshAgents();
           this.chatWithAgent({ id: res.agent_id, name: res.name, model_provider: '?', model_name: '?' });
         } else {
-          OpenFangToast.error('Spawn failed: ' + (res.error || 'Unknown error'));
+          FangClaw-goToast.error('Spawn failed: ' + (res.error || 'Unknown error'));
         }
       } catch(e) {
-        OpenFangToast.error('Failed to spawn agent: ' + e.message);
+        FangClaw-goToast.error('Failed to spawn agent: ' + e.message);
       }
       this.spawning = false;
     },
@@ -470,11 +470,11 @@ function agentsPage() {
       if (!this.detailAgent) return;
       this.filesLoading = true;
       try {
-        var data = await OpenFangAPI.get('/api/agents/' + this.detailAgent.id + '/files');
+        var data = await FangClaw-goAPI.get('/api/agents/' + this.detailAgent.id + '/files');
         this.agentFiles = data.files || [];
       } catch(e) {
         this.agentFiles = [];
-        OpenFangToast.error('Failed to load files: ' + e.message);
+        FangClaw-goToast.error('Failed to load files: ' + e.message);
       }
       this.filesLoading = false;
     },
@@ -487,11 +487,11 @@ function agentsPage() {
         return;
       }
       try {
-        var data = await OpenFangAPI.get('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(file.name));
+        var data = await FangClaw-goAPI.get('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(file.name));
         this.editingFile = file.name;
         this.fileContent = data.content || '';
       } catch(e) {
-        OpenFangToast.error('Failed to read file: ' + e.message);
+        FangClaw-goToast.error('Failed to read file: ' + e.message);
       }
     },
 
@@ -499,11 +499,11 @@ function agentsPage() {
       if (!this.editingFile || !this.detailAgent) return;
       this.fileSaving = true;
       try {
-        await OpenFangAPI.put('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(this.editingFile), { content: this.fileContent });
-        OpenFangToast.success(this.editingFile + ' saved');
+        await FangClaw-goAPI.put('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(this.editingFile), { content: this.fileContent });
+        FangClaw-goToast.success(this.editingFile + ' saved');
         await this.loadAgentFiles();
       } catch(e) {
-        OpenFangToast.error('Failed to save file: ' + e.message);
+        FangClaw-goToast.error('Failed to save file: ' + e.message);
       }
       this.fileSaving = false;
     },
@@ -518,11 +518,11 @@ function agentsPage() {
       if (!this.detailAgent) return;
       this.configSaving = true;
       try {
-        await OpenFangAPI.patch('/api/agents/' + this.detailAgent.id + '/config', this.configForm);
-        OpenFangToast.success('Config updated');
+        await FangClaw-goAPI.patch('/api/agents/' + this.detailAgent.id + '/config', this.configForm);
+        FangClaw-goToast.success('Config updated');
         await Alpine.store('app').refreshAgents();
       } catch(e) {
-        OpenFangToast.error('Failed to save config: ' + e.message);
+        FangClaw-goToast.error('Failed to save config: ' + e.message);
       }
       this.configSaving = false;
     },
@@ -531,31 +531,31 @@ function agentsPage() {
     async cloneAgent(agent) {
       var newName = (agent.name || 'agent') + '-copy';
       try {
-        var res = await OpenFangAPI.post('/api/agents/' + agent.id + '/clone', { new_name: newName });
+        var res = await FangClaw-goAPI.post('/api/agents/' + agent.id + '/clone', { new_name: newName });
         if (res.agent_id) {
-          OpenFangToast.success('Cloned as "' + res.name + '"');
+          FangClaw-goToast.success('Cloned as "' + res.name + '"');
           await Alpine.store('app').refreshAgents();
           this.showDetailModal = false;
         }
       } catch(e) {
-        OpenFangToast.error('Clone failed: ' + e.message);
+        FangClaw-goToast.error('Clone failed: ' + e.message);
       }
     },
 
     // -- Template methods --
     async spawnFromTemplate(name) {
       try {
-        var data = await OpenFangAPI.get('/api/templates/' + encodeURIComponent(name));
+        var data = await FangClaw-goAPI.get('/api/templates/' + encodeURIComponent(name));
         if (data.manifest_toml) {
-          var res = await OpenFangAPI.post('/api/agents', { manifest_toml: data.manifest_toml });
+          var res = await FangClaw-goAPI.post('/api/agents', { manifest_toml: data.manifest_toml });
           if (res.agent_id) {
-            OpenFangToast.success('Agent "' + (res.name || name) + '" spawned from template');
+            FangClaw-goToast.success('Agent "' + (res.name || name) + '" spawned from template');
             await Alpine.store('app').refreshAgents();
             this.chatWithAgent({ id: res.agent_id, name: res.name || name, model_provider: '?', model_name: '?' });
           }
         }
       } catch(e) {
-        OpenFangToast.error('Failed to spawn from template: ' + e.message);
+        FangClaw-goToast.error('Failed to spawn from template: ' + e.message);
       }
     },
 
@@ -568,14 +568,14 @@ function agentsPage() {
       toml += 'system_prompt = """\n' + t.system_prompt + '\n"""\n';
 
       try {
-        var res = await OpenFangAPI.post('/api/agents', { manifest_toml: toml });
+        var res = await FangClaw-goAPI.post('/api/agents', { manifest_toml: toml });
         if (res.agent_id) {
-          OpenFangToast.success('Agent "' + t.name + '" spawned');
+          FangClaw-goToast.success('Agent "' + t.name + '" spawned');
           await Alpine.store('app').refreshAgents();
           this.chatWithAgent({ id: res.agent_id, name: t.name, model_provider: t.provider, model_name: t.model });
         }
       } catch(e) {
-        OpenFangToast.error('Failed to spawn agent: ' + e.message);
+        FangClaw-goToast.error('Failed to spawn agent: ' + e.message);
       }
     }
   };

@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <style>
-/* OpenFang Theme — Premium design system */
+/* FangClaw-go Theme — Premium design system */
 
 /* Font imports in index_head.html: Inter (body) + Geist Mono (code) */
 
@@ -288,7 +288,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   }
 }
 
-/* OpenFang Layout — Grid + Sidebar + Responsive */
+/* FangClaw-go Layout — Grid + Sidebar + Responsive */
 
 .app-layout {
   display: flex;
@@ -598,7 +598,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .app-layout.focus-mode .main-content { max-width: 100%; margin-left: 0; }
 .app-layout.focus-mode .mobile-menu-btn { display: none !important; }
 
-/* OpenFang Components — Premium design system */
+/* FangClaw-go Components — Premium design system */
 
 /* Buttons */
 .btn {
@@ -3703,7 +3703,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
     <div class="sidebar-header">
       <div class="sidebar-header-text">
         <div class="sidebar-logo">
-          <img src="/logo.png" alt="OpenFang" width="28" height="28">
+          <img src="/logo.png" alt="FangClaw-go" width="28" height="28">
           <div>
             <h1>OPENFANG</h1>
             <div class="version" x-text="'v' + version"></div>
@@ -3926,7 +3926,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
           </div>
           <!-- Onboarding banner -->
           <div class="onboarding-banner" x-show="!loading && !loadError && $store.app.showOnboarding && checklistDismissed">
-            <h3>Welcome to OpenFang</h3>
+            <h3>Welcome to FangClaw-go</h3>
             <p style="font-size:12px;color:var(--text-dim)">Get started quickly with the guided Setup Wizard, or configure manually:</p>
             <div class="flex gap-2">
               <button class="btn btn-primary" @click="location.hash='wizard'">Launch Setup Wizard</button>
@@ -4274,7 +4274,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   <template x-for="(msg, $index) in filteredMessages" :key="msg.id">
                     <div class="message" :class="msg.role + (msg.thinking ? ' thinking' : '') + (msg.streaming ? ' streaming' : '') + (isGrouped($index) ? ' grouped' : '')">
                       <div class="message-avatar" x-show="msg.role === 'agent'">
-                        <img src="/logo.png" alt="OpenFang">
+                        <img src="/logo.png" alt="FangClaw-go">
                       </div>
                       <div class="message-body">
                         <!-- Copy button on hover -->
@@ -4395,7 +4395,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   <span class="recording-dot"></span>
                   <span class="text-xs" style="color:var(--danger)" x-text="formatRecordingTime()"></span>
                 </div>
-                <textarea id="msg-input" rows="1" :placeholder="recording ? 'Recording... release to send' : 'Message OpenFang... (/ for commands)'"
+                <textarea id="msg-input" rows="1" :placeholder="recording ? 'Recording... release to send' : 'Message FangClaw-go... (/ for commands)'"
                           @keydown.enter.prevent="if(!$event.shiftKey){if(showSlashMenu && filteredSlashCommands.length){executeSlashCommand(filteredSlashCommands[slashIdx].cmd)}else{sendMessage()}}"
                           @keydown.escape="showSlashMenu = false"
                           @keydown.arrow-up.prevent="if(showSlashMenu){slashIdx = Math.max(0, slashIdx - 1)}"
@@ -5148,7 +5148,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
               <div class="modal" style="max-width:600px">
                 <div class="modal-header"><h3>Generated TOML</h3><button class="modal-close" @click="showTomlPreview = false">&times;</button></div>
                 <pre class="wf-toml-preview" x-text="tomlOutput"></pre>
-                <button class="btn btn-ghost btn-block mt-2" @click="navigator.clipboard.writeText(tomlOutput); OpenFangToast.success('Copied!')">Copy to Clipboard</button>
+                <button class="btn btn-ghost btn-block mt-2" @click="navigator.clipboard.writeText(tomlOutput); FangClaw-goToast.success('Copied!')">Copy to Clipboard</button>
               </div>
             </div>
           </template>
@@ -5687,7 +5687,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
         <div class="page-body" x-init="loadSkills()">
           <div class="info-card">
             <h4>Skills &amp; Ecosystem</h4>
-            <p>Skills extend your agents with new capabilities. OpenFang supports the <strong>OpenClaw/ClawHub</strong> ecosystem (3,000+ community skills) plus local skills.</p>
+            <p>Skills extend your agents with new capabilities. FangClaw-go supports the <strong>OpenClaw/ClawHub</strong> ecosystem (3,000+ community skills) plus local skills.</p>
             <ul>
               <li><strong>Prompt-only</strong> &mdash; inject context and instructions into the agent's system prompt (most ClawHub skills)</li>
               <li><strong>Python / Node.js</strong> &mdash; executable tools that agents can call during conversations</li>
@@ -5852,7 +5852,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
           <div x-show="tab === 'mcp'">
             <div class="info-card">
               <h4>MCP Servers (Model Context Protocol)</h4>
-              <p>MCP servers provide external tools to your agents &mdash; GitHub, filesystem, databases, APIs, and more. OpenFang is compatible with all OpenClaw MCP servers.</p>
+              <p>MCP servers provide external tools to your agents &mdash; GitHub, filesystem, databases, APIs, and more. FangClaw-go is compatible with all OpenClaw MCP servers.</p>
               <p class="mt-2" style="font-size:0.8rem;color:var(--text-dim)">Configure MCP servers in your <code>config.toml</code> under <code>[mcp_servers]</code>.</p>
             </div>
             <div x-show="mcpLoading" class="loading-state"><div class="spinner"></div><span>Loading MCP servers...</span></div>
@@ -5915,7 +5915,7 @@ timeout_secs = 30
 type = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
-                <p class="hint mt-2" style="font-size:0.75rem">OpenFang supports all OpenClaw-compatible MCP servers.</p>
+                <p class="hint mt-2" style="font-size:0.75rem">FangClaw-go supports all OpenClaw-compatible MCP servers.</p>
               </div>
             </div>
           </div>
@@ -6550,7 +6550,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <div x-show="tab === 'providers'">
             <div class="info-card">
               <h4>LLM Providers</h4>
-              <p>OpenFang supports 12 LLM providers out of the box. Configure API keys to unlock models from each provider. Set environment variables and restart, or use the form below to save keys directly.</p>
+              <p>FangClaw-go supports 12 LLM providers out of the box. Configure API keys to unlock models from each provider. Set environment variables and restart, or use the form below to save keys directly.</p>
             </div>
             <div class="card-grid">
               <template x-for="p in providers" :key="p.id">
@@ -6732,7 +6732,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <div x-show="tab === 'config'">
             <div class="info-card">
               <h4>Runtime Configuration</h4>
-              <p>View and edit the active configuration. Changes are applied immediately. For advanced edits, modify <code style="color:var(--accent-light);background:var(--bg);padding:1px 4px;border-radius:2px">config.toml</code> in your OpenFang data directory.</p>
+              <p>View and edit the active configuration. Changes are applied immediately. For advanced edits, modify <code style="color:var(--accent-light);background:var(--bg);padding:1px 4px;border-radius:2px">config.toml</code> in your FangClaw-go data directory.</p>
             </div>
 
             <!-- Dynamic config form (when schema is available) -->
@@ -6803,7 +6803,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
               <div class="security-hero-shield"><svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
               <div>
                 <div class="security-hero-title">Defense in Depth</div>
-                <div class="security-hero-desc">OpenFang implements 15 layered security features across the entire stack &mdash; from network ingress to agent sandboxing to cryptographic audit trails. Core protections cannot be disabled.</div>
+                <div class="security-hero-desc">FangClaw-go implements 15 layered security features across the entire stack &mdash; from network ingress to agent sandboxing to cryptographic audit trails. Core protections cannot be disabled.</div>
               </div>
             </div>
 
@@ -6920,7 +6920,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <div class="info-card" style="display:flex;justify-content:space-between;align-items:center">
               <div>
                 <h4>Peer Networking (OFP)</h4>
-                <p>Link multiple OpenFang instances into a mesh via the OFP wire protocol.</p>
+                <p>Link multiple FangClaw-go instances into a mesh via the OFP wire protocol.</p>
               </div>
               <span class="badge" :class="netStatus && netStatus.enabled ? 'badge-success' : 'badge-muted'" x-text="netStatus && netStatus.enabled ? 'Enabled' : 'Disabled'" style="font-size:12px;padding:4px 10px"></span>
             </div>
@@ -6964,7 +6964,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <!-- A2A External Agents -->
             <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px">
               <h4 style="margin-bottom:8px">A2A External Agents</h4>
-              <p class="text-xs text-dim mb-2">Discovered agents on other OpenFang/A2A-compatible instances that this node can communicate with.</p>
+              <p class="text-xs text-dim mb-2">Discovered agents on other FangClaw-go/A2A-compatible instances that this node can communicate with.</p>
               <div class="flex gap-2 mb-3">
                 <input class="form-input" style="flex:1" placeholder="https://remote-agent.example.com" x-model="a2aDiscoverUrl">
                 <button class="btn btn-primary btn-sm" @click="discoverA2a()" :disabled="a2aDiscovering">
@@ -7124,7 +7124,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <div class="card mb-4" style="border-left:3px solid var(--accent)" x-show="migStep === 'intro'">
               <div class="font-bold" style="font-size:14px;margin-bottom:6px">Migrate from OpenClaw</div>
               <div class="text-sm text-dim" style="line-height:1.7">
-                Seamlessly transfer your agents, memory, workspace files, and channel configurations from OpenClaw to OpenFang.
+                Seamlessly transfer your agents, memory, workspace files, and channel configurations from OpenClaw to FangClaw-go.
               </div>
               <ul class="text-sm text-dim" style="margin:8px 0 0 16px;line-height:1.8">
                 <li>Converts agent.yaml to agent.toml with proper capabilities</li>
@@ -7148,7 +7148,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 <input class="form-input" type="text" x-model="sourcePath" placeholder="~/.openclaw" style="font-family:monospace;font-size:12px">
               </div>
               <div class="form-group mt-2">
-                <label>OpenFang Target Directory</label>
+                <label>FangClaw-go Target Directory</label>
                 <input class="form-input" type="text" x-model="targetPath" placeholder="~/.openfang (default)" style="font-family:monospace;font-size:12px">
               </div>
               <div class="flex gap-2 mt-4">
@@ -7742,10 +7742,10 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <!-- Step 1: Welcome -->
           <div class="wizard-step" x-show="step === 1">
             <div class="wizard-card" style="text-align:center;max-width:600px;margin:0 auto">
-              <img src="/logo.png" alt="OpenFang" style="width:80px;height:80px;margin:0 auto 20px;display:block;opacity:0.85">
-              <h3 style="font-size:22px;font-weight:700;margin-bottom:12px;color:var(--accent)">Welcome to OpenFang</h3>
+              <img src="/logo.png" alt="FangClaw-go" style="width:80px;height:80px;margin:0 auto 20px;display:block;opacity:0.85">
+              <h3 style="font-size:22px;font-weight:700;margin-bottom:12px;color:var(--accent)">Welcome to FangClaw-go</h3>
               <p style="font-size:13px;color:var(--text-dim);line-height:1.8;max-width:480px;margin:0 auto 24px">
-                OpenFang is an open-source Agent Operating System. It lets you run AI agents that can chat, use tools, access memory, and connect to messaging channels &mdash; all from a single dashboard.
+                FangClaw-go is an open-source Agent Operating System. It lets you run AI agents that can chat, use tools, access memory, and connect to messaging channels &mdash; all from a single dashboard.
               </p>
               <div class="card" style="text-align:left;margin-bottom:20px">
                 <div class="card-header">This wizard will help you:</div>
@@ -7781,7 +7781,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <div class="wizard-card">
               <h3 style="font-size:16px;font-weight:700;margin-bottom:4px">Connect an LLM Provider</h3>
               <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px;line-height:1.6">
-                OpenFang needs at least one LLM provider to power your agents. Select a provider and enter your API key.
+                FangClaw-go needs at least one LLM provider to power your agents. Select a provider and enter your API key.
               </p>
 
               <div class="info-card" x-show="hasConfiguredProvider" style="border-left-color:var(--success)">
@@ -8019,7 +8019,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <div class="wizard-card" style="text-align:center;max-width:560px;margin:0 auto">
               <div style="font-size:56px;margin-bottom:12px;color:var(--success)">&#10003;</div>
               <h3 style="font-size:20px;font-weight:700;margin-bottom:8px;color:var(--accent)">You're All Set!</h3>
-              <p style="font-size:13px;color:var(--text-dim);line-height:1.8;margin-bottom:24px">OpenFang is configured and ready to go. Here is a summary of what was set up:</p>
+              <p style="font-size:13px;color:var(--text-dim);line-height:1.8;margin-bottom:24px">FangClaw-go is configured and ready to go. Here is a summary of what was set up:</p>
 
               <div class="card" style="text-align:left;margin-bottom:20px">
                 <div class="detail-grid">
@@ -9395,11 +9395,11 @@ return Pe}()
 ;"object"==typeof exports&&"undefined"!=typeof module&&(module.exports=hljs);
 </script>
 <script>
-// OpenFang API Client — Fetch wrapper, WebSocket manager, auth injection, toast notifications
+// FangClaw-go API Client — Fetch wrapper, WebSocket manager, auth injection, toast notifications
 'use strict';
 
 // ── Toast Notification System ──
-var OpenFangToast = (function() {
+var FangClaw-goToast = (function() {
   var _container = null;
   var _toastId = 0;
 
@@ -9526,7 +9526,7 @@ function friendlyError(status, serverMsg) {
 }
 
 // ── API Client ──
-var OpenFangAPI = (function() {
+var FangClaw-goAPI = (function() {
   var BASE = window.location.origin;
   var WS_BASE = BASE.replace(/^http/, 'ws');
   var _authToken = '';
@@ -9617,7 +9617,7 @@ var OpenFangAPI = (function() {
         _reconnectAttempts = 0;
         setConnectionState('connected');
         if (_reconnectAttempt > 0) {
-          OpenFangToast.success('Reconnected');
+          FangClaw-goToast.success('Reconnected');
           _reconnectAttempt = 0;
         }
         if (_wsCallbacks.onOpen) _wsCallbacks.onOpen();
@@ -9638,7 +9638,7 @@ var OpenFangAPI = (function() {
           _reconnectAttempt = _reconnectAttempts;
           setConnectionState('reconnecting');
           if (_reconnectAttempts === 1) {
-            OpenFangToast.warn('Connection lost, reconnecting...');
+            FangClaw-goToast.warn('Connection lost, reconnecting...');
           }
           var delay = Math.min(1000 * Math.pow(2, _reconnectAttempts - 1), 10000);
           _reconnectTimer = setTimeout(function() { _doConnect(_wsAgentId); }, delay);
@@ -9646,7 +9646,7 @@ var OpenFangAPI = (function() {
         }
         if (_wsAgentId && _reconnectAttempts >= MAX_RECONNECT) {
           setConnectionState('disconnected');
-          OpenFangToast.error('Connection lost — switched to HTTP mode', 0);
+          FangClaw-goToast.error('Connection lost — switched to HTTP mode', 0);
         }
         if (_wsCallbacks.onClose) _wsCallbacks.onClose();
       };
@@ -9717,7 +9717,7 @@ var OpenFangAPI = (function() {
   };
 })();
 
-// OpenFang App — Alpine.js init, hash router, global store
+// FangClaw-go App — Alpine.js init, hash router, global store
 'use strict';
 
 // Marked.js configuration
@@ -9808,7 +9808,7 @@ function toolIcon(toolName) {
 document.addEventListener('alpine:init', function() {
   // Restore saved API key on load
   var savedKey = localStorage.getItem('openfang-api-key');
-  if (savedKey) OpenFangAPI.setAuthToken(savedKey);
+  if (savedKey) FangClaw-goAPI.setAuthToken(savedKey);
 
   Alpine.store('app', {
     agents: [],
@@ -9831,7 +9831,7 @@ document.addEventListener('alpine:init', function() {
 
     async refreshAgents() {
       try {
-        var agents = await OpenFangAPI.get('/api/agents');
+        var agents = await FangClaw-goAPI.get('/api/agents');
         this.agents = Array.isArray(agents) ? agents : [];
         this.agentCount = this.agents.length;
       } catch(e) { /* silent */ }
@@ -9839,7 +9839,7 @@ document.addEventListener('alpine:init', function() {
 
     async checkStatus() {
       try {
-        var s = await OpenFangAPI.get('/api/status');
+        var s = await FangClaw-goAPI.get('/api/status');
         this.connected = true;
         this.booting = false;
         this.lastError = '';
@@ -9848,14 +9848,14 @@ document.addEventListener('alpine:init', function() {
       } catch(e) {
         this.connected = false;
         this.lastError = e.message || 'Unknown error';
-        console.warn('[OpenFang] Status check failed:', e.message);
+        console.warn('[FangClaw-go] Status check failed:', e.message);
       }
     },
 
     async checkOnboarding() {
       if (localStorage.getItem('openfang-onboarded')) return;
       try {
-        var config = await OpenFangAPI.get('/api/config');
+        var config = await FangClaw-goAPI.get('/api/config');
         var apiKey = config && config.api_key;
         var noKey = !apiKey || apiKey === 'not set' || apiKey === '';
         if (noKey && this.agentCount === 0) {
@@ -9876,7 +9876,7 @@ document.addEventListener('alpine:init', function() {
       try {
         // Use a protected endpoint (not in the public allowlist) to detect
         // whether the server requires an API key.
-        await OpenFangAPI.get('/api/tools');
+        await FangClaw-goAPI.get('/api/tools');
         this.showAuthPrompt = false;
       } catch(e) {
         if (e.message && (e.message.indexOf('Not authorized') >= 0 || e.message.indexOf('401') >= 0 || e.message.indexOf('Missing Authorization') >= 0 || e.message.indexOf('Unauthorized') >= 0)) {
@@ -9884,7 +9884,7 @@ document.addEventListener('alpine:init', function() {
           var saved = localStorage.getItem('openfang-api-key');
           if (saved) {
             // Saved key might be stale — clear it and show prompt
-            OpenFangAPI.setAuthToken('');
+            FangClaw-goAPI.setAuthToken('');
             localStorage.removeItem('openfang-api-key');
           }
           this.showAuthPrompt = true;
@@ -9894,14 +9894,14 @@ document.addEventListener('alpine:init', function() {
 
     submitApiKey(key) {
       if (!key || !key.trim()) return;
-      OpenFangAPI.setAuthToken(key.trim());
+      FangClaw-goAPI.setAuthToken(key.trim());
       localStorage.setItem('openfang-api-key', key.trim());
       this.showAuthPrompt = false;
       this.refreshAgents();
     },
 
     clearApiKey() {
-      OpenFangAPI.setAuthToken('');
+      FangClaw-goAPI.setAuthToken('');
       localStorage.removeItem('openfang-api-key');
     }
   });
@@ -9987,7 +9987,7 @@ function app() {
       });
 
       // Connection state listener
-      OpenFangAPI.onConnectionChange(function(state) {
+      FangClaw-goAPI.onConnectionChange(function(state) {
         Alpine.store('app').connectionState = state;
       });
 
@@ -10032,12 +10032,12 @@ function app() {
       this.connected = store.connected;
       this.version = store.version;
       this.agentCount = store.agentCount;
-      this.wsConnected = OpenFangAPI.isWsConnected();
+      this.wsConnected = FangClaw-goAPI.isWsConnected();
     }
   };
 }
 
-// OpenFang Overview Dashboard — Landing page with system stats + provider status
+// FangClaw-go Overview Dashboard — Landing page with system stats + provider status
 'use strict';
 
 function overviewPage() {
@@ -10109,19 +10109,19 @@ function overviewPage() {
 
     async loadHealth() {
       try {
-        this.health = await OpenFangAPI.get('/api/health');
+        this.health = await FangClaw-goAPI.get('/api/health');
       } catch(e) { this.health = { status: 'unreachable' }; }
     },
 
     async loadStatus() {
       try {
-        this.status = await OpenFangAPI.get('/api/status');
+        this.status = await FangClaw-goAPI.get('/api/status');
       } catch(e) { this.status = {}; throw e; }
     },
 
     async loadUsage() {
       try {
-        var data = await OpenFangAPI.get('/api/usage');
+        var data = await FangClaw-goAPI.get('/api/usage');
         var agents = data.agents || [];
         var totalTokens = 0;
         var totalTools = 0;
@@ -10144,35 +10144,35 @@ function overviewPage() {
 
     async loadAudit() {
       try {
-        var data = await OpenFangAPI.get('/api/audit/recent?n=8');
+        var data = await FangClaw-goAPI.get('/api/audit/recent?n=8');
         this.recentAudit = data.entries || [];
       } catch(e) { this.recentAudit = []; }
     },
 
     async loadChannels() {
       try {
-        var data = await OpenFangAPI.get('/api/channels');
+        var data = await FangClaw-goAPI.get('/api/channels');
         this.channels = (data.channels || []).filter(function(ch) { return ch.has_token; });
       } catch(e) { this.channels = []; }
     },
 
     async loadProviders() {
       try {
-        var data = await OpenFangAPI.get('/api/providers');
+        var data = await FangClaw-goAPI.get('/api/providers');
         this.providers = data.providers || [];
       } catch(e) { this.providers = []; }
     },
 
     async loadMcpServers() {
       try {
-        var data = await OpenFangAPI.get('/api/mcp/servers');
+        var data = await FangClaw-goAPI.get('/api/mcp/servers');
         this.mcpServers = data.servers || [];
       } catch(e) { this.mcpServers = []; }
     },
 
     async loadSkills() {
       try {
-        var data = await OpenFangAPI.get('/api/skills');
+        var data = await FangClaw-goAPI.get('/api/skills');
         this.skillCount = (data.skills || []).length;
       } catch(e) { this.skillCount = 0; }
     },
@@ -10330,7 +10330,7 @@ function overviewPage() {
   };
 }
 
-// OpenFang Chat Page — Agent chat with markdown + streaming
+// FangClaw-go Chat Page — Agent chat with markdown + streaming
 'use strict';
 
 function chatPage() {
@@ -10473,7 +10473,7 @@ function chatPage() {
     // Fetch dynamic slash commands from server
     fetchCommands: function() {
       var self = this;
-      OpenFangAPI.get('/api/commands').then(function(data) {
+      FangClaw-goAPI.get('/api/commands').then(function(data) {
         if (data.commands && data.commands.length) {
           // Build a set of known cmds to avoid duplicates
           var existing = {};
@@ -10529,28 +10529,28 @@ function chatPage() {
           break;
         case '/new':
           if (self.currentAgent) {
-            OpenFangAPI.post('/api/agents/' + self.currentAgent.id + '/session/reset', {}).then(function() {
+            FangClaw-goAPI.post('/api/agents/' + self.currentAgent.id + '/session/reset', {}).then(function() {
               self.messages = [];
-              OpenFangToast.success('Session reset');
-            }).catch(function(e) { OpenFangToast.error('Reset failed: ' + e.message); });
+              FangClaw-goToast.success('Session reset');
+            }).catch(function(e) { FangClaw-goToast.error('Reset failed: ' + e.message); });
           }
           break;
         case '/compact':
           if (self.currentAgent) {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Compacting session...', meta: '', tools: [] });
-            OpenFangAPI.post('/api/agents/' + self.currentAgent.id + '/session/compact', {}).then(function(res) {
+            FangClaw-goAPI.post('/api/agents/' + self.currentAgent.id + '/session/compact', {}).then(function(res) {
               self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Compaction complete', meta: '', tools: [] });
               self.scrollToBottom();
-            }).catch(function(e) { OpenFangToast.error('Compaction failed: ' + e.message); });
+            }).catch(function(e) { FangClaw-goToast.error('Compaction failed: ' + e.message); });
           }
           break;
         case '/stop':
           if (self.currentAgent) {
-            OpenFangAPI.post('/api/agents/' + self.currentAgent.id + '/stop', {}).then(function(res) {
+            FangClaw-goAPI.post('/api/agents/' + self.currentAgent.id + '/stop', {}).then(function(res) {
               self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Run cancelled', meta: '', tools: [] });
               self.sending = false;
               self.scrollToBottom();
-            }).catch(function(e) { OpenFangToast.error('Stop failed: ' + e.message); });
+            }).catch(function(e) { FangClaw-goToast.error('Stop failed: ' + e.message); });
           }
           break;
         case '/usage':
@@ -10582,31 +10582,31 @@ function chatPage() {
           break;
         case '/context':
           // Send via WS command
-          if (self.currentAgent && OpenFangAPI.isWsConnected()) {
-            OpenFangAPI.wsSend({ type: 'command', command: 'context', args: '' });
+          if (self.currentAgent && FangClaw-goAPI.isWsConnected()) {
+            FangClaw-goAPI.wsSend({ type: 'command', command: 'context', args: '' });
           } else {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected. Connect to an agent first.', meta: '', tools: [] });
             self.scrollToBottom();
           }
           break;
         case '/verbose':
-          if (self.currentAgent && OpenFangAPI.isWsConnected()) {
-            OpenFangAPI.wsSend({ type: 'command', command: 'verbose', args: cmdArgs });
+          if (self.currentAgent && FangClaw-goAPI.isWsConnected()) {
+            FangClaw-goAPI.wsSend({ type: 'command', command: 'verbose', args: cmdArgs });
           } else {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected. Connect to an agent first.', meta: '', tools: [] });
             self.scrollToBottom();
           }
           break;
         case '/queue':
-          if (self.currentAgent && OpenFangAPI.isWsConnected()) {
-            OpenFangAPI.wsSend({ type: 'command', command: 'queue', args: '' });
+          if (self.currentAgent && FangClaw-goAPI.isWsConnected()) {
+            FangClaw-goAPI.wsSend({ type: 'command', command: 'queue', args: '' });
           } else {
             self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected.', meta: '', tools: [] });
             self.scrollToBottom();
           }
           break;
         case '/status':
-          OpenFangAPI.get('/api/status').then(function(s) {
+          FangClaw-goAPI.get('/api/status').then(function(s) {
             self.messages.push({ id: ++msgId, role: 'system', text: '**System Status**\n- Agents: ' + (s.agent_count || 0) + '\n- Uptime: ' + (s.uptime_seconds || 0) + 's\n- Version: ' + (s.version || '?'), meta: '', tools: [] });
             self.scrollToBottom();
           }).catch(function() {});
@@ -10614,11 +10614,11 @@ function chatPage() {
         case '/model':
           if (self.currentAgent) {
             if (cmdArgs) {
-              OpenFangAPI.put('/api/agents/' + self.currentAgent.id + '/model', { model: cmdArgs }).then(function() {
+              FangClaw-goAPI.put('/api/agents/' + self.currentAgent.id + '/model', { model: cmdArgs }).then(function() {
                 self.currentAgent.model_name = cmdArgs;
                 self.messages.push({ id: ++msgId, role: 'system', text: 'Model switched to: `' + cmdArgs + '`', meta: '', tools: [] });
                 self.scrollToBottom();
-              }).catch(function(e) { OpenFangToast.error('Model switch failed: ' + e.message); });
+              }).catch(function(e) { FangClaw-goToast.error('Model switch failed: ' + e.message); });
             } else {
               self.messages.push({ id: ++msgId, role: 'system', text: '**Current Model**\n- Provider: `' + (self.currentAgent.model_provider || '?') + '`\n- Model: `' + (self.currentAgent.model_name || '?') + '`', meta: '', tools: [] });
               self.scrollToBottom();
@@ -10632,14 +10632,14 @@ function chatPage() {
           self.messages = [];
           break;
         case '/exit':
-          OpenFangAPI.wsDisconnect();
+          FangClaw-goAPI.wsDisconnect();
           self._wsAgent = null;
           self.currentAgent = null;
           self.messages = [];
           window.dispatchEvent(new Event('close-chat'));
           break;
         case '/budget':
-          OpenFangAPI.get('/api/budget').then(function(b) {
+          FangClaw-goAPI.get('/api/budget').then(function(b) {
             var fmt = function(v) { return v > 0 ? '$' + v.toFixed(2) : 'unlimited'; };
             self.messages.push({ id: ++msgId, role: 'system', text: '**Budget Status**\n' +
               '- Hourly: $' + (b.hourly_spend||0).toFixed(4) + ' / ' + fmt(b.hourly_limit) + '\n' +
@@ -10649,7 +10649,7 @@ function chatPage() {
           }).catch(function() {});
           break;
         case '/peers':
-          OpenFangAPI.get('/api/network/status').then(function(ns) {
+          FangClaw-goAPI.get('/api/network/status').then(function(ns) {
             self.messages.push({ id: ++msgId, role: 'system', text: '**OFP Network**\n' +
               '- Status: ' + (ns.enabled ? 'Enabled' : 'Disabled') + '\n' +
               '- Connected peers: ' + (ns.connected_peers||0) + ' / ' + (ns.total_peers||0), meta: '', tools: [] });
@@ -10657,7 +10657,7 @@ function chatPage() {
           }).catch(function() {});
           break;
         case '/a2a':
-          OpenFangAPI.get('/api/a2a/agents').then(function(res) {
+          FangClaw-goAPI.get('/api/a2a/agents').then(function(res) {
             var agents = res.agents || [];
             if (!agents.length) {
               self.messages.push({ id: ++msgId, role: 'system', text: 'No external A2A agents discovered.', meta: '', tools: [] });
@@ -10681,7 +10681,7 @@ function chatPage() {
         this.messages.push({
           id: ++localMsgId,
           role: 'system',
-          text: '**Welcome to OpenFang Chat!**\n\n' +
+          text: '**Welcome to FangClaw-go Chat!**\n\n' +
             '- Type `/` to see available commands\n' +
             '- `/help` shows all commands\n' +
             '- `/think on` enables extended reasoning\n' +
@@ -10706,7 +10706,7 @@ function chatPage() {
     async loadSession(agentId) {
       var self = this;
       try {
-        var data = await OpenFangAPI.get('/api/agents/' + agentId + '/session');
+        var data = await FangClaw-goAPI.get('/api/agents/' + agentId + '/session');
         if (data.messages && data.messages.length) {
           self.messages = data.messages.map(function(m) {
             var role = m.role === 'User' ? 'user' : (m.role === 'System' ? 'system' : 'agent');
@@ -10735,7 +10735,7 @@ function chatPage() {
     // Multi-session: load session list for current agent
     async loadSessions(agentId) {
       try {
-        var data = await OpenFangAPI.get('/api/agents/' + agentId + '/sessions');
+        var data = await FangClaw-goAPI.get('/api/agents/' + agentId + '/sessions');
         this.sessions = data.sessions || [];
       } catch(e) { this.sessions = []; }
     },
@@ -10746,16 +10746,16 @@ function chatPage() {
       var label = prompt('Session name (optional):');
       if (label === null) return; // cancelled
       try {
-        await OpenFangAPI.post('/api/agents/' + this.currentAgent.id + '/sessions', {
+        await FangClaw-goAPI.post('/api/agents/' + this.currentAgent.id + '/sessions', {
           label: label.trim() || undefined
         });
         await this.loadSessions(this.currentAgent.id);
         await this.loadSession(this.currentAgent.id);
         this.messages = [];
         this.scrollToBottom();
-        if (typeof OpenFangToast !== 'undefined') OpenFangToast.success('New session created');
+        if (typeof FangClaw-goToast !== 'undefined') FangClaw-goToast.success('New session created');
       } catch(e) {
-        if (typeof OpenFangToast !== 'undefined') OpenFangToast.error('Failed to create session');
+        if (typeof FangClaw-goToast !== 'undefined') FangClaw-goToast.error('Failed to create session');
       }
     },
 
@@ -10763,7 +10763,7 @@ function chatPage() {
     async switchSession(sessionId) {
       if (!this.currentAgent) return;
       try {
-        await OpenFangAPI.post('/api/agents/' + this.currentAgent.id + '/sessions/' + sessionId + '/switch', {});
+        await FangClaw-goAPI.post('/api/agents/' + this.currentAgent.id + '/sessions/' + sessionId + '/switch', {});
         this.messages = [];
         await this.loadSession(this.currentAgent.id);
         await this.loadSessions(this.currentAgent.id);
@@ -10771,7 +10771,7 @@ function chatPage() {
         this._wsAgent = null;
         this.connectWs(this.currentAgent.id);
       } catch(e) {
-        if (typeof OpenFangToast !== 'undefined') OpenFangToast.error('Failed to switch session');
+        if (typeof FangClaw-goToast !== 'undefined') FangClaw-goToast.error('Failed to switch session');
       }
     },
 
@@ -10780,7 +10780,7 @@ function chatPage() {
       this._wsAgent = agentId;
       var self = this;
 
-      OpenFangAPI.wsConnect(agentId, {
+      FangClaw-goAPI.wsConnect(agentId, {
         onOpen: function() {
           Alpine.store('app').wsConnected = true;
         },
@@ -11105,11 +11105,11 @@ function chatPage() {
           var att = this.attachments[i];
           att.uploading = true;
           try {
-            var uploadRes = await OpenFangAPI.upload(this.currentAgent.id, att.file);
+            var uploadRes = await FangClaw-goAPI.upload(this.currentAgent.id, att.file);
             fileRefs.push('[File: ' + att.file.name + ']');
             uploadedFiles.push({ file_id: uploadRes.file_id, filename: uploadRes.filename, content_type: uploadRes.content_type });
           } catch(e) {
-            OpenFangToast.error('Failed to upload ' + att.file.name);
+            FangClaw-goToast.error('Failed to upload ' + att.file.name);
             fileRefs.push('[File: ' + att.file.name + ' (upload failed)]');
           }
           att.uploading = false;
@@ -11150,15 +11150,15 @@ function chatPage() {
       // Try WebSocket first
       var wsPayload = { type: 'message', content: finalText };
       if (uploadedFiles && uploadedFiles.length) wsPayload.attachments = uploadedFiles;
-      if (OpenFangAPI.wsSend(wsPayload)) {
+      if (FangClaw-goAPI.wsSend(wsPayload)) {
         this.messages.push({ id: ++msgId, role: 'agent', text: '', meta: '', thinking: true, streaming: true, tools: [], ts: Date.now() });
         this.scrollToBottom();
         return;
       }
 
       // HTTP fallback
-      if (!OpenFangAPI.isWsConnected()) {
-        OpenFangToast.info('Using HTTP mode (no streaming)');
+      if (!FangClaw-goAPI.isWsConnected()) {
+        FangClaw-goToast.info('Using HTTP mode (no streaming)');
       }
       this.messages.push({ id: ++msgId, role: 'agent', text: '', meta: '', thinking: true, tools: [], ts: Date.now() });
       this.scrollToBottom();
@@ -11166,7 +11166,7 @@ function chatPage() {
       try {
         var httpBody = { message: finalText };
         if (uploadedFiles && uploadedFiles.length) httpBody.attachments = uploadedFiles;
-        var res = await OpenFangAPI.post('/api/agents/' + this.currentAgent.id + '/message', httpBody);
+        var res = await FangClaw-goAPI.post('/api/agents/' + this.currentAgent.id + '/message', httpBody);
         this.messages = this.messages.filter(function(m) { return !m.thinking; });
         var httpMeta = (res.input_tokens || 0) + ' in / ' + (res.output_tokens || 0) + ' out';
         if (res.cost_usd != null) httpMeta += ' | $' + res.cost_usd.toFixed(4);
@@ -11190,29 +11190,29 @@ function chatPage() {
     stopAgent: function() {
       if (!this.currentAgent) return;
       var self = this;
-      OpenFangAPI.post('/api/agents/' + this.currentAgent.id + '/stop', {}).then(function(res) {
+      FangClaw-goAPI.post('/api/agents/' + this.currentAgent.id + '/stop', {}).then(function(res) {
         self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Run cancelled', meta: '', tools: [], ts: Date.now() });
         self.sending = false;
         self.scrollToBottom();
         self.$nextTick(function() { self._processQueue(); });
-      }).catch(function(e) { OpenFangToast.error('Stop failed: ' + e.message); });
+      }).catch(function(e) { FangClaw-goToast.error('Stop failed: ' + e.message); });
     },
 
     killAgent() {
       if (!this.currentAgent) return;
       var self = this;
       var name = this.currentAgent.name;
-      OpenFangToast.confirm('Stop Agent', 'Stop agent "' + name + '"? The agent will be shut down.', async function() {
+      FangClaw-goToast.confirm('Stop Agent', 'Stop agent "' + name + '"? The agent will be shut down.', async function() {
         try {
-          await OpenFangAPI.del('/api/agents/' + self.currentAgent.id);
-          OpenFangAPI.wsDisconnect();
+          await FangClaw-goAPI.del('/api/agents/' + self.currentAgent.id);
+          FangClaw-goAPI.wsDisconnect();
           self._wsAgent = null;
           self.currentAgent = null;
           self.messages = [];
-          OpenFangToast.success('Agent "' + name + '" stopped');
+          FangClaw-goToast.success('Agent "' + name + '" stopped');
           Alpine.store('app').refreshAgents();
         } catch(e) {
-          OpenFangToast.error('Failed to stop agent: ' + e.message);
+          FangClaw-goToast.error('Failed to stop agent: ' + e.message);
         }
       });
     },
@@ -11231,7 +11231,7 @@ function chatPage() {
       for (var i = 0; i < files.length; i++) {
         var file = files[i];
         if (file.size > 10 * 1024 * 1024) {
-          OpenFangToast.warn('File "' + file.name + '" exceeds 10MB limit');
+          FangClaw-goToast.warn('File "' + file.name + '" exceeds 10MB limit');
           continue;
         }
         var typeOk = allowed.indexOf(file.type) !== -1;
@@ -11240,7 +11240,7 @@ function chatPage() {
           typeOk = allowedExts.indexOf(ext) !== -1 || file.type.startsWith('image/');
         }
         if (!typeOk) {
-          OpenFangToast.warn('File type not supported: ' + file.name);
+          FangClaw-goToast.warn('File type not supported: ' + file.name);
           continue;
         }
         var preview = null;
@@ -11316,7 +11316,7 @@ function chatPage() {
         this.recordingTime = 0;
         this._recordingTimer = setInterval(function() { self.recordingTime++; }, 1000);
       } catch(e) {
-        if (typeof OpenFangToast !== 'undefined') OpenFangToast.error('Microphone access denied');
+        if (typeof FangClaw-goToast !== 'undefined') FangClaw-goToast.error('Microphone access denied');
       }
     },
 
@@ -11343,7 +11343,7 @@ function chatPage() {
         // Upload audio file
         var ext = blob.type.includes('webm') ? 'webm' : blob.type.includes('ogg') ? 'ogg' : 'mp3';
         var file = new File([blob], 'voice_' + Date.now() + '.' + ext, { type: blob.type });
-        var upload = await OpenFangAPI.upload(this.currentAgent.id, file);
+        var upload = await FangClaw-goAPI.upload(this.currentAgent.id, file);
 
         // Remove the "Transcribing..." message
         this.messages = this.messages.filter(function(m) { return !m.thinking || m.role !== 'system'; });
@@ -11355,7 +11355,7 @@ function chatPage() {
         this._sendPayload(text, [upload], []);
       } catch(e) {
         this.messages = this.messages.filter(function(m) { return !m.thinking || m.role !== 'system'; });
-        if (typeof OpenFangToast !== 'undefined') OpenFangToast.error('Failed to upload audio: ' + (e.message || 'unknown error'));
+        if (typeof FangClaw-goToast !== 'undefined') FangClaw-goToast.error('Failed to upload audio: ' + (e.message || 'unknown error'));
       }
     },
 
@@ -11403,7 +11403,7 @@ function chatPage() {
   };
 }
 
-// OpenFang Agents Page — Multi-step spawn wizard, detail view with tabs, file editor, personality presets
+// FangClaw-go Agents Page — Multi-step spawn wizard, detail view with tabs, file editor, personality presets
 'use strict';
 
 function agentsPage() {
@@ -11583,7 +11583,7 @@ function agentsPage() {
     async loadSpawnProfiles() {
       if (this.spawnProfilesLoaded) return;
       try {
-        var data = await OpenFangAPI.get('/api/profiles');
+        var data = await FangClaw-goAPI.get('/api/profiles');
         this.spawnProfiles = data.profiles || [];
         this.spawnProfilesLoaded = true;
       } catch(e) { this.spawnProfiles = []; }
@@ -11690,8 +11690,8 @@ function agentsPage() {
       this.tplLoadError = '';
       try {
         var results = await Promise.all([
-          OpenFangAPI.get('/api/templates'),
-          OpenFangAPI.get('/api/providers').catch(function() { return { providers: [] }; })
+          FangClaw-goAPI.get('/api/templates'),
+          FangClaw-goAPI.get('/api/providers').catch(function() { return { providers: [] }; })
         ]);
         this.tplTemplates = results[0].templates || [];
         this.tplProviders = results[1].providers || [];
@@ -11709,7 +11709,7 @@ function agentsPage() {
 
     closeChat() {
       this.activeChatAgent = null;
-      OpenFangAPI.wsDisconnect();
+      FangClaw-goAPI.wsDisconnect();
     },
 
     showDetail(agent) {
@@ -11731,14 +11731,14 @@ function agentsPage() {
 
     killAgent(agent) {
       var self = this;
-      OpenFangToast.confirm('Stop Agent', 'Stop agent "' + agent.name + '"? The agent will be shut down.', async function() {
+      FangClaw-goToast.confirm('Stop Agent', 'Stop agent "' + agent.name + '"? The agent will be shut down.', async function() {
         try {
-          await OpenFangAPI.del('/api/agents/' + agent.id);
-          OpenFangToast.success('Agent "' + agent.name + '" stopped');
+          await FangClaw-goAPI.del('/api/agents/' + agent.id);
+          FangClaw-goToast.success('Agent "' + agent.name + '" stopped');
           self.showDetailModal = false;
           await Alpine.store('app').refreshAgents();
         } catch(e) {
-          OpenFangToast.error('Failed to stop agent: ' + e.message);
+          FangClaw-goToast.error('Failed to stop agent: ' + e.message);
         }
       });
     },
@@ -11746,18 +11746,18 @@ function agentsPage() {
     killAllAgents() {
       var list = this.filteredAgents;
       if (!list.length) return;
-      OpenFangToast.confirm('Stop All Agents', 'Stop ' + list.length + ' agent(s)? All agents will be shut down.', async function() {
+      FangClaw-goToast.confirm('Stop All Agents', 'Stop ' + list.length + ' agent(s)? All agents will be shut down.', async function() {
         var errors = [];
         for (var i = 0; i < list.length; i++) {
           try {
-            await OpenFangAPI.del('/api/agents/' + list[i].id);
+            await FangClaw-goAPI.del('/api/agents/' + list[i].id);
           } catch(e) { errors.push(list[i].name + ': ' + e.message); }
         }
         await Alpine.store('app').refreshAgents();
         if (errors.length) {
-          OpenFangToast.error('Some agents failed to stop: ' + errors.join(', '));
+          FangClaw-goToast.error('Some agents failed to stop: ' + errors.join(', '));
         } else {
-          OpenFangToast.success(list.length + ' agent(s) stopped');
+          FangClaw-goToast.success(list.length + ' agent(s) stopped');
         }
       });
     },
@@ -11777,7 +11777,7 @@ function agentsPage() {
 
     nextStep() {
       if (this.spawnStep === 1 && !this.spawnForm.name.trim()) {
-        OpenFangToast.warn('Please enter an agent name');
+        FangClaw-goToast.warn('Please enter an agent name');
         return;
       }
       if (this.spawnStep < 5) this.spawnStep++;
@@ -11819,12 +11819,12 @@ function agentsPage() {
 
     async setMode(agent, mode) {
       try {
-        await OpenFangAPI.put('/api/agents/' + agent.id + '/mode', { mode: mode });
+        await FangClaw-goAPI.put('/api/agents/' + agent.id + '/mode', { mode: mode });
         agent.mode = mode;
-        OpenFangToast.success('Mode set to ' + mode);
+        FangClaw-goToast.success('Mode set to ' + mode);
         await Alpine.store('app').refreshAgents();
       } catch(e) {
-        OpenFangToast.error('Failed to set mode: ' + e.message);
+        FangClaw-goToast.error('Failed to set mode: ' + e.message);
       }
     },
 
@@ -11833,12 +11833,12 @@ function agentsPage() {
       var toml = this.spawnMode === 'wizard' ? this.generateToml() : this.spawnToml;
       if (!toml.trim()) {
         this.spawning = false;
-        OpenFangToast.warn('Manifest is empty \u2014 enter agent config first');
+        FangClaw-goToast.warn('Manifest is empty \u2014 enter agent config first');
         return;
       }
 
       try {
-        var res = await OpenFangAPI.post('/api/agents', { manifest_toml: toml });
+        var res = await FangClaw-goAPI.post('/api/agents', { manifest_toml: toml });
         if (res.agent_id) {
           // Post-spawn: update identity + write SOUL.md if personality preset selected
           var patchBody = {};
@@ -11848,24 +11848,24 @@ function agentsPage() {
           if (this.selectedPreset) patchBody.vibe = this.selectedPreset;
 
           if (Object.keys(patchBody).length) {
-            OpenFangAPI.patch('/api/agents/' + res.agent_id + '/config', patchBody).catch(function(e) { console.warn('Post-spawn config patch failed:', e.message); });
+            FangClaw-goAPI.patch('/api/agents/' + res.agent_id + '/config', patchBody).catch(function(e) { console.warn('Post-spawn config patch failed:', e.message); });
           }
           if (this.soulContent.trim()) {
-            OpenFangAPI.put('/api/agents/' + res.agent_id + '/files/SOUL.md', { content: '# Soul\n' + this.soulContent }).catch(function(e) { console.warn('SOUL.md write failed:', e.message); });
+            FangClaw-goAPI.put('/api/agents/' + res.agent_id + '/files/SOUL.md', { content: '# Soul\n' + this.soulContent }).catch(function(e) { console.warn('SOUL.md write failed:', e.message); });
           }
 
           this.showSpawnModal = false;
           this.spawnForm.name = '';
           this.spawnToml = '';
           this.spawnStep = 1;
-          OpenFangToast.success('Agent "' + (res.name || 'new') + '" spawned');
+          FangClaw-goToast.success('Agent "' + (res.name || 'new') + '" spawned');
           await Alpine.store('app').refreshAgents();
           this.chatWithAgent({ id: res.agent_id, name: res.name, model_provider: '?', model_name: '?' });
         } else {
-          OpenFangToast.error('Spawn failed: ' + (res.error || 'Unknown error'));
+          FangClaw-goToast.error('Spawn failed: ' + (res.error || 'Unknown error'));
         }
       } catch(e) {
-        OpenFangToast.error('Failed to spawn agent: ' + e.message);
+        FangClaw-goToast.error('Failed to spawn agent: ' + e.message);
       }
       this.spawning = false;
     },
@@ -11875,11 +11875,11 @@ function agentsPage() {
       if (!this.detailAgent) return;
       this.filesLoading = true;
       try {
-        var data = await OpenFangAPI.get('/api/agents/' + this.detailAgent.id + '/files');
+        var data = await FangClaw-goAPI.get('/api/agents/' + this.detailAgent.id + '/files');
         this.agentFiles = data.files || [];
       } catch(e) {
         this.agentFiles = [];
-        OpenFangToast.error('Failed to load files: ' + e.message);
+        FangClaw-goToast.error('Failed to load files: ' + e.message);
       }
       this.filesLoading = false;
     },
@@ -11892,11 +11892,11 @@ function agentsPage() {
         return;
       }
       try {
-        var data = await OpenFangAPI.get('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(file.name));
+        var data = await FangClaw-goAPI.get('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(file.name));
         this.editingFile = file.name;
         this.fileContent = data.content || '';
       } catch(e) {
-        OpenFangToast.error('Failed to read file: ' + e.message);
+        FangClaw-goToast.error('Failed to read file: ' + e.message);
       }
     },
 
@@ -11904,11 +11904,11 @@ function agentsPage() {
       if (!this.editingFile || !this.detailAgent) return;
       this.fileSaving = true;
       try {
-        await OpenFangAPI.put('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(this.editingFile), { content: this.fileContent });
-        OpenFangToast.success(this.editingFile + ' saved');
+        await FangClaw-goAPI.put('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(this.editingFile), { content: this.fileContent });
+        FangClaw-goToast.success(this.editingFile + ' saved');
         await this.loadAgentFiles();
       } catch(e) {
-        OpenFangToast.error('Failed to save file: ' + e.message);
+        FangClaw-goToast.error('Failed to save file: ' + e.message);
       }
       this.fileSaving = false;
     },
@@ -11923,11 +11923,11 @@ function agentsPage() {
       if (!this.detailAgent) return;
       this.configSaving = true;
       try {
-        await OpenFangAPI.patch('/api/agents/' + this.detailAgent.id + '/config', this.configForm);
-        OpenFangToast.success('Config updated');
+        await FangClaw-goAPI.patch('/api/agents/' + this.detailAgent.id + '/config', this.configForm);
+        FangClaw-goToast.success('Config updated');
         await Alpine.store('app').refreshAgents();
       } catch(e) {
-        OpenFangToast.error('Failed to save config: ' + e.message);
+        FangClaw-goToast.error('Failed to save config: ' + e.message);
       }
       this.configSaving = false;
     },
@@ -11936,31 +11936,31 @@ function agentsPage() {
     async cloneAgent(agent) {
       var newName = (agent.name || 'agent') + '-copy';
       try {
-        var res = await OpenFangAPI.post('/api/agents/' + agent.id + '/clone', { new_name: newName });
+        var res = await FangClaw-goAPI.post('/api/agents/' + agent.id + '/clone', { new_name: newName });
         if (res.agent_id) {
-          OpenFangToast.success('Cloned as "' + res.name + '"');
+          FangClaw-goToast.success('Cloned as "' + res.name + '"');
           await Alpine.store('app').refreshAgents();
           this.showDetailModal = false;
         }
       } catch(e) {
-        OpenFangToast.error('Clone failed: ' + e.message);
+        FangClaw-goToast.error('Clone failed: ' + e.message);
       }
     },
 
     // -- Template methods --
     async spawnFromTemplate(name) {
       try {
-        var data = await OpenFangAPI.get('/api/templates/' + encodeURIComponent(name));
+        var data = await FangClaw-goAPI.get('/api/templates/' + encodeURIComponent(name));
         if (data.manifest_toml) {
-          var res = await OpenFangAPI.post('/api/agents', { manifest_toml: data.manifest_toml });
+          var res = await FangClaw-goAPI.post('/api/agents', { manifest_toml: data.manifest_toml });
           if (res.agent_id) {
-            OpenFangToast.success('Agent "' + (res.name || name) + '" spawned from template');
+            FangClaw-goToast.success('Agent "' + (res.name || name) + '" spawned from template');
             await Alpine.store('app').refreshAgents();
             this.chatWithAgent({ id: res.agent_id, name: res.name || name, model_provider: '?', model_name: '?' });
           }
         }
       } catch(e) {
-        OpenFangToast.error('Failed to spawn from template: ' + e.message);
+        FangClaw-goToast.error('Failed to spawn from template: ' + e.message);
       }
     },
 
@@ -11973,20 +11973,20 @@ function agentsPage() {
       toml += 'system_prompt = """\n' + t.system_prompt + '\n"""\n';
 
       try {
-        var res = await OpenFangAPI.post('/api/agents', { manifest_toml: toml });
+        var res = await FangClaw-goAPI.post('/api/agents', { manifest_toml: toml });
         if (res.agent_id) {
-          OpenFangToast.success('Agent "' + t.name + '" spawned');
+          FangClaw-goToast.success('Agent "' + t.name + '" spawned');
           await Alpine.store('app').refreshAgents();
           this.chatWithAgent({ id: res.agent_id, name: t.name, model_provider: t.provider, model_name: t.model });
         }
       } catch(e) {
-        OpenFangToast.error('Failed to spawn agent: ' + e.message);
+        FangClaw-goToast.error('Failed to spawn agent: ' + e.message);
       }
     }
   };
 }
 
-// OpenFang Workflows Page — Workflow builder + run history
+// FangClaw-go Workflows Page — Workflow builder + run history
 'use strict';
 
 function workflowsPage() {
@@ -12007,7 +12007,7 @@ function workflowsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        this.workflows = await OpenFangAPI.get('/api/workflows');
+        this.workflows = await FangClaw-goAPI.get('/api/workflows');
       } catch(e) {
         this.workflows = [];
         this.loadError = e.message || 'Could not load workflows.';
@@ -12023,13 +12023,13 @@ function workflowsPage() {
       });
       try {
         var wfName = this.newWf.name;
-        await OpenFangAPI.post('/api/workflows', { name: wfName, description: this.newWf.description, steps: steps });
+        await FangClaw-goAPI.post('/api/workflows', { name: wfName, description: this.newWf.description, steps: steps });
         this.showCreateModal = false;
         this.newWf = { name: '', description: '', steps: [{ name: '', agent_name: '', mode: 'sequential', prompt: '{{input}}' }] };
-        OpenFangToast.success('Workflow "' + wfName + '" created');
+        FangClaw-goToast.success('Workflow "' + wfName + '" created');
         await this.loadWorkflows();
       } catch(e) {
-        OpenFangToast.error('Failed to create workflow: ' + e.message);
+        FangClaw-goToast.error('Failed to create workflow: ' + e.message);
       }
     },
 
@@ -12044,29 +12044,29 @@ function workflowsPage() {
       this.running = true;
       this.runResult = '';
       try {
-        var res = await OpenFangAPI.post('/api/workflows/' + this.runModal.id + '/run', { input: this.runInput });
+        var res = await FangClaw-goAPI.post('/api/workflows/' + this.runModal.id + '/run', { input: this.runInput });
         this.runResult = res.output || JSON.stringify(res, null, 2);
-        OpenFangToast.success('Workflow completed');
+        FangClaw-goToast.success('Workflow completed');
       } catch(e) {
         this.runResult = 'Error: ' + e.message;
-        OpenFangToast.error('Workflow failed: ' + e.message);
+        FangClaw-goToast.error('Workflow failed: ' + e.message);
       }
       this.running = false;
     },
 
     async viewRuns(wf) {
       try {
-        var runs = await OpenFangAPI.get('/api/workflows/' + wf.id + '/runs');
+        var runs = await FangClaw-goAPI.get('/api/workflows/' + wf.id + '/runs');
         this.runResult = JSON.stringify(runs, null, 2);
         this.runModal = wf;
       } catch(e) {
-        OpenFangToast.error('Failed to load run history: ' + e.message);
+        FangClaw-goToast.error('Failed to load run history: ' + e.message);
       }
     }
   };
 }
 
-// OpenFang Visual Workflow Builder — Drag-and-drop workflow designer
+// FangClaw-go Visual Workflow Builder — Drag-and-drop workflow designer
 'use strict';
 
 function workflowBuilder() {
@@ -12109,7 +12109,7 @@ function workflowBuilder() {
       var self = this;
       // Load agents for the agent step dropdown
       try {
-        var list = await OpenFangAPI.get('/api/agents');
+        var list = await FangClaw-goAPI.get('/api/agents');
         self.agents = Array.isArray(list) ? list : [];
       } catch(_) {
         self.agents = [];
@@ -12428,15 +12428,15 @@ function workflowBuilder() {
         steps.push(step);
       }
       try {
-        await OpenFangAPI.post('/api/workflows', {
+        await FangClaw-goAPI.post('/api/workflows', {
           name: this.workflowName || 'untitled',
           description: this.workflowDescription || '',
           steps: steps
         });
-        OpenFangToast.success('Workflow saved!');
+        FangClaw-goToast.success('Workflow saved!');
         this.showSaveModal = false;
       } catch(e) {
-        OpenFangToast.error('Failed to save: ' + e.message);
+        FangClaw-goToast.error('Failed to save: ' + e.message);
       }
     },
 
@@ -12502,7 +12502,7 @@ function workflowBuilder() {
   };
 }
 
-// OpenFang Channels Page — OpenClaw-style setup UX with QR code support
+// FangClaw-go Channels Page — OpenClaw-style setup UX with QR code support
 'use strict';
 
 function channelsPage() {
@@ -12593,7 +12593,7 @@ function channelsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/channels');
+        var data = await FangClaw-goAPI.get('/api/channels');
         this.allChannels = (data.channels || []).map(function(ch) {
           ch.connected = ch.configured && ch.has_token;
           return ch;
@@ -12615,7 +12615,7 @@ function channelsPage() {
 
     async refreshStatus() {
       try {
-        var data = await OpenFangAPI.get('/api/channels');
+        var data = await FangClaw-goAPI.get('/api/channels');
         var byName = {};
         (data.channels || []).forEach(function(ch) { byName[ch.name] = ch; });
         this.allChannels.forEach(function(c) {
@@ -12673,7 +12673,7 @@ function channelsPage() {
       this.qr.connected = false;
       this.qr.expired = false;
       try {
-        var result = await OpenFangAPI.post('/api/channels/whatsapp/qr/start', {});
+        var result = await FangClaw-goAPI.post('/api/channels/whatsapp/qr/start', {});
         this.qr.available = result.available || false;
         this.qr.dataUrl = result.qr_data_url || '';
         this.qr.sessionId = result.session_id || '';
@@ -12684,7 +12684,7 @@ function channelsPage() {
           this.pollQR();
         }
         if (this.qr.connected) {
-          OpenFangToast.success('WhatsApp connected!');
+          FangClaw-goToast.success('WhatsApp connected!');
           await this.refreshStatus();
         }
       } catch(e) {
@@ -12698,13 +12698,13 @@ function channelsPage() {
       if (this.qrPollTimer) clearInterval(this.qrPollTimer);
       this.qrPollTimer = setInterval(async function() {
         try {
-          var result = await OpenFangAPI.get('/api/channels/whatsapp/qr/status?session_id=' + encodeURIComponent(self.qr.sessionId));
+          var result = await FangClaw-goAPI.get('/api/channels/whatsapp/qr/status?session_id=' + encodeURIComponent(self.qr.sessionId));
           if (result.connected) {
             clearInterval(self.qrPollTimer);
             self.qrPollTimer = null;
             self.qr.connected = true;
             self.qr.message = result.message || 'Connected!';
-            OpenFangToast.success('WhatsApp linked successfully!');
+            FangClaw-goToast.success('WhatsApp linked successfully!');
             await self.refreshStatus();
           } else if (result.expired) {
             clearInterval(self.qrPollTimer);
@@ -12725,26 +12725,26 @@ function channelsPage() {
       var name = this.setupModal.name;
       this.configuring = true;
       try {
-        await OpenFangAPI.post('/api/channels/' + name + '/configure', {
+        await FangClaw-goAPI.post('/api/channels/' + name + '/configure', {
           fields: this.formValues
         });
         this.setupStep = 2;
         // Auto-test after save
         try {
-          var testResult = await OpenFangAPI.post('/api/channels/' + name + '/test', {});
+          var testResult = await FangClaw-goAPI.post('/api/channels/' + name + '/test', {});
           if (testResult.status === 'ok') {
             this.testPassed = true;
             this.setupStep = 3;
-            OpenFangToast.success(this.setupModal.display_name + ' activated!');
+            FangClaw-goToast.success(this.setupModal.display_name + ' activated!');
           } else {
-            OpenFangToast.success(this.setupModal.display_name + ' saved. ' + (testResult.message || ''));
+            FangClaw-goToast.success(this.setupModal.display_name + ' saved. ' + (testResult.message || ''));
           }
         } catch(te) {
-          OpenFangToast.success(this.setupModal.display_name + ' saved. Test to verify connection.');
+          FangClaw-goToast.success(this.setupModal.display_name + ' saved. Test to verify connection.');
         }
         await this.refreshStatus();
       } catch(e) {
-        OpenFangToast.error('Failed: ' + (e.message || 'Unknown error'));
+        FangClaw-goToast.error('Failed: ' + (e.message || 'Unknown error'));
       }
       this.configuring = false;
     },
@@ -12754,14 +12754,14 @@ function channelsPage() {
       var name = this.setupModal.name;
       var displayName = this.setupModal.display_name;
       var self = this;
-      OpenFangToast.confirm('Remove Channel', 'Remove ' + displayName + ' configuration? This will deactivate the channel.', async function() {
+      FangClaw-goToast.confirm('Remove Channel', 'Remove ' + displayName + ' configuration? This will deactivate the channel.', async function() {
         try {
-          await OpenFangAPI.delete('/api/channels/' + name + '/configure');
-          OpenFangToast.success(displayName + ' removed and deactivated.');
+          await FangClaw-goAPI.delete('/api/channels/' + name + '/configure');
+          FangClaw-goToast.success(displayName + ' removed and deactivated.');
           await self.refreshStatus();
           self.setupModal = null;
         } catch(e) {
-          OpenFangToast.error('Failed: ' + (e.message || 'Unknown error'));
+          FangClaw-goToast.error('Failed: ' + (e.message || 'Unknown error'));
         }
       });
     },
@@ -12771,16 +12771,16 @@ function channelsPage() {
       var name = this.setupModal.name;
       this.testing[name] = true;
       try {
-        var result = await OpenFangAPI.post('/api/channels/' + name + '/test', {});
+        var result = await FangClaw-goAPI.post('/api/channels/' + name + '/test', {});
         if (result.status === 'ok') {
           this.testPassed = true;
           this.setupStep = 3;
-          OpenFangToast.success(result.message);
+          FangClaw-goToast.success(result.message);
         } else {
-          OpenFangToast.error(result.message);
+          FangClaw-goToast.error(result.message);
         }
       } catch(e) {
-        OpenFangToast.error('Test failed: ' + (e.message || 'Unknown error'));
+        FangClaw-goToast.error('Test failed: ' + (e.message || 'Unknown error'));
       }
       this.testing[name] = false;
     },
@@ -12790,9 +12790,9 @@ function channelsPage() {
       if (!tpl) return;
       try {
         await navigator.clipboard.writeText(tpl);
-        OpenFangToast.success('Copied to clipboard');
+        FangClaw-goToast.success('Copied to clipboard');
       } catch(e) {
-        OpenFangToast.error('Copy failed');
+        FangClaw-goToast.error('Copy failed');
       }
     },
 
@@ -12803,7 +12803,7 @@ function channelsPage() {
   };
 }
 
-// OpenFang Skills Page — OpenClaw/ClawHub ecosystem + local skills + MCP servers
+// FangClaw-go Skills Page — OpenClaw/ClawHub ecosystem + local skills + MCP servers
 'use strict';
 
 function skillsPage() {
@@ -12885,7 +12885,7 @@ function skillsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/skills');
+        var data = await FangClaw-goAPI.get('/api/skills');
         this.skills = (data.skills || []).map(function(s) {
           return {
             name: s.name,
@@ -12933,7 +12933,7 @@ function skillsPage() {
       this.clawhubLoading = true;
       this.clawhubError = '';
       try {
-        var data = await OpenFangAPI.get('/api/clawhub/search?q=' + encodeURIComponent(this.clawhubSearch.trim()) + '&limit=20');
+        var data = await FangClaw-goAPI.get('/api/clawhub/search?q=' + encodeURIComponent(this.clawhubSearch.trim()) + '&limit=20');
         this.clawhubResults = data.items || [];
         if (data.error) this.clawhubError = data.error;
       } catch(e) {
@@ -12958,7 +12958,7 @@ function skillsPage() {
       this.clawhubError = '';
       this.clawhubNextCursor = null;
       try {
-        var data = await OpenFangAPI.get('/api/clawhub/browse?sort=' + this.clawhubSort + '&limit=20');
+        var data = await FangClaw-goAPI.get('/api/clawhub/browse?sort=' + this.clawhubSort + '&limit=20');
         this.clawhubBrowseResults = data.items || [];
         this.clawhubNextCursor = data.next_cursor || null;
         if (data.error) this.clawhubError = data.error;
@@ -12974,7 +12974,7 @@ function skillsPage() {
       if (!this.clawhubNextCursor || this.clawhubLoading) return;
       this.clawhubLoading = true;
       try {
-        var data = await OpenFangAPI.get('/api/clawhub/browse?sort=' + this.clawhubSort + '&limit=20&cursor=' + encodeURIComponent(this.clawhubNextCursor));
+        var data = await FangClaw-goAPI.get('/api/clawhub/browse?sort=' + this.clawhubSort + '&limit=20&cursor=' + encodeURIComponent(this.clawhubNextCursor));
         this.clawhubBrowseResults = this.clawhubBrowseResults.concat(data.items || []);
         this.clawhubNextCursor = data.next_cursor || null;
       } catch(e) {
@@ -12989,10 +12989,10 @@ function skillsPage() {
       this.skillDetail = null;
       this.installResult = null;
       try {
-        var data = await OpenFangAPI.get('/api/clawhub/skill/' + encodeURIComponent(slug));
+        var data = await FangClaw-goAPI.get('/api/clawhub/skill/' + encodeURIComponent(slug));
         this.skillDetail = data;
       } catch(e) {
-        OpenFangToast.error('Failed to load skill details');
+        FangClaw-goToast.error('Failed to load skill details');
       }
       this.detailLoading = false;
     },
@@ -13007,12 +13007,12 @@ function skillsPage() {
       this.installingSlug = slug;
       this.installResult = null;
       try {
-        var data = await OpenFangAPI.post('/api/clawhub/install', { slug: slug });
+        var data = await FangClaw-goAPI.post('/api/clawhub/install', { slug: slug });
         this.installResult = data;
         if (data.warnings && data.warnings.length > 0) {
-          OpenFangToast.success('Skill "' + data.name + '" installed with ' + data.warnings.length + ' warning(s)');
+          FangClaw-goToast.success('Skill "' + data.name + '" installed with ' + data.warnings.length + ' warning(s)');
         } else {
-          OpenFangToast.success('Skill "' + data.name + '" installed successfully');
+          FangClaw-goToast.success('Skill "' + data.name + '" installed successfully');
         }
         // Update installed state in detail modal if open
         if (this.skillDetail && this.skillDetail.slug === slug) {
@@ -13022,11 +13022,11 @@ function skillsPage() {
       } catch(e) {
         var msg = e.message || 'Install failed';
         if (msg.includes('already_installed')) {
-          OpenFangToast.error('Skill is already installed');
+          FangClaw-goToast.error('Skill is already installed');
         } else if (msg.includes('SecurityBlocked')) {
-          OpenFangToast.error('Skill blocked by security scan');
+          FangClaw-goToast.error('Skill blocked by security scan');
         } else {
-          OpenFangToast.error('Install failed: ' + msg);
+          FangClaw-goToast.error('Install failed: ' + msg);
         }
       }
       this.installingSlug = null;
@@ -13035,13 +13035,13 @@ function skillsPage() {
     // Uninstall
     uninstallSkill: function(name) {
       var self = this;
-      OpenFangToast.confirm('Uninstall Skill', 'Uninstall skill "' + name + '"? This cannot be undone.', async function() {
+      FangClaw-goToast.confirm('Uninstall Skill', 'Uninstall skill "' + name + '"? This cannot be undone.', async function() {
         try {
-          await OpenFangAPI.post('/api/skills/uninstall', { name: name });
-          OpenFangToast.success('Skill "' + name + '" uninstalled');
+          await FangClaw-goAPI.post('/api/skills/uninstall', { name: name });
+          FangClaw-goToast.success('Skill "' + name + '" uninstalled');
           await self.loadSkills();
         } catch(e) {
-          OpenFangToast.error('Failed to uninstall skill: ' + e.message);
+          FangClaw-goToast.error('Failed to uninstall skill: ' + e.message);
         }
       });
     },
@@ -13049,17 +13049,17 @@ function skillsPage() {
     // Create prompt-only skill
     async createDemoSkill(skill) {
       try {
-        await OpenFangAPI.post('/api/skills/create', {
+        await FangClaw-goAPI.post('/api/skills/create', {
           name: skill.name,
           description: skill.description,
           runtime: 'prompt_only',
           prompt_context: skill.prompt_context || skill.description
         });
-        OpenFangToast.success('Skill "' + skill.name + '" created');
+        FangClaw-goToast.success('Skill "' + skill.name + '" created');
         this.tab = 'installed';
         await this.loadSkills();
       } catch(e) {
-        OpenFangToast.error('Failed to create skill: ' + e.message);
+        FangClaw-goToast.error('Failed to create skill: ' + e.message);
       }
     },
 
@@ -13067,7 +13067,7 @@ function skillsPage() {
     async loadMcpServers() {
       this.mcpLoading = true;
       try {
-        var data = await OpenFangAPI.get('/api/mcp/servers');
+        var data = await FangClaw-goAPI.get('/api/mcp/servers');
         this.mcpServers = data;
       } catch(e) {
         this.mcpServers = { configured: [], connected: [], total_configured: 0, total_connected: 0 };
@@ -13103,7 +13103,7 @@ function skillsPage() {
   };
 }
 
-// OpenFang Hands Page — curated autonomous capability packages
+// FangClaw-go Hands Page — curated autonomous capability packages
 'use strict';
 
 function handsPage() {
@@ -13137,7 +13137,7 @@ function handsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/hands');
+        var data = await FangClaw-goAPI.get('/api/hands');
         this.hands = data.hands || [];
       } catch(e) {
         this.hands = [];
@@ -13149,7 +13149,7 @@ function handsPage() {
     async loadActive() {
       this.activeLoading = true;
       try {
-        var data = await OpenFangAPI.get('/api/hands/active');
+        var data = await FangClaw-goAPI.get('/api/hands/active');
         this.instances = (data.instances || []).map(function(i) {
           i._stats = null;
           return i;
@@ -13169,7 +13169,7 @@ function handsPage() {
 
     async showDetail(handId) {
       try {
-        var data = await OpenFangAPI.get('/api/hands/' + handId);
+        var data = await FangClaw-goAPI.get('/api/hands/' + handId);
         this.detailHand = data;
       } catch(e) {
         for (var i = 0; i < this.hands.length; i++) {
@@ -13191,7 +13191,7 @@ function handsPage() {
       this.setupLoading = true;
       this.setupWizard = null;
       try {
-        var data = await OpenFangAPI.get('/api/hands/' + handId);
+        var data = await FangClaw-goAPI.get('/api/hands/' + handId);
         // Pre-populate settings defaults
         this.settingsValues = {};
         if (data.settings && data.settings.length > 0) {
@@ -13256,7 +13256,7 @@ function handsPage() {
       };
 
       try {
-        var data = await OpenFangAPI.post('/api/hands/' + handId + '/install-deps', {});
+        var data = await FangClaw-goAPI.post('/api/hands/' + handId + '/install-deps', {});
         var results = data.results || [];
         this.installProgress.results = results;
         this.installProgress.current = results.length;
@@ -13318,7 +13318,7 @@ function handsPage() {
       if (!this.setupWizard) return;
       this.setupChecking = true;
       try {
-        var data = await OpenFangAPI.post('/api/hands/' + this.setupWizard.id + '/check-deps', {});
+        var data = await FangClaw-goAPI.post('/api/hands/' + this.setupWizard.id + '/check-deps', {});
         if (data.requirements && this.setupWizard.requirements) {
           for (var i = 0; i < this.setupWizard.requirements.length; i++) {
             var existing = this.setupWizard.requirements[i];
@@ -13439,7 +13439,7 @@ function handsPage() {
       }
       this.activatingId = handId;
       try {
-        var data = await OpenFangAPI.post('/api/hands/' + handId + '/activate', { config: config });
+        var data = await FangClaw-goAPI.post('/api/hands/' + handId + '/activate', { config: config });
         this.showToast('Hand "' + handId + '" activated as ' + (data.agent_name || data.instance_id));
         this.closeSetupWizard();
         await this.loadActive();
@@ -13471,7 +13471,7 @@ function handsPage() {
 
     async pauseHand(inst) {
       try {
-        await OpenFangAPI.post('/api/hands/instances/' + inst.instance_id + '/pause', {});
+        await FangClaw-goAPI.post('/api/hands/instances/' + inst.instance_id + '/pause', {});
         inst.status = 'Paused';
       } catch(e) {
         this.showToast('Pause failed: ' + (e.message || 'unknown error'));
@@ -13480,7 +13480,7 @@ function handsPage() {
 
     async resumeHand(inst) {
       try {
-        await OpenFangAPI.post('/api/hands/instances/' + inst.instance_id + '/resume', {});
+        await FangClaw-goAPI.post('/api/hands/instances/' + inst.instance_id + '/resume', {});
         inst.status = 'Active';
       } catch(e) {
         this.showToast('Resume failed: ' + (e.message || 'unknown error'));
@@ -13490,20 +13490,20 @@ function handsPage() {
     async deactivate(inst) {
       var self = this;
       var handName = inst.agent_name || inst.hand_id;
-      OpenFangToast.confirm('Deactivate Hand', 'Deactivate hand "' + handName + '"? This will kill its agent.', async function() {
+      FangClaw-goToast.confirm('Deactivate Hand', 'Deactivate hand "' + handName + '"? This will kill its agent.', async function() {
         try {
-          await OpenFangAPI.delete('/api/hands/instances/' + inst.instance_id);
+          await FangClaw-goAPI.delete('/api/hands/instances/' + inst.instance_id);
           self.instances = self.instances.filter(function(i) { return i.instance_id !== inst.instance_id; });
-          OpenFangToast.success('Hand deactivated.');
+          FangClaw-goToast.success('Hand deactivated.');
         } catch(e) {
-          OpenFangToast.error('Deactivation failed: ' + (e.message || 'unknown error'));
+          FangClaw-goToast.error('Deactivation failed: ' + (e.message || 'unknown error'));
         }
       });
     },
 
     async loadStats(inst) {
       try {
-        var data = await OpenFangAPI.get('/api/hands/instances/' + inst.instance_id + '/stats');
+        var data = await FangClaw-goAPI.get('/api/hands/instances/' + inst.instance_id + '/stats');
         inst._stats = data.metrics || {};
       } catch(e) {
         inst._stats = { 'Error': { value: e.message || 'Could not load stats', format: 'text' } };
@@ -13564,7 +13564,7 @@ function handsPage() {
       if (!this.browserViewer) return;
       var id = this.browserViewer.instance_id;
       try {
-        var data = await OpenFangAPI.get('/api/hands/instances/' + id + '/browser');
+        var data = await FangClaw-goAPI.get('/api/hands/instances/' + id + '/browser');
         if (data.active) {
           this.browserViewer.url = data.url || '';
           this.browserViewer.title = data.title || '';
@@ -13608,7 +13608,7 @@ function handsPage() {
   };
 }
 
-// OpenFang Scheduler Page — Cron job management + event triggers unified view
+// FangClaw-go Scheduler Page — Cron job management + event triggers unified view
 'use strict';
 
 function schedulerPage() {
@@ -13672,7 +13672,7 @@ function schedulerPage() {
     },
 
     async loadJobs() {
-      var data = await OpenFangAPI.get('/api/cron/jobs');
+      var data = await FangClaw-goAPI.get('/api/cron/jobs');
       var raw = data.jobs || [];
       // Normalize cron API response to flat fields the UI expects
       this.jobs = raw.map(function(j) {
@@ -13701,7 +13701,7 @@ function schedulerPage() {
       this.trigLoading = true;
       this.trigLoadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/triggers');
+        var data = await FangClaw-goAPI.get('/api/triggers');
         this.triggers = Array.isArray(data) ? data : [];
       } catch(e) {
         this.triggers = [];
@@ -13754,11 +13754,11 @@ function schedulerPage() {
 
     async createJob() {
       if (!this.newJob.name.trim()) {
-        OpenFangToast.warn('Please enter a job name');
+        FangClaw-goToast.warn('Please enter a job name');
         return;
       }
       if (!this.newJob.cron.trim()) {
-        OpenFangToast.warn('Please enter a cron expression');
+        FangClaw-goToast.warn('Please enter a cron expression');
         return;
       }
       this.creating = true;
@@ -13772,13 +13772,13 @@ function schedulerPage() {
           delivery: { kind: 'last_channel' },
           enabled: this.newJob.enabled
         };
-        await OpenFangAPI.post('/api/cron/jobs', body);
+        await FangClaw-goAPI.post('/api/cron/jobs', body);
         this.showCreateForm = false;
         this.newJob = { name: '', cron: '', agent_id: '', message: '', enabled: true };
-        OpenFangToast.success('Schedule "' + jobName + '" created');
+        FangClaw-goToast.success('Schedule "' + jobName + '" created');
         await this.loadJobs();
       } catch(e) {
-        OpenFangToast.error('Failed to create schedule: ' + (e.message || e));
+        FangClaw-goToast.error('Failed to create schedule: ' + (e.message || e));
       }
       this.creating = false;
     },
@@ -13786,24 +13786,24 @@ function schedulerPage() {
     async toggleJob(job) {
       try {
         var newState = !job.enabled;
-        await OpenFangAPI.put('/api/cron/jobs/' + job.id + '/enable', { enabled: newState });
+        await FangClaw-goAPI.put('/api/cron/jobs/' + job.id + '/enable', { enabled: newState });
         job.enabled = newState;
-        OpenFangToast.success('Schedule ' + (newState ? 'enabled' : 'paused'));
+        FangClaw-goToast.success('Schedule ' + (newState ? 'enabled' : 'paused'));
       } catch(e) {
-        OpenFangToast.error('Failed to toggle schedule: ' + (e.message || e));
+        FangClaw-goToast.error('Failed to toggle schedule: ' + (e.message || e));
       }
     },
 
     deleteJob(job) {
       var self = this;
       var jobName = job.name || job.id;
-      OpenFangToast.confirm('Delete Schedule', 'Delete "' + jobName + '"? This cannot be undone.', async function() {
+      FangClaw-goToast.confirm('Delete Schedule', 'Delete "' + jobName + '"? This cannot be undone.', async function() {
         try {
-          await OpenFangAPI.del('/api/cron/jobs/' + job.id);
+          await FangClaw-goAPI.del('/api/cron/jobs/' + job.id);
           self.jobs = self.jobs.filter(function(j) { return j.id !== job.id; });
-          OpenFangToast.success('Schedule "' + jobName + '" deleted');
+          FangClaw-goToast.success('Schedule "' + jobName + '" deleted');
         } catch(e) {
-          OpenFangToast.error('Failed to delete schedule: ' + (e.message || e));
+          FangClaw-goToast.error('Failed to delete schedule: ' + (e.message || e));
         }
       });
     },
@@ -13811,15 +13811,15 @@ function schedulerPage() {
     async runNow(job) {
       this.runningJobId = job.id;
       try {
-        var result = await OpenFangAPI.post('/api/schedules/' + job.id + '/run', {});
+        var result = await FangClaw-goAPI.post('/api/schedules/' + job.id + '/run', {});
         if (result.status === 'completed') {
-          OpenFangToast.success('Schedule "' + (job.name || 'job') + '" executed successfully');
+          FangClaw-goToast.success('Schedule "' + (job.name || 'job') + '" executed successfully');
           job.last_run = new Date().toISOString();
         } else {
-          OpenFangToast.error('Schedule run failed: ' + (result.error || 'Unknown error'));
+          FangClaw-goToast.error('Schedule run failed: ' + (result.error || 'Unknown error'));
         }
       } catch(e) {
-        OpenFangToast.error('Run Now is not yet available for cron jobs');
+        FangClaw-goToast.error('Run Now is not yet available for cron jobs');
       }
       this.runningJobId = '';
     },
@@ -13849,23 +13849,23 @@ function schedulerPage() {
     async toggleTrigger(trigger) {
       try {
         var newState = !trigger.enabled;
-        await OpenFangAPI.put('/api/triggers/' + trigger.id, { enabled: newState });
+        await FangClaw-goAPI.put('/api/triggers/' + trigger.id, { enabled: newState });
         trigger.enabled = newState;
-        OpenFangToast.success('Trigger ' + (newState ? 'enabled' : 'disabled'));
+        FangClaw-goToast.success('Trigger ' + (newState ? 'enabled' : 'disabled'));
       } catch(e) {
-        OpenFangToast.error('Failed to toggle trigger: ' + (e.message || e));
+        FangClaw-goToast.error('Failed to toggle trigger: ' + (e.message || e));
       }
     },
 
     deleteTrigger(trigger) {
       var self = this;
-      OpenFangToast.confirm('Delete Trigger', 'Delete this trigger? This cannot be undone.', async function() {
+      FangClaw-goToast.confirm('Delete Trigger', 'Delete this trigger? This cannot be undone.', async function() {
         try {
-          await OpenFangAPI.del('/api/triggers/' + trigger.id);
+          await FangClaw-goAPI.del('/api/triggers/' + trigger.id);
           self.triggers = self.triggers.filter(function(t) { return t.id !== trigger.id; });
-          OpenFangToast.success('Trigger deleted');
+          FangClaw-goToast.success('Trigger deleted');
         } catch(e) {
-          OpenFangToast.error('Failed to delete trigger: ' + (e.message || e));
+          FangClaw-goToast.error('Failed to delete trigger: ' + (e.message || e));
         }
       });
     },
@@ -14002,7 +14002,7 @@ function schedulerPage() {
   };
 }
 
-// OpenFang Settings Page — Provider Hub, Model Catalog, Config, Tools + Security, Network, Migration tabs
+// FangClaw-go Settings Page — Provider Hub, Model Catalog, Config, Tools + Security, Network, Migration tabs
 'use strict';
 
 function settingsPage() {
@@ -14183,8 +14183,8 @@ function settingsPage() {
 
     async loadSysInfo() {
       try {
-        var ver = await OpenFangAPI.get('/api/version');
-        var status = await OpenFangAPI.get('/api/status');
+        var ver = await FangClaw-goAPI.get('/api/version');
+        var status = await FangClaw-goAPI.get('/api/status');
         this.sysInfo = {
           version: ver.version || '-',
           platform: ver.platform || '-',
@@ -14199,27 +14199,27 @@ function settingsPage() {
 
     async loadUsage() {
       try {
-        var data = await OpenFangAPI.get('/api/usage');
+        var data = await FangClaw-goAPI.get('/api/usage');
         this.usageData = data.agents || [];
       } catch(e) { this.usageData = []; }
     },
 
     async loadTools() {
       try {
-        var data = await OpenFangAPI.get('/api/tools');
+        var data = await FangClaw-goAPI.get('/api/tools');
         this.tools = data.tools || [];
       } catch(e) { this.tools = []; }
     },
 
     async loadConfig() {
       try {
-        this.config = await OpenFangAPI.get('/api/config');
+        this.config = await FangClaw-goAPI.get('/api/config');
       } catch(e) { this.config = {}; }
     },
 
     async loadProviders() {
       try {
-        var data = await OpenFangAPI.get('/api/providers');
+        var data = await FangClaw-goAPI.get('/api/providers');
         this.providers = data.providers || [];
         for (var i = 0; i < this.providers.length; i++) {
           var p = this.providers[i];
@@ -14232,7 +14232,7 @@ function settingsPage() {
 
     async loadModels() {
       try {
-        var data = await OpenFangAPI.get('/api/models');
+        var data = await FangClaw-goAPI.get('/api/models');
         this.models = data.models || [];
       } catch(e) { this.models = []; }
     },
@@ -14242,7 +14242,7 @@ function settingsPage() {
       if (!id) return;
       this.customModelStatus = 'Adding...';
       try {
-        await OpenFangAPI.post('/api/models/custom', {
+        await FangClaw-goAPI.post('/api/models/custom', {
           id: id,
           provider: this.customModelProvider || 'openrouter',
           context_window: this.customModelContext || 128000,
@@ -14260,8 +14260,8 @@ function settingsPage() {
     async loadConfigSchema() {
       try {
         var results = await Promise.all([
-          OpenFangAPI.get('/api/config/schema').catch(function() { return {}; }),
-          OpenFangAPI.get('/api/config')
+          FangClaw-goAPI.get('/api/config/schema').catch(function() { return {}; }),
+          FangClaw-goAPI.get('/api/config')
         ]);
         this.configSchema = results[0].sections || null;
         this.configValues = results[1] || {};
@@ -14280,11 +14280,11 @@ function settingsPage() {
       var key = section + '.' + field;
       this.configSaving[key] = true;
       try {
-        await OpenFangAPI.post('/api/config/set', { path: key, value: value });
+        await FangClaw-goAPI.post('/api/config/set', { path: key, value: value });
         this.configDirty[key] = false;
-        OpenFangToast.success('Saved ' + key);
+        FangClaw-goToast.success('Saved ' + key);
       } catch(e) {
-        OpenFangToast.error('Failed to save: ' + e.message);
+        FangClaw-goToast.error('Failed to save: ' + e.message);
       }
       this.configSaving[key] = false;
     },
@@ -14376,26 +14376,26 @@ function settingsPage() {
 
     async saveProviderKey(provider) {
       var key = this.providerKeyInputs[provider.id];
-      if (!key || !key.trim()) { OpenFangToast.error('Please enter an API key'); return; }
+      if (!key || !key.trim()) { FangClaw-goToast.error('Please enter an API key'); return; }
       try {
-        await OpenFangAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key.trim() });
-        OpenFangToast.success('API key saved for ' + provider.display_name);
+        await FangClaw-goAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key.trim() });
+        FangClaw-goToast.success('API key saved for ' + provider.display_name);
         this.providerKeyInputs[provider.id] = '';
         await this.loadProviders();
         await this.loadModels();
       } catch(e) {
-        OpenFangToast.error('Failed to save key: ' + e.message);
+        FangClaw-goToast.error('Failed to save key: ' + e.message);
       }
     },
 
     async removeProviderKey(provider) {
       try {
-        await OpenFangAPI.del('/api/providers/' + encodeURIComponent(provider.id) + '/key');
-        OpenFangToast.success('API key removed for ' + provider.display_name);
+        await FangClaw-goAPI.del('/api/providers/' + encodeURIComponent(provider.id) + '/key');
+        FangClaw-goToast.success('API key removed for ' + provider.display_name);
         await this.loadProviders();
         await this.loadModels();
       } catch(e) {
-        OpenFangToast.error('Failed to remove key: ' + e.message);
+        FangClaw-goToast.error('Failed to remove key: ' + e.message);
       }
     },
 
@@ -14403,7 +14403,7 @@ function settingsPage() {
       this.copilotOAuth.polling = true;
       this.copilotOAuth.userCode = '';
       try {
-        var resp = await OpenFangAPI.post('/api/providers/github-copilot/oauth/start', {});
+        var resp = await FangClaw-goAPI.post('/api/providers/github-copilot/oauth/start', {});
         this.copilotOAuth.userCode = resp.user_code;
         this.copilotOAuth.verificationUri = resp.verification_uri;
         this.copilotOAuth.pollId = resp.poll_id;
@@ -14411,7 +14411,7 @@ function settingsPage() {
         window.open(resp.verification_uri, '_blank');
         this.pollCopilotOAuth();
       } catch(e) {
-        OpenFangToast.error('Failed to start Copilot login: ' + e.message);
+        FangClaw-goToast.error('Failed to start Copilot login: ' + e.message);
         this.copilotOAuth.polling = false;
       }
     },
@@ -14421,9 +14421,9 @@ function settingsPage() {
       setTimeout(async function() {
         if (!self.copilotOAuth.pollId) return;
         try {
-          var resp = await OpenFangAPI.get('/api/providers/github-copilot/oauth/poll/' + self.copilotOAuth.pollId);
+          var resp = await FangClaw-goAPI.get('/api/providers/github-copilot/oauth/poll/' + self.copilotOAuth.pollId);
           if (resp.status === 'complete') {
-            OpenFangToast.success('GitHub Copilot authenticated successfully!');
+            FangClaw-goToast.success('GitHub Copilot authenticated successfully!');
             self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
             await self.loadProviders();
             await self.loadModels();
@@ -14431,17 +14431,17 @@ function settingsPage() {
             if (resp.interval) self.copilotOAuth.interval = resp.interval;
             self.pollCopilotOAuth();
           } else if (resp.status === 'expired') {
-            OpenFangToast.error('Device code expired. Please try again.');
+            FangClaw-goToast.error('Device code expired. Please try again.');
             self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
           } else if (resp.status === 'denied') {
-            OpenFangToast.error('Access denied by user.');
+            FangClaw-goToast.error('Access denied by user.');
             self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
           } else {
-            OpenFangToast.error('OAuth error: ' + (resp.error || resp.status));
+            FangClaw-goToast.error('OAuth error: ' + (resp.error || resp.status));
             self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
           }
         } catch(e) {
-          OpenFangToast.error('Poll error: ' + e.message);
+          FangClaw-goToast.error('Poll error: ' + e.message);
           self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
         }
       }, self.copilotOAuth.interval * 1000);
@@ -14451,38 +14451,38 @@ function settingsPage() {
       this.providerTesting[provider.id] = true;
       this.providerTestResults[provider.id] = null;
       try {
-        var result = await OpenFangAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
+        var result = await FangClaw-goAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
         this.providerTestResults[provider.id] = result;
         if (result.status === 'ok') {
-          OpenFangToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
+          FangClaw-goToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
         } else {
-          OpenFangToast.error(provider.display_name + ': ' + (result.error || 'Connection failed'));
+          FangClaw-goToast.error(provider.display_name + ': ' + (result.error || 'Connection failed'));
         }
       } catch(e) {
         this.providerTestResults[provider.id] = { status: 'error', error: e.message };
-        OpenFangToast.error('Test failed: ' + e.message);
+        FangClaw-goToast.error('Test failed: ' + e.message);
       }
       this.providerTesting[provider.id] = false;
     },
 
     async saveProviderUrl(provider) {
       var url = this.providerUrlInputs[provider.id];
-      if (!url || !url.trim()) { OpenFangToast.error('Please enter a base URL'); return; }
+      if (!url || !url.trim()) { FangClaw-goToast.error('Please enter a base URL'); return; }
       url = url.trim();
       if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) {
-        OpenFangToast.error('URL must start with http:// or https://'); return;
+        FangClaw-goToast.error('URL must start with http:// or https://'); return;
       }
       this.providerUrlSaving[provider.id] = true;
       try {
-        var result = await OpenFangAPI.put('/api/providers/' + encodeURIComponent(provider.id) + '/url', { base_url: url });
+        var result = await FangClaw-goAPI.put('/api/providers/' + encodeURIComponent(provider.id) + '/url', { base_url: url });
         if (result.reachable) {
-          OpenFangToast.success(provider.display_name + ' URL saved &mdash; reachable (' + (result.latency_ms || '?') + 'ms)');
+          FangClaw-goToast.success(provider.display_name + ' URL saved &mdash; reachable (' + (result.latency_ms || '?') + 'ms)');
         } else {
-          OpenFangToast.warning(provider.display_name + ' URL saved but not reachable');
+          FangClaw-goToast.warning(provider.display_name + ' URL saved but not reachable');
         }
         await this.loadProviders();
       } catch(e) {
-        OpenFangToast.error('Failed to save URL: ' + e.message);
+        FangClaw-goToast.error('Failed to save URL: ' + e.message);
       }
       this.providerUrlSaving[provider.id] = false;
     },
@@ -14491,7 +14491,7 @@ function settingsPage() {
     async loadSecurity() {
       this.secLoading = true;
       try {
-        this.securityData = await OpenFangAPI.get('/api/security');
+        this.securityData = await FangClaw-goAPI.get('/api/security');
       } catch(e) {
         this.securityData = null;
       }
@@ -14554,7 +14554,7 @@ function settingsPage() {
       this.verifyingChain = true;
       this.chainResult = null;
       try {
-        var res = await OpenFangAPI.get('/api/audit/verify');
+        var res = await FangClaw-goAPI.get('/api/audit/verify');
         this.chainResult = res;
       } catch(e) {
         this.chainResult = { valid: false, error: e.message };
@@ -14567,7 +14567,7 @@ function settingsPage() {
       this.peersLoading = true;
       this.peersLoadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/peers');
+        var data = await FangClaw-goAPI.get('/api/peers');
         this.peers = (data.peers || []).map(function(p) {
           return {
             node_id: p.node_id,
@@ -14591,7 +14591,7 @@ function settingsPage() {
       this._peerPollTimer = setInterval(async function() {
         if (self.tab !== 'network') { self.stopPeerPolling(); return; }
         try {
-          var data = await OpenFangAPI.get('/api/peers');
+          var data = await FangClaw-goAPI.get('/api/peers');
           self.peers = (data.peers || []).map(function(p) {
             return {
               node_id: p.node_id,
@@ -14614,7 +14614,7 @@ function settingsPage() {
     async autoDetect() {
       this.detecting = true;
       try {
-        var data = await OpenFangAPI.get('/api/migrate/detect');
+        var data = await FangClaw-goAPI.get('/api/migrate/detect');
         if (data.detected && data.scan) {
           this.sourcePath = data.path;
           this.scanResult = data.scan;
@@ -14632,16 +14632,16 @@ function settingsPage() {
       if (!this.sourcePath) return;
       this.scanning = true;
       try {
-        var data = await OpenFangAPI.post('/api/migrate/scan', { path: this.sourcePath });
+        var data = await FangClaw-goAPI.post('/api/migrate/scan', { path: this.sourcePath });
         if (data.error) {
-          OpenFangToast.error('Scan error: ' + data.error);
+          FangClaw-goToast.error('Scan error: ' + data.error);
           this.scanning = false;
           return;
         }
         this.scanResult = data;
         this.migStep = 'preview';
       } catch(e) {
-        OpenFangToast.error('Scan failed: ' + e.message);
+        FangClaw-goToast.error('Scan failed: ' + e.message);
       }
       this.scanning = false;
     },
@@ -14651,7 +14651,7 @@ function settingsPage() {
       try {
         var target = this.targetPath;
         if (!target) target = '';
-        var data = await OpenFangAPI.post('/api/migrate', {
+        var data = await FangClaw-goAPI.post('/api/migrate', {
           source: 'openclaw',
           source_dir: this.sourcePath || (this.scanResult ? this.scanResult.path : ''),
           target_dir: target,
@@ -14672,7 +14672,7 @@ function settingsPage() {
   };
 }
 
-// OpenFang Analytics Page — Full usage analytics with per-model and per-agent breakdowns
+// FangClaw-go Analytics Page — Full usage analytics with per-model and per-agent breakdowns
 // Includes Cost Dashboard with donut chart, bar chart, projections, and provider breakdown.
 'use strict';
 
@@ -14717,7 +14717,7 @@ function analyticsPage() {
 
     async loadSummary() {
       try {
-        this.summary = await OpenFangAPI.get('/api/usage/summary');
+        this.summary = await FangClaw-goAPI.get('/api/usage/summary');
       } catch(e) {
         this.summary = { total_input_tokens: 0, total_output_tokens: 0, total_cost_usd: 0, call_count: 0, total_tool_calls: 0 };
         throw e;
@@ -14726,21 +14726,21 @@ function analyticsPage() {
 
     async loadByModel() {
       try {
-        var data = await OpenFangAPI.get('/api/usage/by-model');
+        var data = await FangClaw-goAPI.get('/api/usage/by-model');
         this.byModel = data.models || [];
       } catch(e) { this.byModel = []; }
     },
 
     async loadByAgent() {
       try {
-        var data = await OpenFangAPI.get('/api/usage');
+        var data = await FangClaw-goAPI.get('/api/usage');
         this.byAgent = data.agents || [];
       } catch(e) { this.byAgent = []; }
     },
 
     async loadDailyCosts() {
       try {
-        var data = await OpenFangAPI.get('/api/usage/daily');
+        var data = await FangClaw-goAPI.get('/api/usage/daily');
         this.dailyCosts = data.days || [];
         this.todayCost = data.today_cost_usd || 0;
         this.firstEventDate = data.first_event_date || null;
@@ -14924,7 +14924,7 @@ function analyticsPage() {
   };
 }
 
-// OpenFang Sessions Page — Session listing + Memory tab
+// FangClaw-go Sessions Page — Session listing + Memory tab
 'use strict';
 
 function sessionsPage() {
@@ -14952,7 +14952,7 @@ function sessionsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/sessions');
+        var data = await FangClaw-goAPI.get('/api/sessions');
         var sessions = data.sessions || [];
         var agents = Alpine.store('app').agents;
         var agentMap = {};
@@ -14990,13 +14990,13 @@ function sessionsPage() {
 
     deleteSession(sessionId) {
       var self = this;
-      OpenFangToast.confirm('Delete Session', 'This will permanently remove the session and its messages.', async function() {
+      FangClaw-goToast.confirm('Delete Session', 'This will permanently remove the session and its messages.', async function() {
         try {
-          await OpenFangAPI.del('/api/sessions/' + sessionId);
+          await FangClaw-goAPI.del('/api/sessions/' + sessionId);
           self.sessions = self.sessions.filter(function(s) { return s.session_id !== sessionId; });
-          OpenFangToast.success('Session deleted');
+          FangClaw-goToast.success('Session deleted');
         } catch(e) {
-          OpenFangToast.error('Failed to delete session: ' + e.message);
+          FangClaw-goToast.error('Failed to delete session: ' + e.message);
         }
       });
     },
@@ -15007,7 +15007,7 @@ function sessionsPage() {
       this.memLoading = true;
       this.memLoadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/memory/agents/' + this.memAgentId + '/kv');
+        var data = await FangClaw-goAPI.get('/api/memory/agents/' + this.memAgentId + '/kv');
         this.kvPairs = data.kv_pairs || [];
       } catch(e) {
         this.kvPairs = [];
@@ -15021,26 +15021,26 @@ function sessionsPage() {
       var value;
       try { value = JSON.parse(this.newValue); } catch(e) { value = this.newValue; }
       try {
-        await OpenFangAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.newKey), { value: value });
+        await FangClaw-goAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.newKey), { value: value });
         this.showAdd = false;
-        OpenFangToast.success('Key "' + this.newKey + '" saved');
+        FangClaw-goToast.success('Key "' + this.newKey + '" saved');
         this.newKey = '';
         this.newValue = '""';
         await this.loadKv();
       } catch(e) {
-        OpenFangToast.error('Failed to save key: ' + e.message);
+        FangClaw-goToast.error('Failed to save key: ' + e.message);
       }
     },
 
     deleteKey(key) {
       var self = this;
-      OpenFangToast.confirm('Delete Key', 'Delete key "' + key + '"? This cannot be undone.', async function() {
+      FangClaw-goToast.confirm('Delete Key', 'Delete key "' + key + '"? This cannot be undone.', async function() {
         try {
-          await OpenFangAPI.del('/api/memory/agents/' + self.memAgentId + '/kv/' + encodeURIComponent(key));
-          OpenFangToast.success('Key "' + key + '" deleted');
+          await FangClaw-goAPI.del('/api/memory/agents/' + self.memAgentId + '/kv/' + encodeURIComponent(key));
+          FangClaw-goToast.success('Key "' + key + '" deleted');
           await self.loadKv();
         } catch(e) {
-          OpenFangToast.error('Failed to delete key: ' + e.message);
+          FangClaw-goToast.error('Failed to delete key: ' + e.message);
         }
       });
     },
@@ -15060,19 +15060,19 @@ function sessionsPage() {
       var value;
       try { value = JSON.parse(this.editingValue); } catch(e) { value = this.editingValue; }
       try {
-        await OpenFangAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.editingKey), { value: value });
-        OpenFangToast.success('Key "' + this.editingKey + '" updated');
+        await FangClaw-goAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.editingKey), { value: value });
+        FangClaw-goToast.success('Key "' + this.editingKey + '" updated');
         this.editingKey = null;
         this.editingValue = '';
         await this.loadKv();
       } catch(e) {
-        OpenFangToast.error('Failed to save: ' + e.message);
+        FangClaw-goToast.error('Failed to save: ' + e.message);
       }
     }
   };
 }
 
-// OpenFang Logs Page — Real-time log viewer (SSE streaming + polling fallback) + Audit Trail tab
+// FangClaw-go Logs Page — Real-time log viewer (SSE streaming + polling fallback) + Audit Trail tab
 'use strict';
 
 function logsPage() {
@@ -15107,7 +15107,7 @@ function logsPage() {
 
       var url = '/api/logs/stream';
       var sep = '?';
-      var token = OpenFangAPI.getToken();
+      var token = FangClaw-goAPI.getToken();
       if (token) { url += sep + 'token=' + encodeURIComponent(token); sep = '&'; }
 
       try {
@@ -15179,7 +15179,7 @@ function logsPage() {
     async fetchLogs() {
       if (this.loading) this.loadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/audit/recent?n=200');
+        var data = await FangClaw-goAPI.get('/api/audit/recent?n=200');
         this.entries = data.entries || [];
         if (this.autoRefresh && !this.hovering) {
           this.$nextTick(function() {
@@ -15277,7 +15277,7 @@ function logsPage() {
       this.auditLoading = true;
       this.auditLoadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/audit/recent?n=200');
+        var data = await FangClaw-goAPI.get('/api/audit/recent?n=200');
         this.auditEntries = data.entries || [];
         this.tipHash = data.tip_hash || '';
       } catch(e) {
@@ -15308,16 +15308,16 @@ function logsPage() {
 
     async verifyChain() {
       try {
-        var data = await OpenFangAPI.get('/api/audit/verify');
+        var data = await FangClaw-goAPI.get('/api/audit/verify');
         this.chainValid = data.valid === true;
         if (this.chainValid) {
-          OpenFangToast.success('Audit chain verified — ' + (data.entries || 0) + ' entries valid');
+          FangClaw-goToast.success('Audit chain verified — ' + (data.entries || 0) + ' entries valid');
         } else {
-          OpenFangToast.error('Audit chain broken!');
+          FangClaw-goToast.error('Audit chain broken!');
         }
       } catch(e) {
         this.chainValid = false;
-        OpenFangToast.error('Chain verification failed: ' + e.message);
+        FangClaw-goToast.error('Chain verification failed: ' + e.message);
       }
     },
 
@@ -15328,7 +15328,7 @@ function logsPage() {
   };
 }
 
-// OpenFang Setup Wizard — First-run guided setup (Provider + Agent + Channel)
+// FangClaw-go Setup Wizard — First-run guided setup (Provider + Agent + Channel)
 'use strict';
 
 function wizardPage() {
@@ -15513,7 +15513,7 @@ function wizardPage() {
       this.tryItMessages.push({ role: 'user', text: text });
       this.tryItSending = true;
       try {
-        var res = await OpenFangAPI.post('/api/agents/' + this.createdAgent.id + '/message', { message: text });
+        var res = await FangClaw-goAPI.post('/api/agents/' + this.createdAgent.id + '/message', { message: text });
         this.tryItMessages.push({ role: 'agent', text: res.response || '(no response)' });
         localStorage.setItem('of-first-msg', 'true');
       } catch(e) {
@@ -15629,7 +15629,7 @@ function wizardPage() {
 
     async loadProviders() {
       try {
-        var data = await OpenFangAPI.get('/api/providers');
+        var data = await FangClaw-goAPI.get('/api/providers');
         this.providers = data.providers || [];
         // Pre-select first unconfigured provider, or first one
         var unconfigured = this.providers.filter(function(p) {
@@ -15699,21 +15699,21 @@ function wizardPage() {
       if (!provider) return;
       var key = this.apiKeyInput.trim();
       if (!key) {
-        OpenFangToast.error('Please enter an API key');
+        FangClaw-goToast.error('Please enter an API key');
         return;
       }
       this.savingKey = true;
       try {
-        await OpenFangAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key });
+        await FangClaw-goAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key });
         this.apiKeyInput = '';
         this.keySaved = true;
         this.setupSummary.provider = provider.display_name;
-        OpenFangToast.success('API key saved for ' + provider.display_name);
+        FangClaw-goToast.success('API key saved for ' + provider.display_name);
         await this.loadProviders();
         // Auto-test after saving
         await this.testKey();
       } catch(e) {
-        OpenFangToast.error('Failed to save key: ' + e.message);
+        FangClaw-goToast.error('Failed to save key: ' + e.message);
       }
       this.savingKey = false;
     },
@@ -15724,16 +15724,16 @@ function wizardPage() {
       this.testingProvider = true;
       this.testResult = null;
       try {
-        var result = await OpenFangAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
+        var result = await FangClaw-goAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
         this.testResult = result;
         if (result.status === 'ok') {
-          OpenFangToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
+          FangClaw-goToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
         } else {
-          OpenFangToast.error(provider.display_name + ': ' + (result.error || 'Connection failed'));
+          FangClaw-goToast.error(provider.display_name + ': ' + (result.error || 'Connection failed'));
         }
       } catch(e) {
         this.testResult = { status: 'error', error: e.message };
-        OpenFangToast.error('Test failed: ' + e.message);
+        FangClaw-goToast.error('Test failed: ' + e.message);
       }
       this.testingProvider = false;
     },
@@ -15753,7 +15753,7 @@ function wizardPage() {
       if (!tpl) return;
       var name = this.agentName.trim();
       if (!name) {
-        OpenFangToast.error('Please enter a name for your agent');
+        FangClaw-goToast.error('Please enter a name for your agent');
         return;
       }
 
@@ -15776,17 +15776,17 @@ function wizardPage() {
 
       this.creatingAgent = true;
       try {
-        var res = await OpenFangAPI.post('/api/agents', { manifest_toml: toml });
+        var res = await FangClaw-goAPI.post('/api/agents', { manifest_toml: toml });
         if (res.agent_id) {
           this.createdAgent = { id: res.agent_id, name: res.name || name };
           this.setupSummary.agent = res.name || name;
-          OpenFangToast.success('Agent "' + (res.name || name) + '" created');
+          FangClaw-goToast.success('Agent "' + (res.name || name) + '" created');
           await Alpine.store('app').refreshAgents();
         } else {
-          OpenFangToast.error('Failed: ' + (res.error || 'Unknown error'));
+          FangClaw-goToast.error('Failed: ' + (res.error || 'Unknown error'));
         }
       } catch(e) {
-        OpenFangToast.error('Failed to create agent: ' + e.message);
+        FangClaw-goToast.error('Failed to create agent: ' + e.message);
       }
       this.creatingAgent = false;
     },
@@ -15832,7 +15832,7 @@ function wizardPage() {
       if (!ch) return;
       var token = this.channelToken.trim();
       if (!token) {
-        OpenFangToast.error('Please enter the ' + ch.token_label);
+        FangClaw-goToast.error('Please enter the ' + ch.token_label);
         return;
       }
       this.configuringChannel = true;
@@ -15840,12 +15840,12 @@ function wizardPage() {
         var fields = {};
         fields[ch.token_env.toLowerCase()] = token;
         fields.token = token;
-        await OpenFangAPI.post('/api/channels/' + ch.name + '/configure', { fields: fields });
+        await FangClaw-goAPI.post('/api/channels/' + ch.name + '/configure', { fields: fields });
         this.channelConfigured = true;
         this.setupSummary.channel = ch.display_name;
-        OpenFangToast.success(ch.display_name + ' configured and activated.');
+        FangClaw-goToast.success(ch.display_name + ' configured and activated.');
       } catch(e) {
-        OpenFangToast.error('Failed: ' + (e.message || 'Unknown error'));
+        FangClaw-goToast.error('Failed: ' + (e.message || 'Unknown error'));
       }
       this.configuringChannel = false;
     },
@@ -15873,7 +15873,7 @@ function wizardPage() {
   };
 }
 
-// OpenFang Approvals Page — Execution approval queue for sensitive agent actions
+// FangClaw-go Approvals Page — Execution approval queue for sensitive agent actions
 'use strict';
 
 function approvalsPage() {
@@ -15897,7 +15897,7 @@ function approvalsPage() {
       this.loading = true;
       this.loadError = '';
       try {
-        var data = await OpenFangAPI.get('/api/approvals');
+        var data = await FangClaw-goAPI.get('/api/approvals');
         this.approvals = data.approvals || [];
       } catch(e) {
         this.loadError = e.message || 'Could not load approvals.';
@@ -15907,23 +15907,23 @@ function approvalsPage() {
 
     async approve(id) {
       try {
-        await OpenFangAPI.post('/api/approvals/' + id + '/approve', {});
-        OpenFangToast.success('Approved');
+        await FangClaw-goAPI.post('/api/approvals/' + id + '/approve', {});
+        FangClaw-goToast.success('Approved');
         await this.loadData();
       } catch(e) {
-        OpenFangToast.error(e.message);
+        FangClaw-goToast.error(e.message);
       }
     },
 
     async reject(id) {
       var self = this;
-      OpenFangToast.confirm('Reject Action', 'Are you sure you want to reject this action?', async function() {
+      FangClaw-goToast.confirm('Reject Action', 'Are you sure you want to reject this action?', async function() {
         try {
-          await OpenFangAPI.post('/api/approvals/' + id + '/reject', {});
-          OpenFangToast.success('Rejected');
+          await FangClaw-goAPI.post('/api/approvals/' + id + '/reject', {});
+          FangClaw-goToast.success('Rejected');
           await self.loadData();
         } catch(e) {
-          OpenFangToast.error(e.message);
+          FangClaw-goToast.error(e.message);
         }
       });
     },
