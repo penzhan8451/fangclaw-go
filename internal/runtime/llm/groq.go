@@ -2,12 +2,14 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -107,4 +109,92 @@ func (p *GroqProvider) Chat(ctx context.Context, req *Request) (*Response, error
 			TotalTokens:  groqResp.Usage.TotalTokens,
 		},
 	}, nil
+}
+
+// ChatStream sends a streaming chat completion request.
+func (p *GroqProvider) ChatStream(ctx context.Context, req *Request) (<-chan StreamEvent, error) {
+	if p.apiKey == "" {
+		return nil, fmt.Errorf("groq API key not configured")
+	}
+
+	model := req.Model
+	if model == "" {
+		model = p.model
+	}
+
+	groqReq := openaiRequest{
+		Model:       model,
+		Messages:    req.Messages,
+		MaxTokens:   req.MaxTokens,
+		Temperature: req.Temperature,
+		TopP:        req.TopP,
+		Stream:      true,
+	}
+
+	body, err := json.Marshal(groqReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST",
+		"https://api.groq.com/openai/v1/chat/completions",
+		bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("groq API error: %d", resp.StatusCode)
+	}
+
+	eventChan := make(chan StreamEvent)
+
+	go func() {
+		defer resp.Body.Close()
+		defer close(eventChan)
+
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
+				break
+			}
+
+			var streamResp openaiStreamResponse
+			if err := json.Unmarshal([]byte(data), &streamResp); err != nil {
+				continue
+			}
+
+			if len(streamResp.Choices) > 0 {
+				choice := streamResp.Choices[0]
+				if choice.Delta.Content != "" {
+					eventChan <- StreamEvent{
+						Type: StreamEventTextDelta,
+						Text: choice.Delta.Content,
+					}
+				}
+				if choice.FinishReason != "" {
+					eventChan <- StreamEvent{
+						Type: StreamEventContentComplete,
+					}
+				}
+			}
+		}
+	}()
+
+	return eventChan, nil
 }

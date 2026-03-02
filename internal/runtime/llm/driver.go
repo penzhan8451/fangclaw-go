@@ -9,6 +9,20 @@ import (
 // ErrNoResponse is returned when no response is received.
 var ErrNoResponse = errors.New("no response received")
 
+// StreamEventType represents the type of a stream event.
+type StreamEventType string
+
+const (
+	StreamEventTextDelta    StreamEventType = "text_delta"
+	StreamEventContentComplete StreamEventType = "content_complete"
+)
+
+// StreamEvent represents an event in the streaming response.
+type StreamEvent struct {
+	Type StreamEventType
+	Text string
+}
+
 // Message represents a chat message.
 type Message struct {
 	Role    string `json:"role"`    // "system", "user", "assistant"
@@ -46,6 +60,8 @@ type Driver interface {
 	Name() string
 	// Chat sends a chat completion request.
 	Chat(ctx context.Context, req *Request) (*Response, error)
+	// ChatStream sends a streaming chat completion request.
+	ChatStream(ctx context.Context, req *Request) (<-chan StreamEvent, error)
 	// SupportsStreaming returns true if the provider supports streaming.
 	SupportsStreaming() bool
 }

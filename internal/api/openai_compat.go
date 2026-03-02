@@ -231,11 +231,11 @@ func (h *OpenAICompatibleHandler) ChatCompletionsHandler(w http.ResponseWriter, 
 		})
 	}
 
-	// Handle streaming (暂时禁用，先实现非流式)
-	// if req.Stream {
-	// 	h.handleStreamingChat(w, r, driver, messages, agentName)
-	// 	return
-	// }
+	// Handle streaming
+	if req.Stream {
+		h.handleStreamingChat(w, r, driver, messages, agentName)
+		return
+	}
 
 	// Non-streaming
 	llmReq := &llm.Request{
@@ -310,21 +310,22 @@ func (h *OpenAICompatibleHandler) resolveAgent(model string) (string, string) {
 }
 
 // handleStreamingChat handles streaming chat completions.
-func (h *OpenAICompatibleHandler) handleStreamingChat(w http.ResponseWriter, r *http.Request, message, model string) {
+func (h *OpenAICompatibleHandler) handleStreamingChat(w http.ResponseWriter, r *http.Request, driver llm.Driver, messages []llm.Message, agentName string) {
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	response := "This is a placeholder streaming response from FangClaw. The full LLM integration is coming soon!"
+	requestID := "chatcmpl-" + uuid.NewString()
+	created := time.Now().Unix()
 
 	// Send initial chunk with role
 	initialChunk := ChatCompletionChunk{
-		ID:      "chatcmpl-" + uuid.NewString(),
+		ID:      requestID,
 		Object:  "chat.completion.chunk",
-		Created: time.Now().Unix(),
-		Model:   model,
+		Created: created,
+		Model:   agentName,
 		Choices: []ChunkChoice{
 			{
 				Index: 0,
@@ -338,56 +339,75 @@ func (h *OpenAICompatibleHandler) handleStreamingChat(w http.ResponseWriter, r *
 	fmt.Fprintf(w, "data: %s\n\n", initialBytes)
 	w.(http.Flusher).Flush()
 
-	// Send response in chunks
-	chunkSize := 10
-	for i := 0; i < len(response); i += chunkSize {
-		end := i + chunkSize
-		if end > len(response) {
-			end = len(response)
-		}
-		chunkContent := response[i:end]
+	// Call LLM to get streaming response
+	llmReq := &llm.Request{
+		Messages:    messages,
+		Temperature: 0.7,
+	}
 
-		chunk := ChatCompletionChunk{
-			ID:      initialChunk.ID,
+	ctx := r.Context()
+	eventChan, err := driver.ChatStream(ctx, llmReq)
+	if err != nil {
+		errorChunk := ChatCompletionChunk{
+			ID:      requestID,
 			Object:  "chat.completion.chunk",
-			Created: initialChunk.Created,
-			Model:   model,
-			Choices: []ChunkChoice{
-				{
-					Index: 0,
-					Delta: ChunkDelta{
-						Content: &chunkContent,
+			Created: created,
+			Model:   agentName,
+			Choices: []ChunkChoice{},
+		}
+		errorBytes, _ := json.Marshal(errorChunk)
+		fmt.Fprintf(w, "data: %s\n\n", errorBytes)
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+		w.(http.Flusher).Flush()
+		return
+	}
+
+	// Process streaming events
+	for event := range eventChan {
+		switch event.Type {
+		case llm.StreamEventTextDelta:
+			chunk := ChatCompletionChunk{
+				ID:      requestID,
+				Object:  "chat.completion.chunk",
+				Created: created,
+				Model:   agentName,
+				Choices: []ChunkChoice{
+					{
+						Index: 0,
+						Delta: ChunkDelta{
+							Content: &event.Text,
+						},
 					},
 				},
-			},
+			}
+			chunkBytes, _ := json.Marshal(chunk)
+			fmt.Fprintf(w, "data: %s\n\n", chunkBytes)
+			w.(http.Flusher).Flush()
+
+		case llm.StreamEventContentComplete:
+			// Send final chunk
+			finalChunk := ChatCompletionChunk{
+				ID:      requestID,
+				Object:  "chat.completion.chunk",
+				Created: created,
+				Model:   agentName,
+				Choices: []ChunkChoice{
+					{
+						Index:        0,
+						Delta:        ChunkDelta{},
+						FinishReason: stringPtr("stop"),
+					},
+				},
+			}
+			finalBytes, _ := json.Marshal(finalChunk)
+			fmt.Fprintf(w, "data: %s\n\n", finalBytes)
+			w.(http.Flusher).Flush()
+
+			// Send [DONE] marker
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			w.(http.Flusher).Flush()
 		}
-		chunkBytes, _ := json.Marshal(chunk)
-		fmt.Fprintf(w, "data: %s\n\n", chunkBytes)
-		w.(http.Flusher).Flush()
-		time.Sleep(30 * time.Millisecond)
 	}
-
-	// Send final chunk
-	finalChunk := ChatCompletionChunk{
-		ID:      initialChunk.ID,
-		Object:  "chat.completion.chunk",
-		Created: initialChunk.Created,
-		Model:   model,
-		Choices: []ChunkChoice{
-			{
-				Index:        0,
-				Delta:        ChunkDelta{},
-				FinishReason: stringPtr("stop"),
-			},
-		},
-	}
-	finalBytes, _ := json.Marshal(finalChunk)
-	fmt.Fprintf(w, "data: %s\n\n", finalBytes)
-	w.(http.Flusher).Flush()
-
-	// Send [DONE] marker
-	fmt.Fprintf(w, "data: [DONE]\n\n")
-	w.(http.Flusher).Flush()
 }
 
 func stringPtr(s string) *string {

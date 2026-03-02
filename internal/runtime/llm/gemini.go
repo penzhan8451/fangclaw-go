@@ -164,3 +164,36 @@ func (p *GeminiProvider) Chat(ctx context.Context, req *Request) (*Response, err
 		},
 	}, nil
 }
+
+// ChatStream sends a streaming chat completion request (simulated).
+func (p *GeminiProvider) ChatStream(ctx context.Context, req *Request) (<-chan StreamEvent, error) {
+	resp, err := p.Chat(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	eventChan := make(chan StreamEvent)
+
+	go func() {
+		defer close(eventChan)
+
+		chunkSize := 5
+		for i := 0; i < len(resp.Content); i += chunkSize {
+			end := i + chunkSize
+			if end > len(resp.Content) {
+				end = len(resp.Content)
+			}
+			eventChan <- StreamEvent{
+				Type: StreamEventTextDelta,
+				Text: resp.Content[i:end],
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+
+		eventChan <- StreamEvent{
+			Type: StreamEventContentComplete,
+		}
+	}()
+
+	return eventChan, nil
+}
