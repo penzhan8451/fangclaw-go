@@ -64,13 +64,13 @@ function sessionsPage() {
 
     deleteSession(sessionId) {
       var self = this;
-      FangClaw-goToast.confirm('Delete Session', 'This will permanently remove the session and its messages.', async function() {
+      FangClawGoToast.confirm('Delete Session', 'This will permanently remove the session and its messages.', async function() {
         try {
           await FangClawGoAPI.del('/api/sessions/' + sessionId);
           self.sessions = self.sessions.filter(function(s) { return s.session_id !== sessionId; });
-          FangClaw-goToast.success('Session deleted');
+          FangClawGoToast.success('Session deleted');
         } catch(e) {
-          FangClaw-goToast.error('Failed to delete session: ' + e.message);
+          FangClawGoToast.error('Failed to delete session: ' + e.message);
         }
       });
     },
@@ -97,24 +97,24 @@ function sessionsPage() {
       try {
         await FangClawGoAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.newKey), { value: value });
         this.showAdd = false;
-        FangClaw-goToast.success('Key "' + this.newKey + '" saved');
+        FangClawGoToast.success('Key "' + this.newKey + '" saved');
         this.newKey = '';
         this.newValue = '""';
         await this.loadKv();
       } catch(e) {
-        FangClaw-goToast.error('Failed to save key: ' + e.message);
+        FangClawGoToast.error('Failed to save key: ' + e.message);
       }
     },
 
     deleteKey(key) {
       var self = this;
-      FangClaw-goToast.confirm('Delete Key', 'Delete key "' + key + '"? This cannot be undone.', async function() {
+      FangClawGoToast.confirm('Delete Key', 'Delete key "' + key + '"? This cannot be undone.', async function() {
         try {
           await FangClawGoAPI.del('/api/memory/agents/' + self.memAgentId + '/kv/' + encodeURIComponent(key));
-          FangClaw-goToast.success('Key "' + key + '" deleted');
+          FangClawGoToast.success('Key "' + key + '" deleted');
           await self.loadKv();
         } catch(e) {
-          FangClaw-goToast.error('Failed to delete key: ' + e.message);
+          FangClawGoToast.error('Failed to delete key: ' + e.message);
         }
       });
     },
@@ -135,12 +135,12 @@ function sessionsPage() {
       try { value = JSON.parse(this.editingValue); } catch(e) { value = this.editingValue; }
       try {
         await FangClawGoAPI.put('/api/memory/agents/' + this.memAgentId + '/kv/' + encodeURIComponent(this.editingKey), { value: value });
-        FangClaw-goToast.success('Key "' + this.editingKey + '" updated');
+        FangClawGoToast.success('Key "' + this.editingKey + '" updated');
         this.editingKey = null;
         this.editingValue = '';
         await this.loadKv();
       } catch(e) {
-        FangClaw-goToast.error('Failed to save: ' + e.message);
+        FangClawGoToast.error('Failed to save: ' + e.message);
       }
     }
   };

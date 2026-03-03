@@ -385,13 +385,13 @@ function handsPage() {
     async deactivate(inst) {
       var self = this;
       var handName = inst.agent_name || inst.hand_id;
-      FangClaw-goToast.confirm('Deactivate Hand', 'Deactivate hand "' + handName + '"? This will kill its agent.', async function() {
+      FangClawGoToast.confirm('Deactivate Hand', 'Deactivate hand "' + handName + '"? This will kill its agent.', async function() {
         try {
           await FangClawGoAPI.delete('/api/hands/instances/' + inst.instance_id);
           self.instances = self.instances.filter(function(i) { return i.instance_id !== inst.instance_id; });
-          FangClaw-goToast.success('Hand deactivated.');
+          FangClawGoToast.success('Hand deactivated.');
         } catch(e) {
-          FangClaw-goToast.error('Deactivation failed: ' + (e.message || 'unknown error'));
+          FangClawGoToast.error('Deactivation failed: ' + (e.message || 'unknown error'));
         }
       });
     },

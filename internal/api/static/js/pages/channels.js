@@ -180,7 +180,7 @@ function channelsPage() {
           this.pollQR();
         }
         if (this.qr.connected) {
-          FangClaw-goToast.success('WhatsApp connected!');
+          FangClawGoToast.success('WhatsApp connected!');
           await this.refreshStatus();
         }
       } catch(e) {
@@ -200,7 +200,7 @@ function channelsPage() {
             self.qrPollTimer = null;
             self.qr.connected = true;
             self.qr.message = result.message || 'Connected!';
-            FangClaw-goToast.success('WhatsApp linked successfully!');
+            FangClawGoToast.success('WhatsApp linked successfully!');
             await self.refreshStatus();
           } else if (result.expired) {
             clearInterval(self.qrPollTimer);
@@ -231,16 +231,16 @@ function channelsPage() {
           if (testResult.status === 'ok') {
             this.testPassed = true;
             this.setupStep = 3;
-            FangClaw-goToast.success(this.setupModal.display_name + ' activated!');
+            FangClawGoToast.success(this.setupModal.display_name + ' activated!');
           } else {
-            FangClaw-goToast.success(this.setupModal.display_name + ' saved. ' + (testResult.message || ''));
+            FangClawGoToast.success(this.setupModal.display_name + ' saved. ' + (testResult.message || ''));
           }
         } catch(te) {
-          FangClaw-goToast.success(this.setupModal.display_name + ' saved. Test to verify connection.');
+          FangClawGoToast.success(this.setupModal.display_name + ' saved. Test to verify connection.');
         }
         await this.refreshStatus();
       } catch(e) {
-        FangClaw-goToast.error('Failed: ' + (e.message || 'Unknown error'));
+        FangClawGoToast.error('Failed: ' + (e.message || 'Unknown error'));
       }
       this.configuring = false;
     },
@@ -250,14 +250,14 @@ function channelsPage() {
       var name = this.setupModal.name;
       var displayName = this.setupModal.display_name;
       var self = this;
-      FangClaw-goToast.confirm('Remove Channel', 'Remove ' + displayName + ' configuration? This will deactivate the channel.', async function() {
+      FangClawGoToast.confirm('Remove Channel', 'Remove ' + displayName + ' configuration? This will deactivate the channel.', async function() {
         try {
           await FangClawGoAPI.delete('/api/channels/' + name + '/configure');
-          FangClaw-goToast.success(displayName + ' removed and deactivated.');
+          FangClawGoToast.success(displayName + ' removed and deactivated.');
           await self.refreshStatus();
           self.setupModal = null;
         } catch(e) {
-          FangClaw-goToast.error('Failed: ' + (e.message || 'Unknown error'));
+          FangClawGoToast.error('Failed: ' + (e.message || 'Unknown error'));
         }
       });
     },
@@ -271,12 +271,12 @@ function channelsPage() {
         if (result.status === 'ok') {
           this.testPassed = true;
           this.setupStep = 3;
-          FangClaw-goToast.success(result.message);
+          FangClawGoToast.success(result.message);
         } else {
-          FangClaw-goToast.error(result.message);
+          FangClawGoToast.error(result.message);
         }
       } catch(e) {
-        FangClaw-goToast.error('Test failed: ' + (e.message || 'Unknown error'));
+        FangClawGoToast.error('Test failed: ' + (e.message || 'Unknown error'));
       }
       this.testing[name] = false;
     },
@@ -286,9 +286,9 @@ function channelsPage() {
       if (!tpl) return;
       try {
         await navigator.clipboard.writeText(tpl);
-        FangClaw-goToast.success('Copied to clipboard');
+        FangClawGoToast.success('Copied to clipboard');
       } catch(e) {
-        FangClaw-goToast.error('Copy failed');
+        FangClawGoToast.error('Copy failed');
       }
     },
 

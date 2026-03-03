@@ -187,7 +187,7 @@ function skillsPage() {
         var data = await FangClawGoAPI.get('/api/clawhub/skill/' + encodeURIComponent(slug));
         this.skillDetail = data;
       } catch(e) {
-        FangClaw-goToast.error('Failed to load skill details');
+        FangClawGoToast.error('Failed to load skill details');
       }
       this.detailLoading = false;
     },
@@ -205,9 +205,9 @@ function skillsPage() {
         var data = await FangClawGoAPI.post('/api/clawhub/install', { slug: slug });
         this.installResult = data;
         if (data.warnings && data.warnings.length > 0) {
-          FangClaw-goToast.success('Skill "' + data.name + '" installed with ' + data.warnings.length + ' warning(s)');
+          FangClawGoToast.success('Skill "' + data.name + '" installed with ' + data.warnings.length + ' warning(s)');
         } else {
-          FangClaw-goToast.success('Skill "' + data.name + '" installed successfully');
+          FangClawGoToast.success('Skill "' + data.name + '" installed successfully');
         }
         // Update installed state in detail modal if open
         if (this.skillDetail && this.skillDetail.slug === slug) {
@@ -217,11 +217,11 @@ function skillsPage() {
       } catch(e) {
         var msg = e.message || 'Install failed';
         if (msg.includes('already_installed')) {
-          FangClaw-goToast.error('Skill is already installed');
+          FangClawGoToast.error('Skill is already installed');
         } else if (msg.includes('SecurityBlocked')) {
-          FangClaw-goToast.error('Skill blocked by security scan');
+          FangClawGoToast.error('Skill blocked by security scan');
         } else {
-          FangClaw-goToast.error('Install failed: ' + msg);
+          FangClawGoToast.error('Install failed: ' + msg);
         }
       }
       this.installingSlug = null;
@@ -230,13 +230,13 @@ function skillsPage() {
     // Uninstall
     uninstallSkill: function(name) {
       var self = this;
-      FangClaw-goToast.confirm('Uninstall Skill', 'Uninstall skill "' + name + '"? This cannot be undone.', async function() {
+      FangClawGoToast.confirm('Uninstall Skill', 'Uninstall skill "' + name + '"? This cannot be undone.', async function() {
         try {
           await FangClawGoAPI.post('/api/skills/uninstall', { name: name });
-          FangClaw-goToast.success('Skill "' + name + '" uninstalled');
+          FangClawGoToast.success('Skill "' + name + '" uninstalled');
           await self.loadSkills();
         } catch(e) {
-          FangClaw-goToast.error('Failed to uninstall skill: ' + e.message);
+          FangClawGoToast.error('Failed to uninstall skill: ' + e.message);
         }
       });
     },
@@ -250,11 +250,11 @@ function skillsPage() {
           runtime: 'prompt_only',
           prompt_context: skill.prompt_context || skill.description
         });
-        FangClaw-goToast.success('Skill "' + skill.name + '" created');
+        FangClawGoToast.success('Skill "' + skill.name + '" created');
         this.tab = 'installed';
         await this.loadSkills();
       } catch(e) {
-        FangClaw-goToast.error('Failed to create skill: ' + e.message);
+        FangClawGoToast.error('Failed to create skill: ' + e.message);
       }
     },
 

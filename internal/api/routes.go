@@ -127,6 +127,10 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/audit/recent", r.handleAuditRecent)
 	mux.HandleFunc("GET /api/audit/verify", r.handleAuditVerify)
 	mux.HandleFunc("GET /api/providers", r.handleProviders)
+	mux.HandleFunc("POST /api/providers/{name}/key", r.handleSetProviderKey)
+	mux.HandleFunc("DELETE /api/providers/{name}/key", r.handleDeleteProviderKey)
+	mux.HandleFunc("POST /api/providers/{name}/test", r.handleTestProvider)
+	mux.HandleFunc("PUT /api/providers/{name}/url", r.handleSetProviderURL)
 	mux.HandleFunc("GET /api/mcp/servers", r.handleMcpServers)
 
 	// Agent session endpoints
@@ -139,6 +143,16 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agents/{id}/message", r.handleAgentMessage)
 	mux.HandleFunc("POST /api/agents/{id}/stop", r.handleStopAgent)
 	mux.HandleFunc("PUT /api/agents/{id}/model", r.handleUpdateAgentModel)
+
+	// Agent WebSocket endpoint
+	mux.HandleFunc("/api/agents/{id}/ws", func(w http.ResponseWriter, req *http.Request) {
+		id := req.PathValue("id")
+		req.URL.RawQuery = "agent_id=" + id
+		WSHandler(r.kernel)(w, req)
+	})
+
+	// Shutdown endpoint
+	mux.HandleFunc("POST /api/shutdown", r.handleShutdown)
 }
 
 // respondJSON responds with JSON.
@@ -187,13 +201,15 @@ func (r *Router) handleListAgents(w http.ResponseWriter, req *http.Request) {
 	var result []map[string]interface{}
 	for _, agent := range agents {
 		result = append(result, map[string]interface{}{
-			"id":          agent.ID,
-			"name":        agent.Name,
-			"state":       agent.State,
-			"mode":        agent.Mode,
-			"tags":        agent.Tags,
-			"created_at":  agent.CreatedAt,
-			"last_active": agent.LastActive,
+			"id":             agent.ID,
+			"name":           agent.Name,
+			"state":          agent.State,
+			"mode":           agent.Mode,
+			"tags":           agent.Tags,
+			"created_at":     agent.CreatedAt,
+			"last_active":    agent.LastActive,
+			"model_provider": agent.Manifest.Model.Provider,
+			"model_name":     agent.Manifest.Model.Model,
 		})
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -554,7 +570,14 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 
 	driver, err := getLLMDriver()
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		message := "👋 Hi! I'm FangClaw-go. To use the full chat capabilities, please set up an API key.\n\n**Supported providers:**\n- OpenRouter (recommended)\n- OpenAI\n- Anthropic\n- Groq\n\n**How to set up:**\n1. Go to Settings page\n2. Select your preferred provider\n3. Enter your API key\n\nOr set the API key via environment variables:\n- `OPENROUTER_API_KEY`\n- `OPENAI_API_KEY`\n- `ANTHROPIC_API_KEY`\n- `GROQ_API_KEY`"
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"response": message,
+			"message": map[string]string{
+				"role":    "assistant",
+				"content": message,
+			},
+		})
 		return
 	}
 
@@ -703,16 +726,6 @@ func (r *Router) handleAuditVerify(w http.ResponseWriter, req *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"verified":    true,
 		"merkle_root": "0000000000000000000000000000000000000000000000000000000000000000",
-	})
-}
-
-func (r *Router) handleProviders(w http.ResponseWriter, req *http.Request) {
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"providers": []map[string]interface{}{
-			{"name": "openai", "available": true},
-			{"name": "anthropic", "available": true},
-			{"name": "openrouter", "available": true},
-		},
 	})
 }
 
@@ -952,4 +965,13 @@ func (r *Router) handleInstallHandDeps(w http.ResponseWriter, req *http.Request)
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 	})
+}
+
+func (r *Router) handleShutdown(w http.ResponseWriter, req *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Shutdown initiated",
+	})
+
+	RequestShutdown()
 }

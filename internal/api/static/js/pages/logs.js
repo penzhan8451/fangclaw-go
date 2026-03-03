@@ -237,13 +237,13 @@ function logsPage() {
         var data = await FangClawGoAPI.get('/api/audit/verify');
         this.chainValid = data.valid === true;
         if (this.chainValid) {
-          FangClaw-goToast.success('Audit chain verified — ' + (data.entries || 0) + ' entries valid');
+          FangClawGoToast.success('Audit chain verified — ' + (data.entries || 0) + ' entries valid');
         } else {
-          FangClaw-goToast.error('Audit chain broken!');
+          FangClawGoToast.error('Audit chain broken!');
         }
       } catch(e) {
         this.chainValid = false;
-        FangClaw-goToast.error('Chain verification failed: ' + e.message);
+        FangClawGoToast.error('Chain verification failed: ' + e.message);
       }
     },
 

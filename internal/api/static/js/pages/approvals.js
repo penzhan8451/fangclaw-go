@@ -33,22 +33,22 @@ function approvalsPage() {
     async approve(id) {
       try {
         await FangClawGoAPI.post('/api/approvals/' + id + '/approve', {});
-        FangClaw-goToast.success('Approved');
+        FangClawGoToast.success('Approved');
         await this.loadData();
       } catch(e) {
-        FangClaw-goToast.error(e.message);
+        FangClawGoToast.error(e.message);
       }
     },
 
     async reject(id) {
       var self = this;
-      FangClaw-goToast.confirm('Reject Action', 'Are you sure you want to reject this action?', async function() {
+      FangClawGoToast.confirm('Reject Action', 'Are you sure you want to reject this action?', async function() {
         try {
           await FangClawGoAPI.post('/api/approvals/' + id + '/reject', {});
-          FangClaw-goToast.success('Rejected');
+          FangClawGoToast.success('Rejected');
           await self.loadData();
         } catch(e) {
-          FangClaw-goToast.error(e.message);
+          FangClawGoToast.error(e.message);
         }
       });
     },

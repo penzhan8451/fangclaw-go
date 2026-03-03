@@ -369,7 +369,7 @@ function wizardPage() {
       if (!provider) return;
       var key = this.apiKeyInput.trim();
       if (!key) {
-        FangClaw-goToast.error('Please enter an API key');
+        FangClawGoToast.error('Please enter an API key');
         return;
       }
       this.savingKey = true;
@@ -378,12 +378,12 @@ function wizardPage() {
         this.apiKeyInput = '';
         this.keySaved = true;
         this.setupSummary.provider = provider.display_name;
-        FangClaw-goToast.success('API key saved for ' + provider.display_name);
+        FangClawGoToast.success('API key saved for ' + provider.display_name);
         await this.loadProviders();
         // Auto-test after saving
         await this.testKey();
       } catch(e) {
-        FangClaw-goToast.error('Failed to save key: ' + e.message);
+        FangClawGoToast.error('Failed to save key: ' + e.message);
       }
       this.savingKey = false;
     },
@@ -397,13 +397,13 @@ function wizardPage() {
         var result = await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
         this.testResult = result;
         if (result.status === 'ok') {
-          FangClaw-goToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
+          FangClawGoToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
         } else {
-          FangClaw-goToast.error(provider.display_name + ': ' + (result.error || 'Connection failed'));
+          FangClawGoToast.error(provider.display_name + ': ' + (result.error || 'Connection failed'));
         }
       } catch(e) {
         this.testResult = { status: 'error', error: e.message };
-        FangClaw-goToast.error('Test failed: ' + e.message);
+        FangClawGoToast.error('Test failed: ' + e.message);
       }
       this.testingProvider = false;
     },
@@ -423,7 +423,7 @@ function wizardPage() {
       if (!tpl) return;
       var name = this.agentName.trim();
       if (!name) {
-        FangClaw-goToast.error('Please enter a name for your agent');
+        FangClawGoToast.error('Please enter a name for your agent');
         return;
       }
 
@@ -450,13 +450,13 @@ function wizardPage() {
         if (res.agent_id) {
           this.createdAgent = { id: res.agent_id, name: res.name || name };
           this.setupSummary.agent = res.name || name;
-          FangClaw-goToast.success('Agent "' + (res.name || name) + '" created');
+          FangClawGoToast.success('Agent "' + (res.name || name) + '" created');
           await Alpine.store('app').refreshAgents();
         } else {
-          FangClaw-goToast.error('Failed: ' + (res.error || 'Unknown error'));
+          FangClawGoToast.error('Failed: ' + (res.error || 'Unknown error'));
         }
       } catch(e) {
-        FangClaw-goToast.error('Failed to create agent: ' + e.message);
+        FangClawGoToast.error('Failed to create agent: ' + e.message);
       }
       this.creatingAgent = false;
     },
@@ -502,7 +502,7 @@ function wizardPage() {
       if (!ch) return;
       var token = this.channelToken.trim();
       if (!token) {
-        FangClaw-goToast.error('Please enter the ' + ch.token_label);
+        FangClawGoToast.error('Please enter the ' + ch.token_label);
         return;
       }
       this.configuringChannel = true;
@@ -513,9 +513,9 @@ function wizardPage() {
         await FangClawGoAPI.post('/api/channels/' + ch.name + '/configure', { fields: fields });
         this.channelConfigured = true;
         this.setupSummary.channel = ch.display_name;
-        FangClaw-goToast.success(ch.display_name + ' configured and activated.');
+        FangClawGoToast.success(ch.display_name + ' configured and activated.');
       } catch(e) {
-        FangClaw-goToast.error('Failed: ' + (e.message || 'Unknown error'));
+        FangClawGoToast.error('Failed: ' + (e.message || 'Unknown error'));
       }
       this.configuringChannel = false;
     },

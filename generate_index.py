@@ -7,7 +7,7 @@ def read_file(filepath):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    static_dir = os.path.join(base_dir, 'web', 'static')
+    static_dir = os.path.join(base_dir, 'internal', 'api', 'static')
     
     html_parts = []
     

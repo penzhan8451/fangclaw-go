@@ -199,8 +199,8 @@ function chatPage() {
           if (self.currentAgent) {
             FangClawGoAPI.post('/api/agents/' + self.currentAgent.id + '/session/reset', {}).then(function() {
               self.messages = [];
-              FangClaw-goToast.success('Session reset');
-            }).catch(function(e) { FangClaw-goToast.error('Reset failed: ' + e.message); });
+              FangClawGoToast.success('Session reset');
+            }).catch(function(e) { FangClawGoToast.error('Reset failed: ' + e.message); });
           }
           break;
         case '/compact':
@@ -209,7 +209,7 @@ function chatPage() {
             FangClawGoAPI.post('/api/agents/' + self.currentAgent.id + '/session/compact', {}).then(function(res) {
               self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Compaction complete', meta: '', tools: [] });
               self.scrollToBottom();
-            }).catch(function(e) { FangClaw-goToast.error('Compaction failed: ' + e.message); });
+            }).catch(function(e) { FangClawGoToast.error('Compaction failed: ' + e.message); });
           }
           break;
         case '/stop':
@@ -218,7 +218,7 @@ function chatPage() {
               self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Run cancelled', meta: '', tools: [] });
               self.sending = false;
               self.scrollToBottom();
-            }).catch(function(e) { FangClaw-goToast.error('Stop failed: ' + e.message); });
+            }).catch(function(e) { FangClawGoToast.error('Stop failed: ' + e.message); });
           }
           break;
         case '/usage':
@@ -286,7 +286,7 @@ function chatPage() {
                 self.currentAgent.model_name = cmdArgs;
                 self.messages.push({ id: ++msgId, role: 'system', text: 'Model switched to: `' + cmdArgs + '`', meta: '', tools: [] });
                 self.scrollToBottom();
-              }).catch(function(e) { FangClaw-goToast.error('Model switch failed: ' + e.message); });
+              }).catch(function(e) { FangClawGoToast.error('Model switch failed: ' + e.message); });
             } else {
               self.messages.push({ id: ++msgId, role: 'system', text: '**Current Model**\n- Provider: `' + (self.currentAgent.model_provider || '?') + '`\n- Model: `' + (self.currentAgent.model_name || '?') + '`', meta: '', tools: [] });
               self.scrollToBottom();
@@ -343,26 +343,22 @@ function chatPage() {
       this.currentAgent = agent;
       this.messages = [];
       this.connectWs(agent.id);
-      // Show welcome tips on first use
-      if (!localStorage.getItem('of-chat-tips-seen')) {
-        var localMsgId = 0;
-        this.messages.push({
-          id: ++localMsgId,
-          role: 'system',
-          text: '**Welcome to FangClaw-go Chat!**\n\n' +
-            '- Type `/` to see available commands\n' +
-            '- `/help` shows all commands\n' +
-            '- `/think on` enables extended reasoning\n' +
-            '- `/context` shows context window usage\n' +
-            '- `/verbose off` hides tool details\n' +
-            '- `Ctrl+Shift+F` toggles focus mode\n' +
-            '- Drag & drop files to attach them\n' +
-            '- `Ctrl+/` opens the command palette',
-          meta: '',
-          tools: []
-        });
-        localStorage.setItem('of-chat-tips-seen', 'true');
-      }
+      // Always show welcome tips
+      this.messages.push({
+        id: ++msgId,
+        role: 'system',
+        text: '**Welcome to FangClaw-go Chat!**\n\n' +
+          '- Type `/` to see available commands\n' +
+          '- `/help` shows all commands\n' +
+          '- `/think on` enables extended reasoning\n' +
+          '- `/context` shows context window usage\n' +
+          '- `/verbose off` hides tool details\n' +
+          '- `Ctrl+Shift+F` toggles focus mode\n' +
+          '- Drag & drop files to attach them\n' +
+          '- `Ctrl+/` opens the command palette',
+        meta: '',
+        tools: []
+      });
       // Focus input after agent selection
       var self = this;
       this.$nextTick(function() {
@@ -421,9 +417,9 @@ function chatPage() {
         await this.loadSession(this.currentAgent.id);
         this.messages = [];
         this.scrollToBottom();
-        if (typeof FangClaw-goToast !== 'undefined') FangClaw-goToast.success('New session created');
+        if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.success('New session created');
       } catch(e) {
-        if (typeof FangClaw-goToast !== 'undefined') FangClaw-goToast.error('Failed to create session');
+        if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.error('Failed to create session');
       }
     },
 
@@ -439,7 +435,7 @@ function chatPage() {
         this._wsAgent = null;
         this.connectWs(this.currentAgent.id);
       } catch(e) {
-        if (typeof FangClaw-goToast !== 'undefined') FangClaw-goToast.error('Failed to switch session');
+        if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.error('Failed to switch session');
       }
     },
 
@@ -465,6 +461,7 @@ function chatPage() {
     },
 
     handleWsMessage(data) {
+      console.log('[Chat] WebSocket message received:', data);
       switch (data.type) {
         case 'connected': break;
 
@@ -614,10 +611,12 @@ function chatPage() {
           break;
 
         case 'response':
+          console.log('[Chat] Handling response:', data);
           this._clearTypingTimeout();
+          var responseData = data.data || data;
           // Update context pressure from response
-          if (data.context_pressure) {
-            this.contextPressure = data.context_pressure;
+          if (responseData.context_pressure) {
+            this.contextPressure = responseData.context_pressure;
           }
           // Collect streamed text before removing streaming messages
           var streamedText = '';
@@ -637,19 +636,25 @@ function chatPage() {
             }
           });
           this.messages = this.messages.filter(function(m) { return !m.thinking && !m.streaming; });
-          var meta = (data.input_tokens || 0) + ' in / ' + (data.output_tokens || 0) + ' out';
-          if (data.cost_usd != null) meta += ' | $' + data.cost_usd.toFixed(4);
-          if (data.iterations) meta += ' | ' + data.iterations + ' iter';
-          if (data.fallback_model) meta += ' | fallback: ' + data.fallback_model;
+          var meta = (responseData.input_tokens || 0) + ' in / ' + (responseData.output_tokens || 0) + ' out';
+          if (responseData.cost_usd != null) meta += ' | $' + responseData.cost_usd.toFixed(4);
+          if (responseData.iterations) meta += ' | ' + responseData.iterations + ' iter';
+          if (responseData.fallback_model) meta += ' | fallback: ' + responseData.fallback_model;
           // Use server response if non-empty, otherwise preserve accumulated streamed text
-          var finalText = (data.content && data.content.trim()) ? data.content : streamedText;
+          console.log('[Chat] responseData.content:', responseData.content);
+          console.log('[Chat] streamedText:', streamedText);
+          var finalText = (responseData.content && responseData.content.trim()) ? responseData.content : streamedText;
+          console.log('[Chat] finalText before sanitize:', finalText);
           // Strip raw function-call JSON that some models leak as text
           finalText = this.sanitizeToolText(finalText);
+          console.log('[Chat] finalText after sanitize:', finalText);
           // If text is empty but tools ran, show a summary
           if (!finalText.trim() && streamedTools.length) {
             finalText = '';
           }
+          console.log('[Chat] Pushing message to this.messages:', { id: msgId + 1, role: 'agent', text: finalText, meta: meta, tools: streamedTools });
           this.messages.push({ id: ++msgId, role: 'agent', text: finalText, meta: meta, tools: streamedTools, ts: Date.now() });
+          console.log('[Chat] this.messages after push:', this.messages);
           this.sending = false;
           this.tokenCount = 0;
           this.scrollToBottom();
@@ -777,7 +782,7 @@ function chatPage() {
             fileRefs.push('[File: ' + att.file.name + ']');
             uploadedFiles.push({ file_id: uploadRes.file_id, filename: uploadRes.filename, content_type: uploadRes.content_type });
           } catch(e) {
-            FangClaw-goToast.error('Failed to upload ' + att.file.name);
+            FangClawGoToast.error('Failed to upload ' + att.file.name);
             fileRefs.push('[File: ' + att.file.name + ' (upload failed)]');
           }
           att.uploading = false;
@@ -826,7 +831,7 @@ function chatPage() {
 
       // HTTP fallback
       if (!FangClawGoAPI.isWsConnected()) {
-        FangClaw-goToast.info('Using HTTP mode (no streaming)');
+        FangClawGoToast.info('Using HTTP mode (no streaming)');
       }
       this.messages.push({ id: ++msgId, role: 'agent', text: '', meta: '', thinking: true, tools: [], ts: Date.now() });
       this.scrollToBottom();
@@ -842,7 +847,8 @@ function chatPage() {
         this.messages.push({ id: ++msgId, role: 'agent', text: res.response, meta: httpMeta, tools: [], ts: Date.now() });
       } catch(e) {
         this.messages = this.messages.filter(function(m) { return !m.thinking; });
-        this.messages.push({ id: ++msgId, role: 'system', text: 'Error: ' + e.message, meta: '', tools: [], ts: Date.now() });
+        var errorMsg = e.message || 'An unknown error occurred';
+        this.messages.push({ id: ++msgId, role: 'system', text: 'Error: ' + errorMsg, meta: '', tools: [], ts: Date.now() });
       }
       this.sending = false;
       this.scrollToBottom();
@@ -863,24 +869,24 @@ function chatPage() {
         self.sending = false;
         self.scrollToBottom();
         self.$nextTick(function() { self._processQueue(); });
-      }).catch(function(e) { FangClaw-goToast.error('Stop failed: ' + e.message); });
+      }).catch(function(e) { FangClawGoToast.error('Stop failed: ' + e.message); });
     },
 
     killAgent() {
       if (!this.currentAgent) return;
       var self = this;
       var name = this.currentAgent.name;
-      FangClaw-goToast.confirm('Stop Agent', 'Stop agent "' + name + '"? The agent will be shut down.', async function() {
+      FangClawGoToast.confirm('Stop Agent', 'Stop agent "' + name + '"? The agent will be shut down.', async function() {
         try {
           await FangClawGoAPI.del('/api/agents/' + self.currentAgent.id);
           FangClawGoAPI.wsDisconnect();
           self._wsAgent = null;
           self.currentAgent = null;
           self.messages = [];
-          FangClaw-goToast.success('Agent "' + name + '" stopped');
+          FangClawGoToast.success('Agent "' + name + '" stopped');
           Alpine.store('app').refreshAgents();
         } catch(e) {
-          FangClaw-goToast.error('Failed to stop agent: ' + e.message);
+          FangClawGoToast.error('Failed to stop agent: ' + e.message);
         }
       });
     },
@@ -899,7 +905,7 @@ function chatPage() {
       for (var i = 0; i < files.length; i++) {
         var file = files[i];
         if (file.size > 10 * 1024 * 1024) {
-          FangClaw-goToast.warn('File "' + file.name + '" exceeds 10MB limit');
+          FangClawGoToast.warn('File "' + file.name + '" exceeds 10MB limit');
           continue;
         }
         var typeOk = allowed.indexOf(file.type) !== -1;
@@ -908,7 +914,7 @@ function chatPage() {
           typeOk = allowedExts.indexOf(ext) !== -1 || file.type.startsWith('image/');
         }
         if (!typeOk) {
-          FangClaw-goToast.warn('File type not supported: ' + file.name);
+          FangClawGoToast.warn('File type not supported: ' + file.name);
           continue;
         }
         var preview = null;
@@ -984,7 +990,7 @@ function chatPage() {
         this.recordingTime = 0;
         this._recordingTimer = setInterval(function() { self.recordingTime++; }, 1000);
       } catch(e) {
-        if (typeof FangClaw-goToast !== 'undefined') FangClaw-goToast.error('Microphone access denied');
+        if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.error('Microphone access denied');
       }
     },
 
@@ -1023,7 +1029,7 @@ function chatPage() {
         this._sendPayload(text, [upload], []);
       } catch(e) {
         this.messages = this.messages.filter(function(m) { return !m.thinking || m.role !== 'system'; });
-        if (typeof FangClaw-goToast !== 'undefined') FangClaw-goToast.error('Failed to upload audio: ' + (e.message || 'unknown error'));
+        if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.error('Failed to upload audio: ' + (e.message || 'unknown error'));
       }
     },
 

@@ -365,10 +365,10 @@ function workflowBuilder() {
           description: this.workflowDescription || '',
           steps: steps
         });
-        FangClaw-goToast.success('Workflow saved!');
+        FangClawGoToast.success('Workflow saved!');
         this.showSaveModal = false;
       } catch(e) {
-        FangClaw-goToast.error('Failed to save: ' + e.message);
+        FangClawGoToast.error('Failed to save: ' + e.message);
       }
     },
 

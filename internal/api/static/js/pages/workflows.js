@@ -38,10 +38,10 @@ function workflowsPage() {
         await FangClawGoAPI.post('/api/workflows', { name: wfName, description: this.newWf.description, steps: steps });
         this.showCreateModal = false;
         this.newWf = { name: '', description: '', steps: [{ name: '', agent_name: '', mode: 'sequential', prompt: '{{input}}' }] };
-        FangClaw-goToast.success('Workflow "' + wfName + '" created');
+        FangClawGoToast.success('Workflow "' + wfName + '" created');
         await this.loadWorkflows();
       } catch(e) {
-        FangClaw-goToast.error('Failed to create workflow: ' + e.message);
+        FangClawGoToast.error('Failed to create workflow: ' + e.message);
       }
     },
 
@@ -58,10 +58,10 @@ function workflowsPage() {
       try {
         var res = await FangClawGoAPI.post('/api/workflows/' + this.runModal.id + '/run', { input: this.runInput });
         this.runResult = res.output || JSON.stringify(res, null, 2);
-        FangClaw-goToast.success('Workflow completed');
+        FangClawGoToast.success('Workflow completed');
       } catch(e) {
         this.runResult = 'Error: ' + e.message;
-        FangClaw-goToast.error('Workflow failed: ' + e.message);
+        FangClawGoToast.error('Workflow failed: ' + e.message);
       }
       this.running = false;
     },
@@ -72,7 +72,7 @@ function workflowsPage() {
         this.runResult = JSON.stringify(runs, null, 2);
         this.runModal = wf;
       } catch(e) {
-        FangClaw-goToast.error('Failed to load run history: ' + e.message);
+        FangClawGoToast.error('Failed to load run history: ' + e.message);
       }
     }
   };

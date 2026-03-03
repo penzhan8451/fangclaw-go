@@ -1461,7 +1461,7 @@
               <div class="modal" style="max-width:600px">
                 <div class="modal-header"><h3>Generated TOML</h3><button class="modal-close" @click="showTomlPreview = false">&times;</button></div>
                 <pre class="wf-toml-preview" x-text="tomlOutput"></pre>
-                <button class="btn btn-ghost btn-block mt-2" @click="navigator.clipboard.writeText(tomlOutput); FangClaw-goToast.success('Copied!')">Copy to Clipboard</button>
+                <button class="btn btn-ghost btn-block mt-2" @click="navigator.clipboard.writeText(tomlOutput); FangClawGoToast.success('Copied!')">Copy to Clipboard</button>
               </div>
             </div>
           </template>

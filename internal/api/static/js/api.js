@@ -202,6 +202,7 @@ var FangClawGoAPI = (function() {
   var MAX_RECONNECT = 5;
 
   function wsConnect(agentId, callbacks) {
+    console.log('[API] wsConnect called, agentId:', agentId);
     wsDisconnect();
     _wsCallbacks = callbacks || {};
     _wsAgentId = agentId;
@@ -210,12 +211,15 @@ var FangClawGoAPI = (function() {
   }
 
   function _doConnect(agentId) {
+    console.log('[API] _doConnect called, agentId:', agentId);
     try {
       var url = WS_BASE + '/api/agents/' + agentId + '/ws';
+      console.log('[API] WebSocket URL:', url);
       if (_authToken) url += '?token=' + encodeURIComponent(_authToken);
       _ws = new WebSocket(url);
 
       _ws.onopen = function() {
+        console.log('[API] WebSocket onopen');
         _wsConnected = true;
         _reconnectAttempts = 0;
         setConnectionState('connected');
@@ -227,10 +231,14 @@ var FangClawGoAPI = (function() {
       };
 
       _ws.onmessage = function(e) {
+        console.log('[API] WebSocket raw message:', e.data);
         try {
           var data = JSON.parse(e.data);
+          console.log('[API] WebSocket parsed:', data);
           if (_wsCallbacks.onMessage) _wsCallbacks.onMessage(data);
-        } catch(err) { /* ignore parse errors */ }
+        } catch(err) {
+          console.error('[API] WebSocket parse error:', err);
+        }
       };
 
       _ws.onclose = function(e) {

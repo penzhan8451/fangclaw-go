@@ -278,9 +278,9 @@ function settingsPage() {
       try {
         await FangClawGoAPI.post('/api/config/set', { path: key, value: value });
         this.configDirty[key] = false;
-        FangClaw-goToast.success('Saved ' + key);
+        FangClawGoToast.success('Saved ' + key);
       } catch(e) {
-        FangClaw-goToast.error('Failed to save: ' + e.message);
+        FangClawGoToast.error('Failed to save: ' + e.message);
       }
       this.configSaving[key] = false;
     },
@@ -372,26 +372,26 @@ function settingsPage() {
 
     async saveProviderKey(provider) {
       var key = this.providerKeyInputs[provider.id];
-      if (!key || !key.trim()) { FangClaw-goToast.error('Please enter an API key'); return; }
+      if (!key || !key.trim()) { FangClawGoToast.error('Please enter an API key'); return; }
       try {
         await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key.trim() });
-        FangClaw-goToast.success('API key saved for ' + provider.display_name);
+        FangClawGoToast.success('API key saved for ' + provider.display_name);
         this.providerKeyInputs[provider.id] = '';
         await this.loadProviders();
         await this.loadModels();
       } catch(e) {
-        FangClaw-goToast.error('Failed to save key: ' + e.message);
+        FangClawGoToast.error('Failed to save key: ' + e.message);
       }
     },
 
     async removeProviderKey(provider) {
       try {
         await FangClawGoAPI.del('/api/providers/' + encodeURIComponent(provider.id) + '/key');
-        FangClaw-goToast.success('API key removed for ' + provider.display_name);
+        FangClawGoToast.success('API key removed for ' + provider.display_name);
         await this.loadProviders();
         await this.loadModels();
       } catch(e) {
-        FangClaw-goToast.error('Failed to remove key: ' + e.message);
+        FangClawGoToast.error('Failed to remove key: ' + e.message);
       }
     },
 
@@ -407,7 +407,7 @@ function settingsPage() {
         window.open(resp.verification_uri, '_blank');
         this.pollCopilotOAuth();
       } catch(e) {
-        FangClaw-goToast.error('Failed to start Copilot login: ' + e.message);
+        FangClawGoToast.error('Failed to start Copilot login: ' + e.message);
         this.copilotOAuth.polling = false;
       }
     },
@@ -419,7 +419,7 @@ function settingsPage() {
         try {
           var resp = await FangClawGoAPI.get('/api/providers/github-copilot/oauth/poll/' + self.copilotOAuth.pollId);
           if (resp.status === 'complete') {
-            FangClaw-goToast.success('GitHub Copilot authenticated successfully!');
+            FangClawGoToast.success('GitHub Copilot authenticated successfully!');
             self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
             await self.loadProviders();
             await self.loadModels();
@@ -427,17 +427,17 @@ function settingsPage() {
             if (resp.interval) self.copilotOAuth.interval = resp.interval;
             self.pollCopilotOAuth();
           } else if (resp.status === 'expired') {
-            FangClaw-goToast.error('Device code expired. Please try again.');
+            FangClawGoToast.error('Device code expired. Please try again.');
             self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
           } else if (resp.status === 'denied') {
-            FangClaw-goToast.error('Access denied by user.');
+            FangClawGoToast.error('Access denied by user.');
             self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
           } else {
-            FangClaw-goToast.error('OAuth error: ' + (resp.error || resp.status));
+            FangClawGoToast.error('OAuth error: ' + (resp.error || resp.status));
             self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
           }
         } catch(e) {
-          FangClaw-goToast.error('Poll error: ' + e.message);
+          FangClawGoToast.error('Poll error: ' + e.message);
           self.copilotOAuth = { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 };
         }
       }, self.copilotOAuth.interval * 1000);
@@ -450,35 +450,35 @@ function settingsPage() {
         var result = await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
         this.providerTestResults[provider.id] = result;
         if (result.status === 'ok') {
-          FangClaw-goToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
+          FangClawGoToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
         } else {
-          FangClaw-goToast.error(provider.display_name + ': ' + (result.error || 'Connection failed'));
+          FangClawGoToast.error(provider.display_name + ': ' + (result.error || 'Connection failed'));
         }
       } catch(e) {
         this.providerTestResults[provider.id] = { status: 'error', error: e.message };
-        FangClaw-goToast.error('Test failed: ' + e.message);
+        FangClawGoToast.error('Test failed: ' + e.message);
       }
       this.providerTesting[provider.id] = false;
     },
 
     async saveProviderUrl(provider) {
       var url = this.providerUrlInputs[provider.id];
-      if (!url || !url.trim()) { FangClaw-goToast.error('Please enter a base URL'); return; }
+      if (!url || !url.trim()) { FangClawGoToast.error('Please enter a base URL'); return; }
       url = url.trim();
       if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) {
-        FangClaw-goToast.error('URL must start with http:// or https://'); return;
+        FangClawGoToast.error('URL must start with http:// or https://'); return;
       }
       this.providerUrlSaving[provider.id] = true;
       try {
         var result = await FangClawGoAPI.put('/api/providers/' + encodeURIComponent(provider.id) + '/url', { base_url: url });
         if (result.reachable) {
-          FangClaw-goToast.success(provider.display_name + ' URL saved &mdash; reachable (' + (result.latency_ms || '?') + 'ms)');
+          FangClawGoToast.success(provider.display_name + ' URL saved &mdash; reachable (' + (result.latency_ms || '?') + 'ms)');
         } else {
-          FangClaw-goToast.warning(provider.display_name + ' URL saved but not reachable');
+          FangClawGoToast.warning(provider.display_name + ' URL saved but not reachable');
         }
         await this.loadProviders();
       } catch(e) {
-        FangClaw-goToast.error('Failed to save URL: ' + e.message);
+        FangClawGoToast.error('Failed to save URL: ' + e.message);
       }
       this.providerUrlSaving[provider.id] = false;
     },
@@ -630,14 +630,14 @@ function settingsPage() {
       try {
         var data = await FangClawGoAPI.post('/api/migrate/scan', { path: this.sourcePath });
         if (data.error) {
-          FangClaw-goToast.error('Scan error: ' + data.error);
+          FangClawGoToast.error('Scan error: ' + data.error);
           this.scanning = false;
           return;
         }
         this.scanResult = data;
         this.migStep = 'preview';
       } catch(e) {
-        FangClaw-goToast.error('Scan failed: ' + e.message);
+        FangClawGoToast.error('Scan failed: ' + e.message);
       }
       this.scanning = false;
     },

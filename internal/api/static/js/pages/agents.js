@@ -326,14 +326,14 @@ function agentsPage() {
 
     killAgent(agent) {
       var self = this;
-      FangClaw-goToast.confirm('Stop Agent', 'Stop agent "' + agent.name + '"? The agent will be shut down.', async function() {
+      FangClawGoToast.confirm('Stop Agent', 'Stop agent "' + agent.name + '"? The agent will be shut down.', async function() {
         try {
           await FangClawGoAPI.del('/api/agents/' + agent.id);
-          FangClaw-goToast.success('Agent "' + agent.name + '" stopped');
+          FangClawGoToast.success('Agent "' + agent.name + '" stopped');
           self.showDetailModal = false;
           await Alpine.store('app').refreshAgents();
         } catch(e) {
-          FangClaw-goToast.error('Failed to stop agent: ' + e.message);
+          FangClawGoToast.error('Failed to stop agent: ' + e.message);
         }
       });
     },
@@ -341,7 +341,7 @@ function agentsPage() {
     killAllAgents() {
       var list = this.filteredAgents;
       if (!list.length) return;
-      FangClaw-goToast.confirm('Stop All Agents', 'Stop ' + list.length + ' agent(s)? All agents will be shut down.', async function() {
+      FangClawGoToast.confirm('Stop All Agents', 'Stop ' + list.length + ' agent(s)? All agents will be shut down.', async function() {
         var errors = [];
         for (var i = 0; i < list.length; i++) {
           try {
@@ -350,9 +350,9 @@ function agentsPage() {
         }
         await Alpine.store('app').refreshAgents();
         if (errors.length) {
-          FangClaw-goToast.error('Some agents failed to stop: ' + errors.join(', '));
+          FangClawGoToast.error('Some agents failed to stop: ' + errors.join(', '));
         } else {
-          FangClaw-goToast.success(list.length + ' agent(s) stopped');
+          FangClawGoToast.success(list.length + ' agent(s) stopped');
         }
       });
     },
@@ -372,7 +372,7 @@ function agentsPage() {
 
     nextStep() {
       if (this.spawnStep === 1 && !this.spawnForm.name.trim()) {
-        FangClaw-goToast.warn('Please enter an agent name');
+        FangClawGoToast.warn('Please enter an agent name');
         return;
       }
       if (this.spawnStep < 5) this.spawnStep++;
@@ -416,10 +416,10 @@ function agentsPage() {
       try {
         await FangClawGoAPI.put('/api/agents/' + agent.id + '/mode', { mode: mode });
         agent.mode = mode;
-        FangClaw-goToast.success('Mode set to ' + mode);
+        FangClawGoToast.success('Mode set to ' + mode);
         await Alpine.store('app').refreshAgents();
       } catch(e) {
-        FangClaw-goToast.error('Failed to set mode: ' + e.message);
+        FangClawGoToast.error('Failed to set mode: ' + e.message);
       }
     },
 
@@ -428,7 +428,7 @@ function agentsPage() {
       var toml = this.spawnMode === 'wizard' ? this.generateToml() : this.spawnToml;
       if (!toml.trim()) {
         this.spawning = false;
-        FangClaw-goToast.warn('Manifest is empty \u2014 enter agent config first');
+        FangClawGoToast.warn('Manifest is empty \u2014 enter agent config first');
         return;
       }
 
@@ -453,14 +453,14 @@ function agentsPage() {
           this.spawnForm.name = '';
           this.spawnToml = '';
           this.spawnStep = 1;
-          FangClaw-goToast.success('Agent "' + (res.name || 'new') + '" spawned');
+          FangClawGoToast.success('Agent "' + (res.name || 'new') + '" spawned');
           await Alpine.store('app').refreshAgents();
           this.chatWithAgent({ id: res.agent_id, name: res.name, model_provider: '?', model_name: '?' });
         } else {
-          FangClaw-goToast.error('Spawn failed: ' + (res.error || 'Unknown error'));
+          FangClawGoToast.error('Spawn failed: ' + (res.error || 'Unknown error'));
         }
       } catch(e) {
-        FangClaw-goToast.error('Failed to spawn agent: ' + e.message);
+        FangClawGoToast.error('Failed to spawn agent: ' + e.message);
       }
       this.spawning = false;
     },
@@ -474,7 +474,7 @@ function agentsPage() {
         this.agentFiles = data.files || [];
       } catch(e) {
         this.agentFiles = [];
-        FangClaw-goToast.error('Failed to load files: ' + e.message);
+        FangClawGoToast.error('Failed to load files: ' + e.message);
       }
       this.filesLoading = false;
     },
@@ -491,7 +491,7 @@ function agentsPage() {
         this.editingFile = file.name;
         this.fileContent = data.content || '';
       } catch(e) {
-        FangClaw-goToast.error('Failed to read file: ' + e.message);
+        FangClawGoToast.error('Failed to read file: ' + e.message);
       }
     },
 
@@ -500,10 +500,10 @@ function agentsPage() {
       this.fileSaving = true;
       try {
         await FangClawGoAPI.put('/api/agents/' + this.detailAgent.id + '/files/' + encodeURIComponent(this.editingFile), { content: this.fileContent });
-        FangClaw-goToast.success(this.editingFile + ' saved');
+        FangClawGoToast.success(this.editingFile + ' saved');
         await this.loadAgentFiles();
       } catch(e) {
-        FangClaw-goToast.error('Failed to save file: ' + e.message);
+        FangClawGoToast.error('Failed to save file: ' + e.message);
       }
       this.fileSaving = false;
     },
@@ -519,10 +519,10 @@ function agentsPage() {
       this.configSaving = true;
       try {
         await FangClawGoAPI.patch('/api/agents/' + this.detailAgent.id + '/config', this.configForm);
-        FangClaw-goToast.success('Config updated');
+        FangClawGoToast.success('Config updated');
         await Alpine.store('app').refreshAgents();
       } catch(e) {
-        FangClaw-goToast.error('Failed to save config: ' + e.message);
+        FangClawGoToast.error('Failed to save config: ' + e.message);
       }
       this.configSaving = false;
     },
@@ -533,12 +533,12 @@ function agentsPage() {
       try {
         var res = await FangClawGoAPI.post('/api/agents/' + agent.id + '/clone', { new_name: newName });
         if (res.agent_id) {
-          FangClaw-goToast.success('Cloned as "' + res.name + '"');
+          FangClawGoToast.success('Cloned as "' + res.name + '"');
           await Alpine.store('app').refreshAgents();
           this.showDetailModal = false;
         }
       } catch(e) {
-        FangClaw-goToast.error('Clone failed: ' + e.message);
+        FangClawGoToast.error('Clone failed: ' + e.message);
       }
     },
 
@@ -549,13 +549,13 @@ function agentsPage() {
         if (data.manifest_toml) {
           var res = await FangClawGoAPI.post('/api/agents', { manifest_toml: data.manifest_toml });
           if (res.agent_id) {
-            FangClaw-goToast.success('Agent "' + (res.name || name) + '" spawned from template');
+            FangClawGoToast.success('Agent "' + (res.name || name) + '" spawned from template');
             await Alpine.store('app').refreshAgents();
             this.chatWithAgent({ id: res.agent_id, name: res.name || name, model_provider: '?', model_name: '?' });
           }
         }
       } catch(e) {
-        FangClaw-goToast.error('Failed to spawn from template: ' + e.message);
+        FangClawGoToast.error('Failed to spawn from template: ' + e.message);
       }
     },
 
@@ -570,12 +570,12 @@ function agentsPage() {
       try {
         var res = await FangClawGoAPI.post('/api/agents', { manifest_toml: toml });
         if (res.agent_id) {
-          FangClaw-goToast.success('Agent "' + t.name + '" spawned');
+          FangClawGoToast.success('Agent "' + t.name + '" spawned');
           await Alpine.store('app').refreshAgents();
           this.chatWithAgent({ id: res.agent_id, name: t.name, model_provider: t.provider, model_name: t.model });
         }
       } catch(e) {
-        FangClaw-goToast.error('Failed to spawn agent: ' + e.message);
+        FangClawGoToast.error('Failed to spawn agent: ' + e.message);
       }
     }
   };

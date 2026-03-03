@@ -9,12 +9,15 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
@@ -204,8 +207,12 @@ func RunServer(k *kernel.Kernel, cfg *ServerConfig) error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		<-sigChan
-		fmt.Println("\nShutting down...")
+		select {
+		case <-sigChan:
+			fmt.Println("\nShutting down...")
+		case <-WaitForShutdown():
+			fmt.Println("\nShutdown requested via API...")
+		}
 		cancel()
 		server.Stop(context.Background())
 	}()
@@ -373,11 +380,25 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+var shutdownChan = make(chan struct{}, 1)
+
+func RequestShutdown() {
+	select {
+	case shutdownChan <- struct{}{}:
+	default:
+	}
+}
+
+func WaitForShutdown() <-chan struct{} {
+	return shutdownChan
+}
+
 // WSMessage represents a WebSocket message.
 type WSMessage struct {
 	Type    string          `json:"type"`
 	AgentID string          `json:"agent_id,omitempty"`
 	Message string          `json:"message,omitempty"`
+	Content string          `json:"content,omitempty"`
 	Data    json.RawMessage `json:"data,omitempty"`
 }
 
@@ -493,27 +514,102 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 					if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 						fmt.Fprintf(os.Stderr, "WebSocket read error: %v\n", err)
 					}
-					close(client.Done)
-					// cancel() // cancel() was not used, so we remove it
+					// Signal done, but don't close channel (write loop may still use it)
+					select {
+					case <-client.Done:
+					default:
+						close(client.Done)
+					}
 					return
 				}
 
 				// Parse message
+				fmt.Fprintf(os.Stderr, "[WebSocket] Received message: %s\n", string(message))
 				var msg WSMessage
 				if err := json.Unmarshal(message, &msg); err != nil {
+					fmt.Fprintf(os.Stderr, "[WebSocket] Parse error: %v\n", err)
 					errorResp, _ := json.Marshal(WSMessage{Type: "error", Data: json.RawMessage(fmt.Sprintf(`{"error":"%s"}`, err.Error()))})
 					client.Send <- errorResp
 					continue
 				}
+				fmt.Fprintf(os.Stderr, "[WebSocket] Message type: %s\n", msg.Type)
 
 				// Handle different message types
 				switch msg.Type {
 				case "chat":
-					// Process chat request with placeholder response
+					fallthrough
+				case "message":
+					// Process chat request
 					go func() {
-						response := "This is a placeholder WebSocket response from FangClaw. The full LLM integration is coming soon!"
-						respMsg := WSMessage{Type: "response", Data: json.RawMessage(fmt.Sprintf(`{"response":"%s"}`, response))}
+						// Send typing start
+						typingStart, _ := json.Marshal(WSMessage{Type: "typing", Data: json.RawMessage(`{"state":"start"}`)})
+						client.Send <- typingStart
+
+						var response string
+						var inputTokens, outputTokens int
+
+						// Get message content
+						text := msg.Content
+						if text == "" {
+							fmt.Fprintf(os.Stderr, "[WebSocket] No content found in message\n")
+							response = "Error: No message content"
+						} else {
+							fmt.Fprintf(os.Stderr, "[WebSocket] User message: %s\n", text)
+							// Try to get LLM driver
+							driver, err := getLLMDriver()
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "[WebSocket] LLM driver error: %v\n", err)
+								response = "👋 Hi! I'm FangClaw-go. To use the full chat capabilities, please set up an API key.\n\n**Supported providers:**\n- OpenRouter (recommended)\n- OpenAI\n- Anthropic\n- Groq\n\n**How to set up:**\n1. Go to Settings page\n2. Select your preferred provider\n3. Enter your API key\n\nOr set the API key via environment variables:\n- `OPENROUTER_API_KEY`\n- `OPENAI_API_KEY`\n- `ANTHROPIC_API_KEY`\n- `GROQ_API_KEY`"
+							} else {
+								fmt.Fprintf(os.Stderr, "[WebSocket] LLM driver obtained successfully\n")
+								// Build messages
+								var messages []llm.Message
+
+								// Get hand system prompt
+								if hand, _ := hands.GetBundledHand(agentID); hand != nil {
+									systemPrompt := getHandSystemPrompt(agentID)
+									if systemPrompt != "" {
+										messages = append(messages, llm.Message{
+											Role:    "system",
+											Content: systemPrompt,
+										})
+									}
+								}
+
+								// Add user message
+								messages = append(messages, llm.Message{
+									Role:    "user",
+									Content: text,
+								})
+
+								// Call LLM
+								llmReq := &llm.Request{
+									Messages:    messages,
+									Temperature: 0.7,
+								}
+
+								fmt.Fprintf(os.Stderr, "[WebSocket] Calling LLM...\n")
+								ctx := context.Background()
+								resp, err := driver.Chat(ctx, llmReq)
+								if err != nil {
+									fmt.Fprintf(os.Stderr, "[WebSocket] LLM error: %v\n", err)
+									response = "Error: " + err.Error()
+								} else {
+									fmt.Fprintf(os.Stderr, "[WebSocket] LLM response received\n")
+									response = resp.Content
+								}
+							}
+						}
+
+						// Send typing stop
+						typingStop, _ := json.Marshal(WSMessage{Type: "typing", Data: json.RawMessage(`{"state":"stop"}`)})
+						client.Send <- typingStop
+
+						// Send final response
+						fmt.Fprintf(os.Stderr, "[WebSocket] Response content: %s\n", response)
+						respMsg := WSMessage{Type: "response", Data: json.RawMessage(fmt.Sprintf(`{"content":"%s","input_tokens":%d,"output_tokens":%d,"iterations":1}`, strings.ReplaceAll(response, `"`, `\"`), inputTokens, outputTokens))}
 						respBytes, _ := json.Marshal(respMsg)
+						fmt.Fprintf(os.Stderr, "[WebSocket] Sending response: %s\n", string(respBytes))
 						client.Send <- respBytes
 					}()
 
@@ -522,7 +618,7 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 					client.Send <- pong
 
 				default:
-					errorResp, _ := json.Marshal(WSMessage{Type: "error", Data: json.RawMessage(`{"error":"unknown message type"}`)})
+					errorResp, _ := json.Marshal(WSMessage{Type: "error", Data: json.RawMessage(`{"content":"unknown message type"}`)})
 					client.Send <- errorResp
 				}
 			}
@@ -531,7 +627,12 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 		// Write loop
 		go func() {
 			defer func() {
-				close(client.Done)
+				// Only close channel if not already closed
+				select {
+				case <-client.Done:
+				default:
+					close(client.Done)
+				}
 				cancel()
 			}()
 
@@ -540,9 +641,12 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 				case <-client.Done:
 					return
 				case message := <-client.Send:
+					fmt.Fprintf(os.Stderr, "[WebSocket Write] Sending: %s\n", string(message))
 					if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+						fmt.Fprintf(os.Stderr, "[WebSocket Write] Error: %v\n", err)
 						return
 					}
+					fmt.Fprintf(os.Stderr, "[WebSocket Write] Sent successfully\n")
 				}
 			}
 		}()
