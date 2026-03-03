@@ -10,11 +10,13 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
 	"github.com/penzhan8451/fangclaw-go/internal/configreload"
+	"github.com/penzhan8451/fangclaw-go/internal/cron"
 	"github.com/penzhan8451/fangclaw-go/internal/delivery"
 	"github.com/penzhan8451/fangclaw-go/internal/eventbus"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
 	"github.com/penzhan8451/fangclaw-go/internal/pairing"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
@@ -24,6 +26,8 @@ type Kernel struct {
 	config         types.KernelConfig
 	eventBus       *eventbus.EventBus
 	scheduler      *Scheduler
+	cronScheduler  *cron.CronScheduler
+	modelCatalog   *model_catalog.ModelCatalog
 	db             *memory.DB
 	semantic       *memory.SemanticStore
 	sessions       *memory.SessionStore
@@ -106,10 +110,17 @@ func NewKernel(config types.KernelConfig) (*Kernel, error) {
 	}
 	pairingManager := pairing.NewPairingManager(pairingConfig)
 
+	cronPersistDir := filepath.Join(dataDir, "cron")
+	cronScheduler := cron.NewCronScheduler(cronPersistDir, nil)
+
+	modelCatalog := model_catalog.NewModelCatalog()
+
 	return &Kernel{
 		config:         config,
 		eventBus:       eventbus.NewEventBus(),
 		scheduler:      NewScheduler(),
+		cronScheduler:  cronScheduler,
+		modelCatalog:   modelCatalog,
 		db:             db,
 		semantic:       semanticStore,
 		sessions:       sessionStore,
@@ -133,6 +144,12 @@ func (k *Kernel) Start(ctx context.Context) error {
 		return fmt.Errorf("kernel already started")
 	}
 
+	if err := k.cronScheduler.Start(); err != nil {
+		return fmt.Errorf("failed to start cron scheduler: %w", err)
+	}
+
+	k.modelCatalog.DetectAuth()
+
 	k.started = true
 
 	event := eventbus.NewEvent(eventbus.EventTypeSystem, "kernel", eventbus.EventTargetSystem)
@@ -149,6 +166,7 @@ func (k *Kernel) Stop(ctx context.Context) error {
 		return nil
 	}
 
+	k.cronScheduler.Stop()
 	k.scheduler.Shutdown()
 	_ = k.registry.DisconnectAll()
 	k.semantic.Close()
@@ -220,6 +238,14 @@ func (k *Kernel) DeliveryRegistry() *delivery.DeliveryRegistry {
 
 func (k *Kernel) PairingManager() *pairing.PairingManager {
 	return k.pairingManager
+}
+
+func (k *Kernel) CronScheduler() *cron.CronScheduler {
+	return k.cronScheduler
+}
+
+func (k *Kernel) ModelCatalog() *model_catalog.ModelCatalog {
+	return k.modelCatalog
 }
 
 func (k *Kernel) ReloadConfig(newConfig types.KernelConfig) *configreload.ReloadPlan {

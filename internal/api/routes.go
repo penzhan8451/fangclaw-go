@@ -9,8 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
+	"github.com/penzhan8451/fangclaw-go/internal/cron"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
@@ -99,6 +102,12 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 
 	// OpenAI-compatible endpoints
 	mux.HandleFunc("GET /v1/models", r.handleListModels)
+	// Models endpoints
+	mux.HandleFunc("GET /api/models", r.handleAPIModels)
+	mux.HandleFunc("GET /api/models/aliases", r.handleModelsAliases)
+	mux.HandleFunc("GET /api/models/{id}", r.handleGetModel)
+	mux.HandleFunc("POST /api/models/custom", r.handleAddCustomModel)
+	mux.HandleFunc("DELETE /api/models/custom/{id}", r.handleDeleteCustomModel)
 	// Additional frontend endpoints
 	mux.HandleFunc("GET /api/commands", r.handleCommands)
 	mux.HandleFunc("GET /api/config", r.handleConfig)
@@ -115,6 +124,11 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/hands/instances/{instanceID}/pause", r.handlePauseHand)
 	mux.HandleFunc("POST /api/hands/instances/{instanceID}/resume", r.handleResumeHand)
 
+	// Approval endpoints
+	mux.HandleFunc("GET /api/approvals", r.handleListApprovals)
+	mux.HandleFunc("POST /api/approvals", r.handleCreateApproval)
+	mux.HandleFunc("POST /api/approvals/{id}/approve", r.handleApproveApproval)
+	mux.HandleFunc("POST /api/approvals/{id}/reject", r.handleRejectApproval)
 	// Budget endpoints
 	mux.HandleFunc("GET /api/budget", r.handleBudget)
 	mux.HandleFunc("GET /api/budget/agents", r.handleBudgetAgents)
@@ -151,6 +165,13 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 		req.URL.RawQuery = "agent_id=" + id
 		WSHandler(r.kernel)(w, req)
 	})
+
+	// Cron jobs endpoints
+	mux.HandleFunc("GET /api/cron/jobs", r.handleListCronJobs)
+	mux.HandleFunc("POST /api/cron/jobs", r.handleCreateCronJob)
+	mux.HandleFunc("PUT /api/cron/jobs/{id}/enable", r.handleEnableCronJob)
+	mux.HandleFunc("DELETE /api/cron/jobs/{id}", r.handleDeleteCronJob)
+	mux.HandleFunc("GET /api/cron/jobs/{id}/status", r.handleCronJobStatus)
 
 	// Shutdown endpoint
 	mux.HandleFunc("POST /api/shutdown", r.handleShutdown)
@@ -299,10 +320,14 @@ func (r *Router) handleDeleteAgent(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleListSessions(w http.ResponseWriter, req *http.Request) {
 	sessions, err := r.kernel.SessionStore().ListSessions()
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"sessions": []map[string]interface{}{},
+		})
 		return
 	}
-	respondJSON(w, http.StatusOK, sessions)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"sessions": sessions,
+	})
 }
 
 func (r *Router) handleCreateSession(w http.ResponseWriter, req *http.Request) {
@@ -818,14 +843,28 @@ func (r *Router) handleListHands(w http.ResponseWriter, req *http.Request) {
 
 	var handsResult []map[string]interface{}
 	for _, hand := range handDefs {
+		tools := hand.Tools
+		if tools == nil {
+			tools = []string{}
+		}
+
+		dashboardMetrics := 0
+		if hand.Dashboard.Metrics != nil {
+			dashboardMetrics = len(hand.Dashboard.Metrics)
+		}
+
 		handsResult = append(handsResult, map[string]interface{}{
-			"id":          hand.ID,
-			"name":        hand.Name,
-			"description": hand.Description,
-			"category":    hand.Category,
-			"icon":        hand.Icon,
-			"requires":    hand.Requires,
-			"settings":    hand.Settings,
+			"id":                hand.ID,
+			"name":              hand.Name,
+			"description":       hand.Description,
+			"category":          hand.Category,
+			"icon":              hand.Icon,
+			"tools":             tools,
+			"dashboard_metrics": dashboardMetrics,
+			"has_settings":      hand.Settings != nil && len(hand.Settings) > 0,
+			"settings_count":    len(hand.Settings),
+			"requires":          hand.Requires,
+			"settings":          hand.Settings,
 		})
 	}
 
@@ -1050,5 +1089,339 @@ func (r *Router) handleConfigSchema(w http.ResponseWriter, req *http.Request) {
 				},
 			},
 		},
+	})
+}
+
+func (r *Router) handleAPIModels(w http.ResponseWriter, req *http.Request) {
+	providerFilter := req.URL.Query().Get("provider")
+	tierFilter := req.URL.Query().Get("tier")
+	availableOnly := req.URL.Query().Get("available") == "true" || req.URL.Query().Get("available") == "1"
+
+	allModels := r.kernel.ModelCatalog().ListModels()
+	var filteredModels []map[string]interface{}
+
+	for _, m := range allModels {
+		if providerFilter != "" && strings.ToLower(m.Provider) != strings.ToLower(providerFilter) {
+			continue
+		}
+		if tierFilter != "" && strings.ToLower(string(m.Tier)) != strings.ToLower(tierFilter) {
+			continue
+		}
+
+		provider := r.kernel.ModelCatalog().GetProvider(m.Provider)
+		available := provider != nil && provider.AuthStatus != types.AuthStatusMissing
+
+		if availableOnly && !available {
+			continue
+		}
+
+		filteredModels = append(filteredModels, map[string]interface{}{
+			"id":                 m.ID,
+			"display_name":       m.DisplayName,
+			"provider":           m.Provider,
+			"tier":               m.Tier,
+			"context_window":     m.ContextWindow,
+			"max_output_tokens":  m.MaxOutputTokens,
+			"input_cost_per_m":   m.InputCostPerM,
+			"output_cost_per_m":  m.OutputCostPerM,
+			"supports_tools":     m.SupportsTools,
+			"supports_vision":    m.SupportsVision,
+			"supports_streaming": m.SupportsStreaming,
+			"available":          available,
+		})
+	}
+
+	total := len(allModels)
+	availableCount := len(r.kernel.ModelCatalog().AvailableModels())
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"models":    filteredModels,
+		"total":     total,
+		"available": availableCount,
+	})
+}
+
+func (r *Router) handleModelsAliases(w http.ResponseWriter, req *http.Request) {
+	aliases := r.kernel.ModelCatalog().ListAliases()
+	var entries []map[string]interface{}
+
+	for alias, modelID := range aliases {
+		entries = append(entries, map[string]interface{}{
+			"alias":    alias,
+			"model_id": modelID,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"aliases": entries,
+		"total":   len(entries),
+	})
+}
+
+func (r *Router) handleGetModel(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	model := r.kernel.ModelCatalog().FindModel(id)
+	if model == nil {
+		respondError(w, http.StatusNotFound, fmt.Sprintf("Model '%s' not found", id))
+		return
+	}
+
+	provider := r.kernel.ModelCatalog().GetProvider(model.Provider)
+	available := provider != nil && provider.AuthStatus != types.AuthStatusMissing
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id":                 model.ID,
+		"display_name":       model.DisplayName,
+		"provider":           model.Provider,
+		"tier":               model.Tier,
+		"context_window":     model.ContextWindow,
+		"max_output_tokens":  model.MaxOutputTokens,
+		"input_cost_per_m":   model.InputCostPerM,
+		"output_cost_per_m":  model.OutputCostPerM,
+		"supports_tools":     model.SupportsTools,
+		"supports_vision":    model.SupportsVision,
+		"supports_streaming": model.SupportsStreaming,
+		"aliases":            model.Aliases,
+		"available":          available,
+	})
+}
+
+func (r *Router) handleAddCustomModel(w http.ResponseWriter, req *http.Request) {
+	var model types.ModelCatalogEntry
+
+	if err := json.NewDecoder(req.Body).Decode(&model); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if model.ID == "" || model.Provider == "" {
+		respondError(w, http.StatusBadRequest, "ID and provider are required")
+		return
+	}
+
+	r.kernel.ModelCatalog().AddCustomModel(model)
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"status": "ok",
+	})
+}
+
+func (r *Router) handleDeleteCustomModel(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	deleted := r.kernel.ModelCatalog().RemoveCustomModel(id)
+	if !deleted {
+		respondError(w, http.StatusNotFound, fmt.Sprintf("Custom model '%s' not found", id))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"status": "ok",
+	})
+}
+
+func (r *Router) handleListCronJobs(w http.ResponseWriter, req *http.Request) {
+	agentID := req.URL.Query().Get("agent_id")
+	var jobs []*cron.CronJob
+
+	if agentID != "" {
+		allJobs := r.kernel.CronScheduler().ListJobs()
+		for _, job := range allJobs {
+			if job.AgentID == agentID {
+				jobs = append(jobs, job)
+			}
+		}
+	} else {
+		jobs = r.kernel.CronScheduler().ListJobs()
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"jobs":  jobs,
+		"total": len(jobs),
+	})
+}
+
+func (r *Router) handleCreateCronJob(w http.ResponseWriter, req *http.Request) {
+	var job cron.CronJob
+	if err := json.NewDecoder(req.Body).Decode(&job); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := r.kernel.CronScheduler().AddJob(&job); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"result": job,
+	})
+}
+
+func (r *Router) handleEnableCronJob(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	var reqBody struct {
+		Enabled bool `json:"enabled"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	var err error
+	if reqBody.Enabled {
+		err = r.kernel.CronScheduler().EnableJob(id)
+	} else {
+		err = r.kernel.CronScheduler().DisableJob(id)
+	}
+
+	if err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id":      id,
+		"enabled": reqBody.Enabled,
+	})
+}
+
+func (r *Router) handleDeleteCronJob(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	if err := r.kernel.CronScheduler().DeleteJob(id); err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"status": "deleted",
+	})
+}
+
+func (r *Router) handleCronJobStatus(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	job, ok := r.kernel.CronScheduler().GetJob(id)
+	if !ok {
+		respondError(w, http.StatusNotFound, "Job not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, job)
+}
+
+func (r *Router) handleListApprovals(w http.ResponseWriter, req *http.Request) {
+	pending := r.kernel.ApprovalManager().ListPending()
+	total := len(pending)
+
+	agents := r.kernel.AgentRegistry().List()
+
+	var approvals []map[string]interface{}
+	for _, a := range pending {
+		agentName := a.AgentID
+		for _, agent := range agents {
+			if agent.ID.String() == a.AgentID || agent.Name == a.AgentID {
+				agentName = agent.Name
+				break
+			}
+		}
+
+		approvals = append(approvals, map[string]interface{}{
+			"id":             a.ID,
+			"agent_id":       a.AgentID,
+			"agent_name":     agentName,
+			"tool_name":      a.ToolName,
+			"description":    a.Description,
+			"action_summary": a.ActionSummary,
+			"action":         a.ActionSummary,
+			"risk_level":     a.RiskLevel,
+			"requested_at":   a.RequestedAt,
+			"created_at":     a.CreatedAt,
+			"timeout_secs":   a.TimeoutSecs,
+			"status":         "pending",
+		})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"approvals": approvals,
+		"total":     total,
+	})
+}
+
+func (r *Router) handleCreateApproval(w http.ResponseWriter, req *http.Request) {
+	var reqBody struct {
+		AgentID       string `json:"agent_id"`
+		ToolName      string `json:"tool_name"`
+		Description   string `json:"description"`
+		ActionSummary string `json:"action_summary"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	description := reqBody.Description
+	if description == "" {
+		description = fmt.Sprintf("Manual approval request for %s", reqBody.ToolName)
+	}
+
+	actionSummary := reqBody.ActionSummary
+	if actionSummary == "" {
+		actionSummary = reqBody.ToolName
+	}
+
+	approvalReq := approvals.NewApprovalRequest(
+		reqBody.AgentID,
+		reqBody.ToolName,
+		description,
+		actionSummary,
+		actionSummary,
+		"",
+		approvals.RiskLevelHigh,
+	)
+
+	go func() {
+		ch, _ := r.kernel.ApprovalManager().RequestApproval(approvalReq)
+		<-ch
+	}()
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"id":     approvalReq.ID,
+		"status": "pending",
+	})
+}
+
+func (r *Router) handleApproveApproval(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	if err := r.kernel.ApprovalManager().Resolve(id, approvals.ApprovalDecisionApproved, "api"); err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id":         id,
+		"status":     "approved",
+		"decided_at": time.Now().Format(time.RFC3339),
+	})
+}
+
+func (r *Router) handleRejectApproval(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	if err := r.kernel.ApprovalManager().Resolve(id, approvals.ApprovalDecisionDenied, "api"); err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id":         id,
+		"status":     "rejected",
+		"decided_at": time.Now().Format(time.RFC3339),
 	})
 }

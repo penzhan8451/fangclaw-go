@@ -42,27 +42,34 @@ func DefaultApprovalPolicy() ApprovalPolicy {
 
 // ApprovalRequest represents an approval request.
 type ApprovalRequest struct {
-	ID          string    `json:"id"`
-	AgentID     string    `json:"agent_id"`
-	ToolName    string    `json:"tool_name"`
-	Action      string    `json:"action"`
-	Details     string    `json:"details"`
-	RiskLevel   RiskLevel `json:"risk_level"`
-	RequestedAt time.Time `json:"requested_at"`
-	TimeoutSecs int       `json:"timeout_secs"`
+	ID            string    `json:"id"`
+	AgentID       string    `json:"agent_id"`
+	ToolName      string    `json:"tool_name"`
+	Description   string    `json:"description"`
+	ActionSummary string    `json:"action_summary"`
+	Action        string    `json:"action"`
+	Details       string    `json:"details"`
+	RiskLevel     RiskLevel `json:"risk_level"`
+	RequestedAt   time.Time `json:"requested_at"`
+	CreatedAt     time.Time `json:"created_at"`
+	TimeoutSecs   int       `json:"timeout_secs"`
 }
 
 // NewApprovalRequest creates a new approval request.
-func NewApprovalRequest(agentID, toolName, action, details string, riskLevel RiskLevel) *ApprovalRequest {
+func NewApprovalRequest(agentID, toolName, description, actionSummary, action, details string, riskLevel RiskLevel) *ApprovalRequest {
+	now := time.Now()
 	return &ApprovalRequest{
-		ID:          uuid.New().String(),
-		AgentID:     agentID,
-		ToolName:    toolName,
-		Action:      action,
-		Details:     details,
-		RiskLevel:   riskLevel,
-		RequestedAt: time.Now(),
-		TimeoutSecs: 300, // 5 minutes default
+		ID:            uuid.New().String(),
+		AgentID:       agentID,
+		ToolName:      toolName,
+		Description:   description,
+		ActionSummary: actionSummary,
+		Action:        action,
+		Details:       details,
+		RiskLevel:     riskLevel,
+		RequestedAt:   now,
+		CreatedAt:     now,
+		TimeoutSecs:   300, // 5 minutes default
 	}
 }
 
@@ -215,6 +222,11 @@ func (m *ApprovalManager) Resolve(requestID string, decision ApprovalDecision, r
 	delete(m.pending, requestID)
 
 	return nil
+}
+
+// ListPending returns all pending approval requests (same as GetPending for Rust compatibility).
+func (m *ApprovalManager) ListPending() []*ApprovalRequest {
+	return m.GetPending()
 }
 
 // GetPending returns all pending approval requests.
