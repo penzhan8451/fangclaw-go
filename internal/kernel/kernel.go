@@ -115,6 +115,8 @@ func NewKernel(config types.KernelConfig) (*Kernel, error) {
 
 	modelCatalog := model_catalog.NewModelCatalog()
 
+	config.DataDir = dataDir
+
 	return &Kernel{
 		config:         config,
 		eventBus:       eventbus.NewEventBus(),

@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
+	"github.com/penzhan8451/fangclaw-go/internal/clawhub"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/cron"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
@@ -89,6 +91,11 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/skills", r.handleListSkills)
 	mux.HandleFunc("POST /api/skills", r.handleInstallSkill)
 	mux.HandleFunc("DELETE /api/skills/{id}", r.handleUninstallSkill)
+	// ClawHub endpoints
+	mux.HandleFunc("GET /api/clawhub/search", r.handleClawhubSearch)
+	mux.HandleFunc("GET /api/clawhub/browse", r.handleClawhubBrowse)
+	mux.HandleFunc("GET /api/clawhub/skill/{slug}", r.handleClawhubSkillDetail)
+	mux.HandleFunc("POST /api/clawhub/install", r.handleClawhubInstall)
 
 	// Channel endpoints
 	mux.HandleFunc("GET /api/v1/channels", r.handleListChannels)
@@ -459,7 +466,40 @@ func (r *Router) handleListSkills(w http.ResponseWriter, req *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusOK, skills)
+
+	var skillsResult []map[string]interface{}
+	for _, skill := range skills {
+		tools := skill.Manifest.Tools.Provided
+		if tools == nil {
+			tools = []types.SkillToolDefinition{}
+		}
+
+		tags := []string{}
+		if skill.Manifest.Metadata != nil && skill.Manifest.Metadata["tags"] != "" {
+		}
+
+		skillsResult = append(skillsResult, map[string]interface{}{
+			"name":               skill.Manifest.Name,
+			"description":        skill.Manifest.Description,
+			"version":            skill.Manifest.Version,
+			"author":             skill.Manifest.Author,
+			"runtime":            string(skill.Manifest.Runtime.RuntimeType),
+			"tools_count":        len(tools),
+			"tags":               tags,
+			"enabled":            skill.Enabled,
+			"source":             map[string]interface{}{"type": "local"},
+			"has_prompt_context": skill.Manifest.Runtime.RuntimeType == types.SkillRuntimePrompt,
+		})
+	}
+
+	if skillsResult == nil {
+		skillsResult = []map[string]interface{}{}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"skills": skillsResult,
+		"total":  len(skillsResult),
+	})
 }
 
 func (r *Router) handleInstallSkill(w http.ResponseWriter, req *http.Request) {
@@ -1312,6 +1352,255 @@ func (r *Router) handleCronJobStatus(w http.ResponseWriter, req *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, job)
+}
+
+func (r *Router) handleClawhubSearch(w http.ResponseWriter, req *http.Request) {
+	query := req.URL.Query().Get("q")
+	if query == "" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"items":       []interface{}{},
+			"next_cursor": nil,
+		})
+		return
+	}
+
+	limitStr := req.URL.Query().Get("limit")
+	limit := uint32(20)
+	if limitStr != "" {
+		if l, err := strconv.ParseUint(limitStr, 10, 32); err == nil {
+			limit = uint32(l)
+		}
+	}
+
+	client := clawhub.NewClawHubClient()
+	results, err := client.Search(query, limit)
+	if err != nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"items":       []interface{}{},
+			"next_cursor": nil,
+			"error":       err.Error(),
+		})
+		return
+	}
+
+	var items []map[string]interface{}
+	for _, entry := range results.Results {
+		items = append(items, map[string]interface{}{
+			"slug":        entry.Slug,
+			"name":        entry.DisplayName,
+			"description": entry.Summary,
+			"version":     entry.Version,
+			"score":       entry.Score,
+			"updated_at":  entry.UpdatedAt,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"items":       items,
+		"next_cursor": nil,
+	})
+}
+
+func (r *Router) handleClawhubBrowse(w http.ResponseWriter, req *http.Request) {
+	sortParam := req.URL.Query().Get("sort")
+	var sort clawhub.ClawHubSort
+	switch sortParam {
+	case "downloads":
+		sort = clawhub.ClawHubSortDownloads
+	case "stars":
+		sort = clawhub.ClawHubSortStars
+	case "updated":
+		sort = clawhub.ClawHubSortUpdated
+	case "rating":
+		sort = clawhub.ClawHubSortRating
+	default:
+		sort = clawhub.ClawHubSortTrending
+	}
+
+	limitStr := req.URL.Query().Get("limit")
+	limit := uint32(20)
+	if limitStr != "" {
+		if l, err := strconv.ParseUint(limitStr, 10, 32); err == nil {
+			limit = uint32(l)
+		}
+	}
+
+	cursorParam := req.URL.Query().Get("cursor")
+	var cursor *string
+	if cursorParam != "" {
+		cursor = &cursorParam
+	}
+
+	client := clawhub.NewClawHubClient()
+	results, err := client.Browse(sort, limit, cursor)
+	if err != nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"items":       []interface{}{},
+			"next_cursor": nil,
+			"error":       err.Error(),
+		})
+		return
+	}
+
+	var items []map[string]interface{}
+	for _, entry := range results.Items {
+		items = append(items, clawhubBrowseEntryToJSON(entry))
+	}
+
+	var nextCursor interface{} = nil
+	if results.NextCursor != nil {
+		nextCursor = *results.NextCursor
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"items":       items,
+		"next_cursor": nextCursor,
+	})
+}
+
+func clawhubBrowseEntryToJSON(entry clawhub.ClawHubBrowseEntry) map[string]interface{} {
+	version := clawhub.EntryVersion(entry)
+	return map[string]interface{}{
+		"slug":        entry.Slug,
+		"name":        entry.DisplayName,
+		"description": entry.Summary,
+		"version":     version,
+		"stars":       entry.Stats.Stars,
+		"downloads":   entry.Stats.Downloads,
+		"updated_at":  entry.UpdatedAt,
+		"tags":        []string{},
+		"tools":       []string{},
+	}
+}
+
+func (r *Router) handleClawhubSkillDetail(w http.ResponseWriter, req *http.Request) {
+	slug := req.PathValue("slug")
+	client := clawhub.NewClawHubClient()
+	detail, err := client.GetSkill(slug)
+	if err != nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"slug":         slug,
+			"name":         "",
+			"description":  "",
+			"version":      "",
+			"author":       "",
+			"author_name":  "",
+			"author_image": "",
+			"stars":        0,
+			"downloads":    0,
+			"updated_at":   nil,
+			"tags":         []string{},
+			"tools":        []string{},
+			"is_installed": false,
+			"error":        err.Error(),
+		})
+		return
+	}
+
+	version := ""
+	if detail.LatestVersion != nil {
+		version = detail.LatestVersion.Version
+	}
+
+	author := ""
+	authorName := ""
+	authorImage := ""
+	if detail.Owner != nil {
+		author = detail.Owner.Handle
+		authorName = detail.Owner.DisplayName
+		authorImage = detail.Owner.Image
+	}
+
+	skillsDir := filepath.Join(r.kernel.Config().DataDir, "skills")
+	skillDir := filepath.Join(skillsDir, slug)
+	isInstalled := false
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		skillTomlPath := filepath.Join(skillDir, "skill.toml")
+		if _, err := os.Stat(skillTomlPath); !os.IsNotExist(err) {
+			isInstalled = true
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"slug":         detail.Skill.Slug,
+		"name":         detail.Skill.DisplayName,
+		"description":  detail.Skill.Summary,
+		"version":      version,
+		"author":       author,
+		"author_name":  authorName,
+		"author_image": authorImage,
+		"stars":        detail.Skill.Stats.Stars,
+		"downloads":    detail.Skill.Stats.Downloads,
+		"updated_at":   detail.Skill.UpdatedAt,
+		"tags":         []string{},
+		"tools":        []string{},
+		"is_installed": isInstalled,
+	})
+}
+
+func (r *Router) handleClawhubInstall(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("[DEBUG] handleClawhubInstall called")
+
+	var reqBody struct {
+		Slug string `json:"slug"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		fmt.Println("[DEBUG] Failed to decode request body:", err)
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	fmt.Println("[DEBUG] Request slug:", reqBody.Slug)
+
+	skillsDir := filepath.Join(r.kernel.Config().DataDir, "skills")
+	fmt.Println("[DEBUG] Skills directory:", skillsDir)
+
+	client := clawhub.NewClawHubClient()
+
+	if client.IsInstalled(reqBody.Slug, skillsDir) {
+		fmt.Println("[DEBUG] Skill already installed")
+		respondJSON(w, http.StatusConflict, map[string]interface{}{
+			"error":  fmt.Sprintf("Skill '%s' is already installed", reqBody.Slug),
+			"status": "already_installed",
+		})
+		return
+	}
+
+	fmt.Println("[DEBUG] Starting installation...")
+	result, err := client.Install(reqBody.Slug, skillsDir)
+	if err != nil {
+		fmt.Println("[DEBUG] Installation failed:", err)
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"error": err.Error(),
+		})
+		return
+	}
+	fmt.Println("[DEBUG] Installation successful:", result.SkillName)
+
+	var warnings []map[string]interface{}
+	for _, w := range result.Warnings {
+		warnings = append(warnings, map[string]interface{}{
+			"severity": w.Severity,
+			"message":  w.Message,
+		})
+	}
+
+	var translations []map[string]interface{}
+	for _, t := range result.ToolTranslations {
+		translations = append(translations, map[string]interface{}{
+			"from": t.From,
+			"to":   t.To,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status":            "installed",
+		"name":              result.SkillName,
+		"version":           result.Version,
+		"slug":              result.Slug,
+		"is_prompt_only":    result.IsPromptOnly,
+		"warnings":          warnings,
+		"tool_translations": translations,
+	})
 }
 
 func (r *Router) handleListApprovals(w http.ResponseWriter, req *http.Request) {

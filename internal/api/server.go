@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -527,7 +526,12 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 				var msg WSMessage
 				if err := json.Unmarshal(message, &msg); err != nil {
 					fmt.Fprintf(os.Stderr, "[WebSocket] Parse error: %v\n", err)
-					errorResp, _ := json.Marshal(WSMessage{Type: "error", Data: json.RawMessage(fmt.Sprintf(`{"error":"%s"}`, err.Error()))})
+					type ErrorData struct {
+						Error string `json:"error"`
+					}
+					errorData := ErrorData{Error: err.Error()}
+					errorDataBytes, _ := json.Marshal(errorData)
+					errorResp, _ := json.Marshal(WSMessage{Type: "error", Data: errorDataBytes})
 					client.Send <- errorResp
 					continue
 				}
@@ -598,7 +602,20 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 						client.Send <- typingStop
 
 						// Send final response
-						respMsg := WSMessage{Type: "response", Data: json.RawMessage(fmt.Sprintf(`{"content":"%s","input_tokens":%d,"output_tokens":%d,"iterations":1}`, strings.ReplaceAll(response, `"`, `\"`), inputTokens, outputTokens))}
+						type ResponseData struct {
+							Content      string `json:"content"`
+							InputTokens  int    `json:"input_tokens"`
+							OutputTokens int    `json:"output_tokens"`
+							Iterations   int    `json:"iterations"`
+						}
+						respData := ResponseData{
+							Content:      response,
+							InputTokens:  inputTokens,
+							OutputTokens: outputTokens,
+							Iterations:   1,
+						}
+						respDataBytes, _ := json.Marshal(respData)
+						respMsg := WSMessage{Type: "response", Data: respDataBytes}
 						respBytes, _ := json.Marshal(respMsg)
 						client.Send <- respBytes
 					}()

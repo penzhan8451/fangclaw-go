@@ -45,14 +45,15 @@ type SkillRequirements struct {
 
 // SkillManifest represents the manifest for a skill.
 type SkillManifest struct {
-	Version     string            `json:"version"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Author      string            `json:"author,omitempty"`
-	Runtime     SkillRuntime      `json:"runtime"`
-	Tools       SkillTools        `json:"tools"`
-	Requirements SkillRequirements `json:"requirements,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	Version        string            `json:"version"`
+	Name           string            `json:"name"`
+	Description    string            `json:"description"`
+	Author         string            `json:"author,omitempty"`
+	Runtime        SkillRuntime      `json:"runtime"`
+	Tools          SkillTools        `json:"tools"`
+	Requirements   SkillRequirements `json:"requirements,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
+	PromptContext  string            `json:"prompt_context,omitempty"`
 }
 
 // SkillToolResult represents the result of executing a skill tool.
