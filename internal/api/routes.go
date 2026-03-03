@@ -102,6 +102,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	// Additional frontend endpoints
 	mux.HandleFunc("GET /api/commands", r.handleCommands)
 	mux.HandleFunc("GET /api/config", r.handleConfig)
+	mux.HandleFunc("GET /api/config/schema", r.handleConfigSchema)
 	mux.HandleFunc("GET /api/logs/stream", r.handleLogsStream)
 
 	// Hands endpoints
@@ -974,4 +975,80 @@ func (r *Router) handleShutdown(w http.ResponseWriter, req *http.Request) {
 	})
 
 	RequestShutdown()
+}
+
+func (r *Router) handleConfigSchema(w http.ResponseWriter, req *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"sections": map[string]interface{}{
+			"api": map[string]interface{}{
+				"fields": map[string]string{
+					"api_listen": "string",
+					"api_key":    "string",
+					"log_level":  "string",
+				},
+			},
+			"default_model": map[string]interface{}{
+				"fields": map[string]string{
+					"provider":    "string",
+					"model":       "string",
+					"api_key_env": "string",
+					"base_url":    "string",
+				},
+			},
+			"memory": map[string]interface{}{
+				"fields": map[string]string{
+					"decay_rate":  "number",
+					"vector_dims": "number",
+				},
+			},
+			"web": map[string]interface{}{
+				"fields": map[string]string{
+					"provider":     "string",
+					"timeout_secs": "number",
+					"max_results":  "number",
+				},
+			},
+			"browser": map[string]interface{}{
+				"fields": map[string]string{
+					"headless":        "boolean",
+					"timeout_secs":    "number",
+					"executable_path": "string",
+				},
+			},
+			"network": map[string]interface{}{
+				"fields": map[string]string{
+					"enabled":       "boolean",
+					"listen_addr":   "string",
+					"shared_secret": "string",
+				},
+			},
+			"extensions": map[string]interface{}{
+				"fields": map[string]string{
+					"auto_connect":               "boolean",
+					"health_check_interval_secs": "number",
+				},
+			},
+			"vault": map[string]interface{}{
+				"fields": map[string]string{
+					"path": "string",
+				},
+			},
+			"a2a": map[string]interface{}{
+				"fields": map[string]string{
+					"enabled":     "boolean",
+					"name":        "string",
+					"description": "string",
+					"url":         "string",
+				},
+			},
+			"channels": map[string]interface{}{
+				"fields": map[string]string{
+					"telegram": "object",
+					"discord":  "object",
+					"slack":    "object",
+					"whatsapp": "object",
+				},
+			},
+		},
+	})
 }

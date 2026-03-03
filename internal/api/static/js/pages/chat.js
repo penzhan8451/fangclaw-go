@@ -461,7 +461,6 @@ function chatPage() {
     },
 
     handleWsMessage(data) {
-      console.log('[Chat] WebSocket message received:', data);
       switch (data.type) {
         case 'connected': break;
 
@@ -611,7 +610,6 @@ function chatPage() {
           break;
 
         case 'response':
-          console.log('[Chat] Handling response:', data);
           this._clearTypingTimeout();
           var responseData = data.data || data;
           // Update context pressure from response
@@ -641,20 +639,14 @@ function chatPage() {
           if (responseData.iterations) meta += ' | ' + responseData.iterations + ' iter';
           if (responseData.fallback_model) meta += ' | fallback: ' + responseData.fallback_model;
           // Use server response if non-empty, otherwise preserve accumulated streamed text
-          console.log('[Chat] responseData.content:', responseData.content);
-          console.log('[Chat] streamedText:', streamedText);
           var finalText = (responseData.content && responseData.content.trim()) ? responseData.content : streamedText;
-          console.log('[Chat] finalText before sanitize:', finalText);
           // Strip raw function-call JSON that some models leak as text
           finalText = this.sanitizeToolText(finalText);
-          console.log('[Chat] finalText after sanitize:', finalText);
           // If text is empty but tools ran, show a summary
           if (!finalText.trim() && streamedTools.length) {
             finalText = '';
           }
-          console.log('[Chat] Pushing message to this.messages:', { id: msgId + 1, role: 'agent', text: finalText, meta: meta, tools: streamedTools });
           this.messages.push({ id: ++msgId, role: 'agent', text: finalText, meta: meta, tools: streamedTools, ts: Date.now() });
-          console.log('[Chat] this.messages after push:', this.messages);
           this.sending = false;
           this.tokenCount = 0;
           this.scrollToBottom();
