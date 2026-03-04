@@ -278,14 +278,14 @@ type SkillWarning struct {
 }
 
 func (c *ClawHubClient) Install(slug string, targetDir string) (*ClawHubInstallResult, error) {
-	fmt.Println("[DEBUG] ClawHub.Install called with slug:", slug)
-	fmt.Println("[DEBUG] Target directory:", targetDir)
+	// fmt.Println("[DEBUG] ClawHub.Install called with slug:", slug)
+	// fmt.Println("[DEBUG] Target directory:", targetDir)
 
 	var bytes []byte
 	var err error
 
 	downloadURL := fmt.Sprintf("%s/download?slug=%s", c.baseURL, url.QueryEscape(slug))
-	fmt.Println("[DEBUG] Trying download URL:", downloadURL)
+	// fmt.Println("[DEBUG] Trying download URL:", downloadURL)
 
 	var req *http.Request
 	req, err = http.NewRequest("GET", downloadURL, nil)
@@ -295,50 +295,50 @@ func (c *ClawHubClient) Install(slug string, targetDir string) (*ClawHubInstallR
 		resp, err = c.httpClient.Do(req)
 		if err == nil {
 			defer resp.Body.Close()
-			fmt.Println("[DEBUG] Download response status:", resp.Status)
+			// fmt.Println("[DEBUG] Download response status:", resp.Status)
 			if resp.StatusCode == http.StatusOK {
 				bytes, err = io.ReadAll(resp.Body)
 				if err == nil && len(bytes) > 0 {
-					fmt.Println("[DEBUG] Successfully downloaded via /download endpoint, read", len(bytes), "bytes")
+					// fmt.Println("[DEBUG] Successfully downloaded via /download endpoint, read", len(bytes), "bytes")
 				} else {
-					fmt.Println("[DEBUG] /download endpoint returned empty or failed to read, falling back")
+					// fmt.Println("[DEBUG] /download endpoint returned empty or failed to read, falling back")
 					err = fmt.Errorf("empty response")
 				}
 			} else {
-				fmt.Println("[DEBUG] /download endpoint returned non-OK status, falling back")
+				// fmt.Println("[DEBUG] /download endpoint returned non-OK status, falling back")
 				err = fmt.Errorf("status %d", resp.StatusCode)
 			}
 		} else {
-			fmt.Println("[DEBUG] /download request failed, falling back:", err)
+			// fmt.Println("[DEBUG] /download request failed, falling back:", err)
 		}
 	}
 
 	if err != nil {
-		fmt.Println("[DEBUG] Falling back to /file endpoint")
+		// fmt.Println("[DEBUG] Falling back to /file endpoint")
 		fileContent, fileErr := c.GetFile(slug, "SKILL.md")
 		if fileErr != nil {
-			fmt.Println("[DEBUG] /file endpoint also failed:", fileErr)
+			// fmt.Println("[DEBUG] /file endpoint also failed:", fileErr)
 			return nil, fmt.Errorf("both /download and /file endpoints failed: %w", fileErr)
 		}
 		bytes = []byte(fileContent)
-		fmt.Println("[DEBUG] Successfully downloaded via /file endpoint, read", len(bytes), "bytes")
+		// fmt.Println("[DEBUG] Successfully downloaded via /file endpoint, read", len(bytes), "bytes")
 	}
 
 	skillDir := filepath.Join(targetDir, slug)
-	fmt.Println("[DEBUG] Creating skill directory:", skillDir)
+	// fmt.Println("[DEBUG] Creating skill directory:", skillDir)
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		fmt.Println("[DEBUG] Failed to create skill directory:", err)
+		// fmt.Println("[DEBUG] Failed to create skill directory:", err)
 		return nil, fmt.Errorf("failed to create skill directory: %w", err)
 	}
 
 	skillMDPath := filepath.Join(skillDir, "SKILL.md")
-	fmt.Println("[DEBUG] Writing SKILL.md to:", skillMDPath)
+	// fmt.Println("[DEBUG] Writing SKILL.md to:", skillMDPath)
 	if err := os.WriteFile(skillMDPath, bytes, 0644); err != nil {
-		fmt.Println("[DEBUG] Failed to write SKILL.md:", err)
+		// fmt.Println("[DEBUG] Failed to write SKILL.md:", err)
 		return nil, fmt.Errorf("failed to write SKILL.md: %w", err)
 	}
 
-	fmt.Println("[DEBUG] Installation complete")
+	// fmt.Println("[DEBUG] Installation complete")
 	return &ClawHubInstallResult{
 		SkillName:        slug,
 		Version:          "1.0.0",

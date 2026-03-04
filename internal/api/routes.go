@@ -19,6 +19,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
+	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
@@ -179,6 +180,17 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/cron/jobs/{id}/enable", r.handleEnableCronJob)
 	mux.HandleFunc("DELETE /api/cron/jobs/{id}", r.handleDeleteCronJob)
 	mux.HandleFunc("GET /api/cron/jobs/{id}/status", r.handleCronJobStatus)
+
+	// Workflows endpoints
+	mux.HandleFunc("POST /api/workflows", r.handleCreateWorkflow)
+	mux.HandleFunc("GET /api/workflows", r.handleListWorkflows)
+	mux.HandleFunc("POST /api/workflows/{id}/run", r.handleRunWorkflow)
+	mux.HandleFunc("GET /api/workflows/{id}/runs", r.handleListWorkflowRuns)
+
+	// Triggers endpoints
+	mux.HandleFunc("POST /api/triggers", r.handleCreateTrigger)
+	mux.HandleFunc("GET /api/triggers", r.handleListTriggers)
+	mux.HandleFunc("DELETE /api/triggers/{id}", r.handleDeleteTrigger)
 
 	// Shutdown endpoint
 	mux.HandleFunc("POST /api/shutdown", r.handleShutdown)
@@ -825,26 +837,63 @@ func (r *Router) handleLogsStream(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleUsageSummary(w http.ResponseWriter, req *http.Request) {
+	summary, err := r.kernel.UsageStore().QuerySummary()
+	if err != nil || summary.CallCount == 0 {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"total_input_tokens":  0,
+			"total_output_tokens": 0,
+			"total_cost_usd":      0.0,
+			"call_count":          0,
+			"total_tool_calls":    0,
+		})
+		return
+	}
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"total_input_tokens":  0,
-		"total_output_tokens": 0,
-		"total_cost_usd":      0.0,
-		"call_count":          0,
-		"total_tool_calls":    0,
-		"period_start":        "2024-01-01",
-		"period_end":          "2024-12-31",
+		"total_input_tokens":  summary.TotalInputTokens,
+		"total_output_tokens": summary.TotalOutputTokens,
+		"total_cost_usd":      summary.TotalCostUSD,
+		"call_count":          summary.CallCount,
+		"total_tool_calls":    summary.TotalToolCalls,
 	})
 }
 
 func (r *Router) handleUsageByModel(w http.ResponseWriter, req *http.Request) {
+	models, err := r.kernel.UsageStore().GetUsageByModel()
+	if err != nil || models == nil || len(models) == 0 {
+		models = []*types.ModelUsage{}
+	}
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"models": []interface{}{},
+		"models": models,
 	})
 }
 
 func (r *Router) handleUsageDaily(w http.ResponseWriter, req *http.Request) {
+	days, err := r.kernel.UsageStore().GetDailyBreakdown(7)
+	if err != nil || days == nil || len(days) == 0 {
+		today := time.Now()
+		days = []*types.DailyBreakdown{}
+		for i := 6; i >= 0; i-- {
+			date := today.AddDate(0, 0, -i)
+			days = append(days, &types.DailyBreakdown{
+				Date:    date.Format("2006-01-02"),
+				CostUSD: 0.0,
+				Tokens:  0,
+				Calls:   0,
+			})
+		}
+	}
+
+	todayCost, _ := r.kernel.UsageStore().GetTodayCost()
+
+	firstEventDate, _ := r.kernel.UsageStore().GetFirstEventDate()
+	if firstEventDate == nil && len(days) > 0 {
+		firstEventDate = &days[0].Date
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"days": []interface{}{},
+		"days":             days,
+		"today_cost_usd":   todayCost,
+		"first_event_date": firstEventDate,
 	})
 }
 
@@ -1539,25 +1588,25 @@ func (r *Router) handleClawhubSkillDetail(w http.ResponseWriter, req *http.Reque
 }
 
 func (r *Router) handleClawhubInstall(w http.ResponseWriter, req *http.Request) {
-	fmt.Println("[DEBUG] handleClawhubInstall called")
+	// fmt.Println("[DEBUG] handleClawhubInstall called")
 
 	var reqBody struct {
 		Slug string `json:"slug"`
 	}
 	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
-		fmt.Println("[DEBUG] Failed to decode request body:", err)
+		// fmt.Println("[DEBUG] Failed to decode request body:", err)
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	fmt.Println("[DEBUG] Request slug:", reqBody.Slug)
+	// fmt.Println("[DEBUG] Request slug:", reqBody.Slug)
 
 	skillsDir := filepath.Join(r.kernel.Config().DataDir, "skills")
-	fmt.Println("[DEBUG] Skills directory:", skillsDir)
+	// fmt.Println("[DEBUG] Skills directory:", skillsDir)
 
 	client := clawhub.NewClawHubClient()
 
 	if client.IsInstalled(reqBody.Slug, skillsDir) {
-		fmt.Println("[DEBUG] Skill already installed")
+		// fmt.Println("[DEBUG] Skill already installed")
 		respondJSON(w, http.StatusConflict, map[string]interface{}{
 			"error":  fmt.Sprintf("Skill '%s' is already installed", reqBody.Slug),
 			"status": "already_installed",
@@ -1565,16 +1614,16 @@ func (r *Router) handleClawhubInstall(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	fmt.Println("[DEBUG] Starting installation...")
+	// fmt.Println("[DEBUG] Starting installation...")
 	result, err := client.Install(reqBody.Slug, skillsDir)
 	if err != nil {
-		fmt.Println("[DEBUG] Installation failed:", err)
+		// fmt.Println("[DEBUG] Installation failed:", err)
 		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
 			"error": err.Error(),
 		})
 		return
 	}
-	fmt.Println("[DEBUG] Installation successful:", result.SkillName)
+	// fmt.Println("[DEBUG] Installation successful:", result.SkillName)
 
 	var warnings []map[string]interface{}
 	for _, w := range result.Warnings {
@@ -1713,4 +1762,325 @@ func (r *Router) handleRejectApproval(w http.ResponseWriter, req *http.Request) 
 		"status":     "rejected",
 		"decided_at": time.Now().Format(time.RFC3339),
 	})
+}
+
+func (r *Router) handleCreateWorkflow(w http.ResponseWriter, req *http.Request) {
+	var reqBody map[string]interface{}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	name := "unnamed"
+	if n, ok := reqBody["name"].(string); ok {
+		name = n
+	}
+
+	description := ""
+	if d, ok := reqBody["description"].(string); ok {
+		description = d
+	}
+
+	stepsJson, ok := reqBody["steps"].([]interface{})
+	if !ok {
+		respondError(w, http.StatusBadRequest, "Missing 'steps' array")
+		return
+	}
+
+	var steps []types.WorkflowStep
+	for _, s := range stepsJson {
+		stepMap, ok := s.(map[string]interface{})
+		if !ok {
+			respondError(w, http.StatusBadRequest, "Invalid step format")
+			return
+		}
+
+		stepName := "step"
+		if sn, ok := stepMap["name"].(string); ok {
+			stepName = sn
+		}
+
+		var agent types.StepAgent
+		if agentID, ok := stepMap["agent_id"].(string); ok {
+			agent.ID = &agentID
+		} else if agentName, ok := stepMap["agent_name"].(string); ok {
+			agent.Name = &agentName
+		} else {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("Step '%s' needs 'agent_id' or 'agent_name'", stepName))
+			return
+		}
+
+		modeType := "sequential"
+		if mt, ok := stepMap["mode"].(string); ok {
+			modeType = mt
+		}
+
+		var mode types.StepMode
+		switch modeType {
+		case "fan_out":
+			mode = types.StepMode{Type: "fan_out"}
+		case "collect":
+			mode = types.StepMode{Type: "collect"}
+		case "conditional":
+			condition := ""
+			if c, ok := stepMap["condition"].(string); ok {
+				condition = c
+			}
+			mode = types.StepMode{Type: "conditional", Condition: &condition}
+		case "loop":
+			maxIterations := uint32(5)
+			if mi, ok := stepMap["max_iterations"].(float64); ok {
+				maxIterations = uint32(mi)
+			}
+			until := ""
+			if u, ok := stepMap["until"].(string); ok {
+				until = u
+			}
+			mode = types.StepMode{Type: "loop", MaxIterations: &maxIterations, Until: &until}
+		default:
+			mode = types.StepMode{Type: "sequential"}
+		}
+
+		errorModeType := "fail"
+		if emt, ok := stepMap["error_mode"].(string); ok {
+			errorModeType = emt
+		}
+
+		var errorMode types.ErrorMode
+		switch errorModeType {
+		case "skip":
+			errorMode = types.ErrorMode{Type: "skip"}
+		case "retry":
+			maxRetries := uint32(3)
+			if mr, ok := stepMap["max_retries"].(float64); ok {
+				maxRetries = uint32(mr)
+			}
+			errorMode = types.ErrorMode{Type: "retry", MaxRetries: &maxRetries}
+		default:
+			errorMode = types.ErrorMode{Type: "fail"}
+		}
+
+		promptTemplate := "{{input}}"
+		if pt, ok := stepMap["prompt"].(string); ok {
+			promptTemplate = pt
+		}
+
+		timeoutSecs := uint64(120)
+		if ts, ok := stepMap["timeout_secs"].(float64); ok {
+			timeoutSecs = uint64(ts)
+		}
+
+		var outputVar *string
+		if ov, ok := stepMap["output_var"].(string); ok {
+			outputVar = &ov
+		}
+
+		steps = append(steps, types.WorkflowStep{
+			Name:           stepName,
+			Agent:          agent,
+			PromptTemplate: promptTemplate,
+			Mode:           mode,
+			TimeoutSecs:    timeoutSecs,
+			ErrorMode:      errorMode,
+			OutputVar:      outputVar,
+		})
+	}
+
+	workflowID := types.WorkflowID(fmt.Sprintf("wf-%d", time.Now().UnixNano()))
+	workflow := types.Workflow{
+		ID:          workflowID,
+		Name:        name,
+		Description: description,
+		Steps:       steps,
+		CreatedAt:   time.Now(),
+	}
+
+	id := r.kernel.WorkflowEngine().Register(workflow)
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"workflow_id": id,
+	})
+}
+
+func (r *Router) handleListWorkflows(w http.ResponseWriter, req *http.Request) {
+	workflows := r.kernel.WorkflowEngine().ListWorkflows()
+	result := make([]map[string]interface{}, 0)
+	for _, wf := range workflows {
+		result = append(result, map[string]interface{}{
+			"id":          wf.ID,
+			"name":        wf.Name,
+			"description": wf.Description,
+			"steps":       len(wf.Steps),
+			"created_at":  wf.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (r *Router) handleRunWorkflow(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	workflowID := types.WorkflowID(idStr)
+
+	var reqBody map[string]interface{}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	input := ""
+	if i, ok := reqBody["input"].(string); ok {
+		input = i
+	}
+
+	runID := r.kernel.WorkflowEngine().CreateRun(workflowID, input)
+	if runID == nil {
+		respondError(w, http.StatusBadRequest, "Invalid workflow ID")
+		return
+	}
+
+	resolver := func(agent types.StepAgent) (string, string, bool) {
+		if agent.ID != nil {
+			return *agent.ID, "Agent", true
+		}
+		if agent.Name != nil {
+			return "agent-id", *agent.Name, true
+		}
+		return "", "", false
+	}
+
+	sender := func(agentID, prompt string) (string, uint64, uint64, error) {
+		return "Sample output", 100, 50, nil
+	}
+
+	output, err := r.kernel.WorkflowEngine().ExecuteRun(*runID, resolver, sender)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Workflow execution failed")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"run_id": *runID,
+		"output": output,
+		"status": "completed",
+	})
+}
+
+func (r *Router) handleListWorkflowRuns(w http.ResponseWriter, req *http.Request) {
+	runs := r.kernel.WorkflowEngine().ListRuns(nil)
+	result := make([]map[string]interface{}, 0)
+	for _, run := range runs {
+		var completedAt *string
+		if run.CompletedAt != nil {
+			ca := run.CompletedAt.Format(time.RFC3339)
+			completedAt = &ca
+		}
+		result = append(result, map[string]interface{}{
+			"id":              run.ID,
+			"workflow_name":   run.WorkflowName,
+			"state":           run.State,
+			"steps_completed": len(run.StepResults),
+			"started_at":      run.StartedAt.Format(time.RFC3339),
+			"completed_at":    completedAt,
+		})
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (r *Router) handleCreateTrigger(w http.ResponseWriter, req *http.Request) {
+	var reqBody map[string]interface{}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	agentID, ok := reqBody["agent_id"].(string)
+	if !ok {
+		respondError(w, http.StatusBadRequest, "Missing 'agent_id'")
+		return
+	}
+
+	patternData, ok := reqBody["pattern"]
+	if !ok {
+		respondError(w, http.StatusBadRequest, "Missing 'pattern'")
+		return
+	}
+
+	var pattern triggers.TriggerPattern
+	patternBytes, err := json.Marshal(patternData)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid trigger pattern")
+		return
+	}
+
+	if err := json.Unmarshal(patternBytes, &pattern); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid trigger pattern")
+		return
+	}
+
+	promptTemplate := "Event: {{event}}"
+	if pt, ok := reqBody["prompt_template"].(string); ok {
+		promptTemplate = pt
+	}
+
+	maxFires := uint64(0)
+	if mf, ok := reqBody["max_fires"].(float64); ok {
+		maxFires = uint64(mf)
+	}
+
+	trigger := &triggers.Trigger{
+		ID:             triggers.NewTriggerID(),
+		AgentID:        agentID,
+		Pattern:        pattern,
+		PromptTemplate: promptTemplate,
+		Enabled:        true,
+		CreatedAt:      time.Now(),
+		FireCount:      0,
+		MaxFires:       maxFires,
+	}
+
+	if err := r.kernel.TriggerEngine().Register(trigger); err != nil {
+		respondError(w, http.StatusNotFound, "Trigger registration failed (agent not found?)")
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"trigger_id": trigger.ID,
+		"agent_id":   agentID,
+	})
+}
+
+func (r *Router) handleListTriggers(w http.ResponseWriter, req *http.Request) {
+	agentID := req.URL.Query().Get("agent_id")
+	triggersList := r.kernel.TriggerEngine().List(agentID)
+	result := make([]map[string]interface{}, 0)
+	for _, t := range triggersList {
+		result = append(result, map[string]interface{}{
+			"id":              t.ID,
+			"agent_id":        t.AgentID,
+			"pattern":         t.Pattern,
+			"prompt_template": t.PromptTemplate,
+			"enabled":         t.Enabled,
+			"fire_count":      t.FireCount,
+			"max_fires":       t.MaxFires,
+			"created_at":      t.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (r *Router) handleDeleteTrigger(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := triggers.ParseTriggerID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid trigger ID")
+		return
+	}
+
+	if r.kernel.TriggerEngine().Delete(id) {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"status":     "removed",
+			"trigger_id": idStr,
+		})
+	} else {
+		respondError(w, http.StatusNotFound, "Trigger not found")
+	}
 }

@@ -32,6 +32,7 @@ type Kernel struct {
 	semantic       *memory.SemanticStore
 	sessions       *memory.SessionStore
 	knowledge      *memory.KnowledgeStore
+	usage          *memory.UsageStore
 	skillLoader    *skills.Loader
 	registry       *channels.Registry
 	agentRegistry  *AgentRegistry
@@ -40,6 +41,7 @@ type Kernel struct {
 	approvalMgr    *approvals.ApprovalManager
 	deliveryReg    *delivery.DeliveryRegistry
 	pairingManager *pairing.PairingManager
+	workflowEngine *WorkflowEngine
 	mu             sync.RWMutex
 	started        bool
 }
@@ -87,6 +89,8 @@ func NewKernel(config types.KernelConfig) (*Kernel, error) {
 		return nil, fmt.Errorf("failed to initialize knowledge store: %w", err)
 	}
 
+	usageStore := memory.NewUsageStore(db)
+
 	skillsPath := filepath.Join(dataDir, "skills")
 	skillLoader, err := skills.NewLoader(skillsPath)
 	if err != nil {
@@ -114,6 +118,7 @@ func NewKernel(config types.KernelConfig) (*Kernel, error) {
 	cronScheduler := cron.NewCronScheduler(cronPersistDir, nil)
 
 	modelCatalog := model_catalog.NewModelCatalog()
+	workflowEngine := NewWorkflowEngine()
 
 	config.DataDir = dataDir
 
@@ -127,6 +132,7 @@ func NewKernel(config types.KernelConfig) (*Kernel, error) {
 		semantic:       semanticStore,
 		sessions:       sessionStore,
 		knowledge:      knowledgeStore,
+		usage:          usageStore,
 		skillLoader:    skillLoader,
 		registry:       registry,
 		agentRegistry:  agentRegistry,
@@ -135,6 +141,7 @@ func NewKernel(config types.KernelConfig) (*Kernel, error) {
 		approvalMgr:    approvalMgr,
 		deliveryReg:    deliveryReg,
 		pairingManager: pairingManager,
+		workflowEngine: workflowEngine,
 	}, nil
 }
 
@@ -210,6 +217,10 @@ func (k *Kernel) KnowledgeStore() *memory.KnowledgeStore {
 	return k.knowledge
 }
 
+func (k *Kernel) UsageStore() *memory.UsageStore {
+	return k.usage
+}
+
 func (k *Kernel) SkillLoader() *skills.Loader {
 	return k.skillLoader
 }
@@ -248,6 +259,10 @@ func (k *Kernel) CronScheduler() *cron.CronScheduler {
 
 func (k *Kernel) ModelCatalog() *model_catalog.ModelCatalog {
 	return k.modelCatalog
+}
+
+func (k *Kernel) WorkflowEngine() *WorkflowEngine {
+	return k.workflowEngine
 }
 
 func (k *Kernel) ReloadConfig(newConfig types.KernelConfig) *configreload.ReloadPlan {

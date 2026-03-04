@@ -45,29 +45,29 @@ func NewLoader(skillsPath string) (*Loader, error) {
 
 // LoadSkill loads a skill from a directory.
 func (l *Loader) LoadSkill(skillID string) (*types.Skill, error) {
-	fmt.Println("[DEBUG] LoadSkill called for:", skillID)
+	// fmt.Println("[DEBUG] LoadSkill called for:", skillID)
 	l.mu.RLock()
 	if skill, exists := l.registry[skillID]; exists {
 		l.mu.RUnlock()
-		fmt.Println("[DEBUG] LoadSkill found in registry:", skillID)
+		// fmt.Println("[DEBUG] LoadSkill found in registry:", skillID)
 		return skill, nil
 	}
 	l.mu.RUnlock()
 
 	skillDir := filepath.Join(l.skillsPath, skillID)
-	fmt.Println("[DEBUG] LoadSkill skillDir:", skillDir)
+	// fmt.Println("[DEBUG] LoadSkill skillDir:", skillDir)
 	if _, err := os.Stat(skillDir); os.IsNotExist(err) {
-		fmt.Println("[DEBUG] LoadSkill skill not found:", skillID)
+		// fmt.Println("[DEBUG] LoadSkill skill not found:", skillID)
 		return nil, fmt.Errorf("skill not found: %s", skillID)
 	}
 
-	fmt.Println("[DEBUG] LoadSkill loading manifest...")
+	// fmt.Println("[DEBUG] LoadSkill loading manifest...")
 	manifest, err := l.loadManifest(skillDir)
 	if err != nil {
-		fmt.Println("[DEBUG] LoadSkill failed to load manifest:", err)
+		// fmt.Println("[DEBUG] LoadSkill failed to load manifest:", err)
 		return nil, fmt.Errorf("failed to load manifest: %w", err)
 	}
-	fmt.Println("[DEBUG] LoadSkill manifest loaded successfully")
+	// fmt.Println("[DEBUG] LoadSkill manifest loaded successfully")
 
 	skill := &types.Skill{
 		ID:          skillID,
@@ -81,54 +81,54 @@ func (l *Loader) LoadSkill(skillID string) (*types.Skill, error) {
 	l.registry[skillID] = skill
 	l.mu.Unlock()
 
-	fmt.Println("[DEBUG] LoadSkill complete for:", skillID)
+	// fmt.Println("[DEBUG] LoadSkill complete for:", skillID)
 	return skill, nil
 }
 
 // loadManifest loads and parses the skill manifest.
 func (l *Loader) loadManifest(skillDir string) (types.SkillManifest, error) {
-	fmt.Println("[DEBUG] loadManifest called, skillDir:", skillDir)
+	// fmt.Println("[DEBUG] loadManifest called, skillDir:", skillDir)
 	manifestPath := filepath.Join(skillDir, "skill.toml")
-	fmt.Println("[DEBUG] loadManifest checking skill.toml...")
+	// fmt.Println("[DEBUG] loadManifest checking skill.toml...")
 	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
 		manifestPath = filepath.Join(skillDir, "manifest.json")
-		fmt.Println("[DEBUG] loadManifest checking manifest.json...")
+		// fmt.Println("[DEBUG] loadManifest checking manifest.json...")
 		if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
 			manifestPath = filepath.Join(skillDir, "SKILL.md")
-			fmt.Println("[DEBUG] loadManifest checking SKILL.md...")
+			// fmt.Println("[DEBUG] loadManifest checking SKILL.md...")
 		}
 	}
-	fmt.Println("[DEBUG] loadManifest using path:", manifestPath)
+	// fmt.Println("[DEBUG] loadManifest using path:", manifestPath)
 
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
-		fmt.Println("[DEBUG] loadManifest failed to read file:", err)
+		// fmt.Println("[DEBUG] loadManifest failed to read file:", err)
 		return types.SkillManifest{}, fmt.Errorf("failed to read manifest: %w", err)
 	}
-	fmt.Println("[DEBUG] loadManifest read", len(data), "bytes")
+	// fmt.Println("[DEBUG] loadManifest read", len(data), "bytes")
 
 	var manifest types.SkillManifest
 	if filepath.Ext(manifestPath) == ".md" {
-		fmt.Println("[DEBUG] loadManifest parsing as SKILL.md...")
+		// fmt.Println("[DEBUG] loadManifest parsing as SKILL.md...")
 		return parseSKILLMD(data)
 	} else if filepath.Ext(manifestPath) == ".toml" {
 		return types.SkillManifest{}, fmt.Errorf("TOML manifest not yet supported")
 	}
 
 	if err := json.Unmarshal(data, &manifest); err != nil {
-		fmt.Println("[DEBUG] loadManifest failed to parse JSON:", err)
+		// fmt.Println("[DEBUG] loadManifest failed to parse JSON:", err)
 		return types.SkillManifest{}, fmt.Errorf("failed to parse manifest: %w", err)
 	}
 
-	fmt.Println("[DEBUG] loadManifest complete")
+	// fmt.Println("[DEBUG] loadManifest complete")
 	return manifest, nil
 }
 
 // parseSKILLMD parses a SKILL.md file with YAML frontmatter.
 func parseSKILLMD(data []byte) (types.SkillManifest, error) {
-	fmt.Println("[DEBUG] parseSKILLMD called")
+	// fmt.Println("[DEBUG] parseSKILLMD called")
 	content := string(data)
-	fmt.Println("[DEBUG] parseSKILLMD content length:", len(content))
+	// fmt.Println("[DEBUG] parseSKILLMD content length:", len(content))
 
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 
@@ -161,15 +161,15 @@ func parseSKILLMD(data []byte) (types.SkillManifest, error) {
 		}
 	}
 
-	fmt.Println("[DEBUG] parseSKILLMD frontmatter length:", len(frontmatter))
-	fmt.Println("[DEBUG] parseSKILLMD body length:", len(body))
+	// fmt.Println("[DEBUG] parseSKILLMD frontmatter length:", len(frontmatter))
+	// fmt.Println("[DEBUG] parseSKILLMD body length:", len(body))
 
 	if frontmatter == "" {
-		fmt.Println("[DEBUG] parseSKILLMD invalid format, missing frontmatter")
+		// fmt.Println("[DEBUG] parseSKILLMD invalid format, missing frontmatter")
 		return types.SkillManifest{}, fmt.Errorf("invalid SKILL.md format: missing frontmatter")
 	}
 
-	fmt.Println("[DEBUG] parseSKILLMD frontmatter:", frontmatter[:min(200, len(frontmatter))])
+	// fmt.Println("[DEBUG] parseSKILLMD frontmatter:", frontmatter[:min(200, len(frontmatter))])
 
 	type FrontMatter struct {
 		Name        string   `yaml:"name"`
@@ -180,12 +180,12 @@ func parseSKILLMD(data []byte) (types.SkillManifest, error) {
 	}
 
 	var fm FrontMatter
-	fmt.Println("[DEBUG] parseSKILLMD unmarshaling frontmatter...")
+	// fmt.Println("[DEBUG] parseSKILLMD unmarshaling frontmatter...")
 	if err := yaml.Unmarshal([]byte(frontmatter), &fm); err != nil {
-		fmt.Println("[DEBUG] parseSKILLMD failed to parse frontmatter:", err)
+		// fmt.Println("[DEBUG] parseSKILLMD failed to parse frontmatter:", err)
 		return types.SkillManifest{}, fmt.Errorf("failed to parse frontmatter: %w", err)
 	}
-	fmt.Println("[DEBUG] parseSKILLMD frontmatter parsed, name:", fm.Name)
+	// fmt.Println("[DEBUG] parseSKILLMD frontmatter parsed, name:", fm.Name)
 
 	if fm.Version == "" {
 		fm.Version = "1.0.0"
@@ -210,7 +210,7 @@ func parseSKILLMD(data []byte) (types.SkillManifest, error) {
 		manifest.Metadata["tags"] = strings.Join(fm.Tags, ",")
 	}
 
-	fmt.Println("[DEBUG] parseSKILLMD complete, prompt context length:", len(manifest.PromptContext))
+	// fmt.Println("[DEBUG] parseSKILLMD complete, prompt context length:", len(manifest.PromptContext))
 	return manifest, nil
 }
 
@@ -452,14 +452,14 @@ func findNode() string {
 
 // ListSkills lists all installed skills.
 func (l *Loader) ListSkills() ([]*types.Skill, error) {
-	fmt.Println("[DEBUG] ListSkills called, skillsPath:", l.skillsPath)
+	// fmt.Println("[DEBUG] ListSkills called, skillsPath:", l.skillsPath)
 
 	entries, err := os.ReadDir(l.skillsPath)
 	if err != nil {
-		fmt.Println("[DEBUG] ListSkills failed to read dir:", err)
+		// fmt.Println("[DEBUG] ListSkills failed to read dir:", err)
 		return nil, err
 	}
-	fmt.Println("[DEBUG] ListSkills found", len(entries), "entries")
+	// fmt.Println("[DEBUG] ListSkills found", len(entries), "entries")
 
 	var dirNames []string
 	for _, entry := range entries {
@@ -470,15 +470,15 @@ func (l *Loader) ListSkills() ([]*types.Skill, error) {
 
 	var skills []*types.Skill
 	for _, dirName := range dirNames {
-		fmt.Println("[DEBUG] Loading skill:", dirName)
+		// fmt.Println("[DEBUG] Loading skill:", dirName)
 		if skill, err := l.LoadSkill(dirName); err == nil {
-			fmt.Println("[DEBUG] Successfully loaded skill:", dirName)
+			// fmt.Println("[DEBUG] Successfully loaded skill:", dirName)
 			skills = append(skills, skill)
 		} else {
-			fmt.Println("[DEBUG] Failed to load skill", dirName, ":", err)
+			// fmt.Println("[DEBUG] Failed to load skill", dirName, ":", err)
 		}
 	}
-	fmt.Println("[DEBUG] ListSkills returning", len(skills), "skills")
+	// fmt.Println("[DEBUG] ListSkills returning", len(skills), "skills")
 
 	return skills, nil
 }

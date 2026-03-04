@@ -245,6 +245,10 @@ func (s *UsageStore) GetUsageSummary(agentID *types.AgentID, start, end *time.Ti
 		TotalTokens:           totalTotal,
 		TotalCostUSD:          totalCost,
 		RecordCount:           recordCount,
+		TotalInputTokens:      totalPrompt,
+		TotalOutputTokens:     totalCompletion,
+		CallCount:             recordCount,
+		TotalToolCalls:        0,
 	}, nil
 }
 
@@ -264,4 +268,109 @@ func (s *UsageStore) DeleteOldUsage(before time.Time) (int64, error) {
 	}
 
 	return rowsAffected, nil
+}
+
+// GetUsageByModel gets usage grouped by model.
+func (s *UsageStore) GetUsageByModel() ([]*types.ModelUsage, error) {
+	query := `
+		SELECT model, 
+		       COALESCE(SUM(cost_usd), 0), 
+		       COALESCE(SUM(json_extract(usage, '$.prompt_tokens')), 0),
+		       COALESCE(SUM(json_extract(usage, '$.completion_tokens')), 0),
+		       COUNT(*)
+		FROM usage 
+		GROUP BY model 
+		ORDER BY SUM(cost_usd) DESC
+	`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return []*types.ModelUsage{}, fmt.Errorf("failed to get usage by model: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*types.ModelUsage
+	for rows.Next() {
+		var mu types.ModelUsage
+		err := rows.Scan(&mu.Model, &mu.TotalCostUSD, &mu.TotalInputTokens, &mu.TotalOutputTokens, &mu.CallCount)
+		if err != nil {
+			return []*types.ModelUsage{}, fmt.Errorf("failed to scan model usage: %w", err)
+		}
+		results = append(results, &mu)
+	}
+
+	if results == nil {
+		results = []*types.ModelUsage{}
+	}
+
+	return results, nil
+}
+
+// GetDailyBreakdown gets daily usage breakdown for the last N days.
+func (s *UsageStore) GetDailyBreakdown(days int) ([]*types.DailyBreakdown, error) {
+	since := time.Now().AddDate(0, 0, -days)
+	query := `
+		SELECT DATE(created_at) as day,
+		       COALESCE(SUM(cost_usd), 0.0),
+		       COALESCE(SUM(json_extract(usage, '$.prompt_tokens') + json_extract(usage, '$.completion_tokens')), 0),
+		       COUNT(*)
+		FROM usage
+		WHERE created_at >= ?
+		GROUP BY day
+		ORDER BY day ASC
+	`
+
+	rows, err := s.db.Query(query, since.Format(time.RFC3339))
+	if err != nil {
+		return []*types.DailyBreakdown{}, fmt.Errorf("failed to get daily breakdown: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*types.DailyBreakdown
+	for rows.Next() {
+		var db types.DailyBreakdown
+		err := rows.Scan(&db.Date, &db.CostUSD, &db.Tokens, &db.Calls)
+		if err != nil {
+			return []*types.DailyBreakdown{}, fmt.Errorf("failed to scan daily breakdown: %w", err)
+		}
+		results = append(results, &db)
+	}
+
+	if results == nil {
+		results = []*types.DailyBreakdown{}
+	}
+
+	return results, nil
+}
+
+// GetFirstEventDate gets the timestamp of the earliest usage event.
+func (s *UsageStore) GetFirstEventDate() (*string, error) {
+	var result *string
+	err := s.db.QueryRow("SELECT MIN(DATE(created_at)) FROM usage").Scan(&result)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get first event date: %w", err)
+	}
+	return result, nil
+}
+
+// GetTodayCost gets today's total cost across all agents.
+func (s *UsageStore) GetTodayCost() (float64, error) {
+	today := time.Now().Format("2006-01-02")
+	var cost float64
+	err := s.db.QueryRow(`
+		SELECT COALESCE(SUM(cost_usd), 0.0) FROM usage
+		WHERE DATE(created_at) = ?
+	`, today).Scan(&cost)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get today cost: %w", err)
+	}
+	return cost, nil
+}
+
+// QuerySummary gets usage summary for all agents.
+func (s *UsageStore) QuerySummary() (*types.UsageSummary, error) {
+	return s.GetUsageSummary(nil, nil, nil)
 }

@@ -34,4 +34,25 @@ type UsageSummary struct {
 	TotalTokens           int     `json:"total_tokens"`
 	TotalCostUSD          float64 `json:"total_cost_usd"`
 	RecordCount           int     `json:"record_count"`
+	TotalInputTokens      int     `json:"total_input_tokens"`
+	TotalOutputTokens     int     `json:"total_output_tokens"`
+	CallCount             int     `json:"call_count"`
+	TotalToolCalls        int     `json:"total_tool_calls"`
+}
+
+// ModelUsage represents usage grouped by model.
+type ModelUsage struct {
+	Model             string  `json:"model"`
+	TotalCostUSD      float64 `json:"total_cost_usd"`
+	TotalInputTokens  int     `json:"total_input_tokens"`
+	TotalOutputTokens int     `json:"total_output_tokens"`
+	CallCount         int     `json:"call_count"`
+}
+
+// DailyBreakdown represents daily usage breakdown.
+type DailyBreakdown struct {
+	Date     string  `json:"date"`
+	CostUSD  float64 `json:"cost_usd"`
+	Tokens   int     `json:"tokens"`
+	Calls    int     `json:"calls"`
 }
