@@ -23,6 +23,26 @@ type AgentEntry struct {
 	Children   []types.AgentID     `json:"children"`
 }
 
+// GetID returns the agent ID as a string.
+func (e *AgentEntry) GetID() string {
+	return e.ID.String()
+}
+
+// GetName returns the agent name.
+func (e *AgentEntry) GetName() string {
+	return e.Name
+}
+
+// GetTags returns the agent tags.
+func (e *AgentEntry) GetTags() []string {
+	return e.Tags
+}
+
+// GetCreatedAt returns the agent creation time.
+func (e *AgentEntry) GetCreatedAt() time.Time {
+	return e.CreatedAt
+}
+
 type AgentRegistry struct {
 	mu         sync.RWMutex
 	agents     map[types.AgentID]*AgentEntry

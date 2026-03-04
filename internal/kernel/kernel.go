@@ -208,6 +208,15 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 				fmt.Printf("Registered agent from disk: %s (ID: %s)\n", agentEntry.Name, agentEntry.ID.String())
 			}
 		}
+
+		// 从 agents 恢复 hand instances
+		fmt.Printf("Restoring hand instances from %d agents...\n", len(agents))
+		var agentEntriesForHands []hands.AgentEntry
+		for _, agent := range agents {
+			agentEntriesForHands = append(agentEntriesForHands, agent)
+		}
+		handRegistry.RestoreInstancesFromAgents(agentEntriesForHands)
+		fmt.Printf("Restored %d hand instances\n", len(handRegistry.ListInstances()))
 	}
 
 	return k, nil

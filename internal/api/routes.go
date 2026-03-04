@@ -128,9 +128,12 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/hands/{id}", r.handleGetHand)
 	mux.HandleFunc("POST /api/hands/{id}/activate", r.handleActivateHand)
 	mux.HandleFunc("POST /api/hands/{id}/install-deps", r.handleInstallHandDeps)
+	mux.HandleFunc("DELETE /api/hands/instances/{instanceID}", r.handleDeactivateHand)
 	mux.HandleFunc("POST /api/hands/instances/{instanceID}/deactivate", r.handleDeactivateHand)
 	mux.HandleFunc("POST /api/hands/instances/{instanceID}/pause", r.handlePauseHand)
 	mux.HandleFunc("POST /api/hands/instances/{instanceID}/resume", r.handleResumeHand)
+	mux.HandleFunc("GET /api/hands/instances/{instanceID}/stats", r.handleHandInstanceStats)
+	mux.HandleFunc("GET /api/hands/instances/{instanceID}/browser", r.handleHandInstanceBrowser)
 
 	// Approval endpoints
 	mux.HandleFunc("GET /api/approvals", r.handleListApprovals)
@@ -1087,6 +1090,68 @@ func (r *Router) handleResumeHand(w http.ResponseWriter, req *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
+	})
+}
+
+func (r *Router) handleHandInstanceStats(w http.ResponseWriter, req *http.Request) {
+	instanceID := req.PathValue("instanceID")
+
+	instance, ok := r.kernel.HandRegistry().GetInstance(instanceID)
+	if !ok {
+		respondError(w, http.StatusNotFound, "Instance not found")
+		return
+	}
+
+	def, ok := r.kernel.HandRegistry().GetDefinition(instance.HandID)
+	if !ok {
+		respondError(w, http.StatusNotFound, "Hand definition not found")
+		return
+	}
+
+	if instance.AgentID == "" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"instance_id": instanceID,
+			"hand_id":     instance.HandID,
+			"metrics":     map[string]interface{}{},
+		})
+		return
+	}
+
+	metrics := make(map[string]interface{})
+	for _, metric := range def.Dashboard.Metrics {
+		metrics[metric.Label] = map[string]interface{}{
+			"value":  nil,
+			"format": metric.Format,
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"instance_id": instanceID,
+		"hand_id":     instance.HandID,
+		"status":      instance.Status,
+		"agent_id":    instance.AgentID,
+		"metrics":     metrics,
+	})
+}
+
+func (r *Router) handleHandInstanceBrowser(w http.ResponseWriter, req *http.Request) {
+	instanceID := req.PathValue("instanceID")
+
+	instance, ok := r.kernel.HandRegistry().GetInstance(instanceID)
+	if !ok {
+		respondError(w, http.StatusNotFound, "Instance not found")
+		return
+	}
+
+	if instance.AgentID == "" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"active": false,
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"active": false,
 	})
 }
 

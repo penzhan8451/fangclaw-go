@@ -4,6 +4,7 @@ package hands
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -485,4 +486,47 @@ func (r *Registry) UpdateInstanceAgent(instanceID, agentID string) error {
 	instance.AgentID = agentID
 	instance.UpdatedAt = time.Now()
 	return nil
+}
+
+// AgentEntry represents an agent entry from the agent registry.
+type AgentEntry interface {
+	GetID() string
+	GetName() string
+	GetTags() []string
+	GetCreatedAt() time.Time
+}
+
+// RestoreInstancesFromAgents restores hand instances from agent entries.
+func (r *Registry) RestoreInstancesFromAgents(agents []AgentEntry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, agent := range agents {
+		var handID string
+		var instanceID string
+
+		for _, tag := range agent.GetTags() {
+			if strings.HasPrefix(tag, "hand:") {
+				handID = strings.TrimPrefix(tag, "hand:")
+			}
+			if strings.HasPrefix(tag, "hand_instance:") {
+				instanceID = strings.TrimPrefix(tag, "hand_instance:")
+			}
+		}
+
+		if handID != "" && instanceID != "" {
+			now := time.Now()
+			instance := &HandInstance{
+				InstanceID:  instanceID,
+				HandID:      handID,
+				Status:      HandStatusActive,
+				AgentID:     agent.GetID(),
+				AgentName:   agent.GetName(),
+				Config:      make(map[string]interface{}),
+				ActivatedAt: agent.GetCreatedAt(),
+				UpdatedAt:   now,
+			}
+			r.instances[instanceID] = instance
+		}
+	}
 }
