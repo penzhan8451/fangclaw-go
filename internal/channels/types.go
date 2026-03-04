@@ -165,8 +165,11 @@ type ChannelConfig struct {
 	WhatsAppPhoneID     string            `json:"whatsapp_phone_id,omitempty"`
 	WhatsAppBusinessID  string            `json:"whatsapp_business_id,omitempty"`
 	WhatsAppAccessToken string            `json:"whatsapp_access_token,omitempty"`
-	QQBotID             string            `json:"qq_bot_id,omitempty"`
-	QQBotToken          string            `json:"qq_bot_token,omitempty"`
+	QQAppID             string            `json:"qq_app_id,omitempty"`
+	QQAppSecret         string            `json:"qq_app_secret,omitempty"`
+	QQGroupTrigger      string            `json:"qq_group_trigger,omitempty"`
+	QQReasoningChannelID string           `json:"qq_reasoning_channel_id,omitempty"`
+	QQAllowFrom         []string          `json:"qq_allow_from,omitempty"`
 	Username            string            `json:"username,omitempty"`
 	Password            string            `json:"password,omitempty"`
 	Server              string            `json:"server,omitempty"`

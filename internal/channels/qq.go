@@ -1,37 +1,42 @@
 package channels
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
+	"sync"
 	"time"
+
+	"github.com/tencent-connect/botgo"
+	"github.com/tencent-connect/botgo/dto"
+	"github.com/tencent-connect/botgo/event"
+	"github.com/tencent-connect/botgo/openapi"
+	"github.com/tencent-connect/botgo/token"
+	"golang.org/x/oauth2"
 )
 
 // QQAdapter implements the Adapter interface for QQ.
 type QQAdapter struct {
 	*BaseAdapter
-	client        *http.Client
-	pollInterval  time.Duration
-	shutdown      chan struct{}
-	msgChan       chan *Message
+	api            openapi.OpenAPI
+	tokenSource    oauth2.TokenSource
+	ctx            context.Context
+	cancel         context.CancelFunc
+	sessionManager botgo.SessionManager
+	processedIDs   map[string]bool
+	msgChan        chan *Message
+	mu             sync.RWMutex
 }
 
 // NewQQAdapter creates a new QQ adapter.
 func NewQQAdapter(channel *Channel) (Adapter, error) {
 	return &QQAdapter{
-		BaseAdapter: NewBaseAdapter(channel),
-		client: &http.Client{
-			Timeout: 60 * time.Second,
-		},
-		pollInterval: 1 * time.Second,
-		shutdown: make(chan struct{}),
-		msgChan: make(chan *Message, 100),
+		BaseAdapter:  NewBaseAdapter(channel),
+		processedIDs: make(map[string]bool),
+		msgChan:      make(chan *Message, 100),
 	}, nil
 }
 
-// Connect connects to QQ.
+// Connect connects to QQ using WebSocket.
 func (a *QQAdapter) Connect() error {
 	return a.Start()
 }
@@ -42,106 +47,208 @@ func (a *QQAdapter) Disconnect() error {
 }
 
 // Receive receives messages from QQ.
+// QQ Bot receive message from the user or group.
 func (a *QQAdapter) Receive(ctx context.Context) (<-chan *Message, error) {
 	return a.msgChan, nil
 }
 
 // Send sends a message via QQ Bot API.
+// QQ Bot send back message to the user or group.
 func (a *QQAdapter) Send(msg *Message) error {
-	if a.Channel.Config.QQBotID == "" || a.Channel.Config.QQBotToken == "" {
-		return fmt.Errorf("qq bot id or token not configured")
+	if a.Channel.Config.QQAppID == "" || a.Channel.Config.QQAppSecret == "" {
+		return fmt.Errorf("qq app id or app secret not configured")
+	}
+
+	if a.api == nil {
+		return fmt.Errorf("qq api not initialized")
 	}
 
 	if msg.Recipient == "" {
 		return fmt.Errorf("recipient (group id or user id) required for QQ")
 	}
 
-	apiBase := "https://api.sgroup.qq.com"
-	
-	// QQ message limit
-	const chunkSize = 2000
-	chunks := splitMessage(msg.Content, chunkSize)
+	msgToCreate := &dto.MessageToCreate{
+		Content: msg.Content,
+	}
 
-	for i, chunk := range chunks {
-		err := a.sendChunk(apiBase, msg.Recipient, chunk)
-		if err != nil {
-			return err
-		}
-		// Add delay between chunks to avoid rate limiting
-		if i < len(chunks)-1 {
-			time.Sleep(300 * time.Millisecond)
-		}
+	_, err := a.api.PostC2CMessage(a.ctx, msg.Recipient, msgToCreate)
+	if err != nil {
+		return fmt.Errorf("qq send: %w", err)
 	}
 
 	return nil
 }
 
-// sendChunk sends a single message chunk via QQ Bot API.
-func (a *QQAdapter) sendChunk(apiBase, recipient, chunk string) error {
-	url := fmt.Sprintf("%s/v2/users/%s/messages", apiBase, recipient)
-	
-	payload := map[string]interface{}{
-		"content": chunk,
-		"msg_type": 0,
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bot %s.%s", a.Channel.Config.QQBotID, a.Channel.Config.QQBotToken))
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// Read response for error details
-	var result struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	}
-	json.NewDecoder(resp.Body).Decode(&result)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if result.Message != "" {
-			return fmt.Errorf("qq api error: %s (code: %d)", result.Message, result.Code)
-		}
-		return fmt.Errorf("qq api error: %s", resp.Status)
-	}
-
-	return nil
-}
-
-// Start starts the QQ adapter.
+// Start starts the QQ adapter with WebSocket.
+// QQ Bot connect to QQ server with WebSocket.
 func (a *QQAdapter) Start() error {
-	go a.pollLoop()
+	if a.Channel.Config.QQAppID == "" || a.Channel.Config.QQAppSecret == "" {
+		return fmt.Errorf("qq app id or app secret not configured")
+	}
+
+	credentials := &token.QQBotCredentials{
+		AppID:     a.Channel.Config.QQAppID,
+		AppSecret: a.Channel.Config.QQAppSecret,
+	}
+	a.tokenSource = token.NewQQBotTokenSource(credentials)
+
+	a.ctx, a.cancel = context.WithCancel(context.Background())
+
+	if err := token.StartRefreshAccessToken(a.ctx, a.tokenSource); err != nil {
+		return fmt.Errorf("failed to start token refresh: %w", err)
+	}
+
+	a.api = botgo.NewOpenAPI(a.Channel.Config.QQAppID, a.tokenSource).WithTimeout(5 * time.Second)
+
+	intent := event.RegisterHandlers(
+		a.handleC2CMessage(),
+		a.handleGroupATMessage(),
+	)
+
+	wsInfo, err := a.api.WS(a.ctx, nil, "")
+	if err != nil {
+		return fmt.Errorf("failed to get websocket info: %w", err)
+	}
+
+	a.sessionManager = botgo.NewSessionManager()
+
+	go func() {
+		if err := a.sessionManager.Start(wsInfo, a.tokenSource, &intent); err != nil {
+			fmt.Printf("QQ WebSocket session error: %v\n", err)
+			a.Channel.State = ChannelStateError
+		}
+	}()
+
+	a.Channel.State = ChannelStateConnected
 	return nil
 }
 
 // Stop stops the QQ adapter.
 func (a *QQAdapter) Stop() error {
-	close(a.shutdown)
+	a.Channel.State = ChannelStateDisconnected
+	if a.cancel != nil {
+		a.cancel()
+	}
 	return nil
 }
 
-// pollLoop polls for updates (placeholder - QQ uses WebSocket).
-func (a *QQAdapter) pollLoop() {
-	for {
-		select {
-		case <-a.shutdown:
-			return
-		case <-time.After(a.pollInterval):
-			// QQ typically uses WebSocket Gateway for real-time updates
-			// This is a placeholder - full implementation would use websocket
+// handleC2CMessage handles QQ private messages.
+// QQ Bot receive private message from the user.
+func (a *QQAdapter) handleC2CMessage() event.C2CMessageEventHandler {
+	return func(event *dto.WSPayload, data *dto.WSC2CMessageData) error {
+		if a.isDuplicate(data.ID) {
+			return nil
+		}
+
+		var senderID string
+		if data.Author != nil && data.Author.ID != "" {
+			senderID = data.Author.ID
+		} else {
+			return nil
+		}
+
+		content := data.Content
+		if content == "" {
+			return nil
+		}
+
+		if !a.isAllowedSender(senderID) {
+			return nil
+		}
+
+		a.msgChan <- &Message{
+			ID:        data.ID,
+			ChannelID: a.Channel.ID,
+			Content:   content,
+			Sender:    senderID,
+			Recipient: senderID,
+			Metadata: map[string]interface{}{
+				"message_type": "c2c",
+			},
+			CreatedAt: time.Now(),
+		}
+
+		return nil
+	}
+}
+
+// handleGroupATMessage handles QQ group @ messages.
+// QQ Bot receive group @ message from the group user.
+func (a *QQAdapter) handleGroupATMessage() event.GroupATMessageEventHandler {
+	return func(event *dto.WSPayload, data *dto.WSGroupATMessageData) error {
+		if a.isDuplicate(data.ID) {
+			return nil
+		}
+
+		var senderID string
+		if data.Author != nil && data.Author.ID != "" {
+			senderID = data.Author.ID
+		} else {
+			return nil
+		}
+
+		content := data.Content
+		if content == "" {
+			return nil
+		}
+
+		if !a.isAllowedSender(senderID) {
+			return nil
+		}
+
+		a.msgChan <- &Message{
+			ID:        data.ID,
+			ChannelID: a.Channel.ID,
+			Content:   content,
+			Sender:    senderID,
+			Recipient: data.GroupID,
+			Metadata: map[string]interface{}{
+				"message_type": "group_at",
+				"group_id":     data.GroupID,
+			},
+			CreatedAt: time.Now(),
+		}
+
+		return nil
+	}
+}
+
+// isDuplicate checks if message is duplicate.
+func (a *QQAdapter) isDuplicate(messageID string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.processedIDs[messageID] {
+		return true
+	}
+
+	a.processedIDs[messageID] = true
+
+	if len(a.processedIDs) > 10000 {
+		count := 0
+		for id := range a.processedIDs {
+			if count >= 5000 {
+				break
+			}
+			delete(a.processedIDs, id)
+			count++
 		}
 	}
+
+	return false
+}
+
+// isAllowedSender checks if sender is allowed.
+func (a *QQAdapter) isAllowedSender(senderID string) bool {
+	if len(a.Channel.Config.QQAllowFrom) == 0 {
+		return true
+	}
+
+	for _, allowed := range a.Channel.Config.QQAllowFrom {
+		if allowed == senderID {
+			return true
+		}
+	}
+
+	return false
 }
