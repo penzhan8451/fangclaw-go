@@ -9,6 +9,7 @@ import (
 
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
+	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/configreload"
 	"github.com/penzhan8451/fangclaw-go/internal/cron"
 	"github.com/penzhan8451/fangclaw-go/internal/delivery"
@@ -16,6 +17,8 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
 	"github.com/penzhan8451/fangclaw-go/internal/pairing"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
@@ -42,12 +45,13 @@ type Kernel struct {
 	deliveryReg    *delivery.DeliveryRegistry
 	pairingManager *pairing.PairingManager
 	workflowEngine *WorkflowEngine
+	agentRuntime   *agent.Runtime
 	mu             sync.RWMutex
 	started        bool
 }
 
-func NewKernel(config types.KernelConfig) (*Kernel, error) {
-	dataDir, err := expandPath(config.DataDir)
+func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
+	dataDir, err := expandPath(kernelConfig.DataDir)
 	if err != nil {
 		return nil, fmt.Errorf("invalid data directory: %w", err)
 	}
@@ -119,11 +123,12 @@ func NewKernel(config types.KernelConfig) (*Kernel, error) {
 
 	modelCatalog := model_catalog.NewModelCatalog()
 	workflowEngine := NewWorkflowEngine()
+	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore)
 
-	config.DataDir = dataDir
+	kernelConfig.DataDir = dataDir
 
-	return &Kernel{
-		config:         config,
+	k := &Kernel{
+		config:         kernelConfig,
 		eventBus:       eventbus.NewEventBus(),
 		scheduler:      NewScheduler(),
 		cronScheduler:  cronScheduler,
@@ -142,7 +147,70 @@ func NewKernel(config types.KernelConfig) (*Kernel, error) {
 		deliveryReg:    deliveryReg,
 		pairingManager: pairingManager,
 		workflowEngine: workflowEngine,
-	}, nil
+		agentRuntime:   agentRuntime,
+	}
+
+	// 从磁盘加载的 agents 也需要注册到 AgentRuntime 中
+	agents := agentRegistry.List()
+	if len(agents) > 0 {
+		// 加载配置文件
+		cfg, err := config.Load("")
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+
+		for _, agentEntry := range agents {
+			// 声明变量
+			var agentProvider, agentModel, agentAPIKeyEnv string
+
+			// 如果 agent entry 中缺少任何一个配置（provider、model 或 APIKeyEnv），就全部使用 config.toml 中的默认值
+			if agentEntry.Manifest.Model.Provider == "" || agentEntry.Manifest.Model.Model == "" || agentEntry.Manifest.Model.APIKeyEnv == "" {
+				agentProvider = cfg.DefaultModel.Provider
+				agentModel = cfg.DefaultModel.Model
+				agentAPIKeyEnv = cfg.DefaultModel.APIKeyEnv
+			} else {
+				// 否则使用 agent entry 中的配置
+				agentProvider = agentEntry.Manifest.Model.Provider
+				agentModel = agentEntry.Manifest.Model.Model
+				agentAPIKeyEnv = agentEntry.Manifest.Model.APIKeyEnv
+			}
+
+			// 获取 API key
+			apiKey := os.Getenv(agentAPIKeyEnv)
+			if apiKey == "" {
+				fmt.Printf("Warning: API key not set for agent %s: %s, skipping registration to runtime\n", agentEntry.Name, agentAPIKeyEnv)
+				continue
+			}
+
+			// 创建 LLM driver
+			driver, err := llm.NewDriver(agentProvider, apiKey, agentModel)
+			if err != nil {
+				fmt.Printf("Warning: Failed to create LLM driver for agent %s: %v, skipping registration to runtime\n", agentEntry.Name, err)
+				continue
+			}
+
+			// 注册 driver 到 AgentRuntime
+			agentRuntime.RegisterDriver(agentProvider, driver)
+
+			// 注册 agent 到 AgentRuntime
+			_, err = agentRuntime.RegisterAgent(
+				context.Background(),
+				agentEntry.ID.String(),
+				agentEntry.Name,
+				agentProvider,
+				agentModel,
+				agentEntry.Manifest.SystemPrompt,
+				agentEntry.Manifest.Tools,
+			)
+			if err != nil {
+				fmt.Printf("Warning: Failed to register agent %s in runtime: %v, skipping\n", agentEntry.Name, err)
+			} else {
+				fmt.Printf("Registered agent from disk: %s (ID: %s)\n", agentEntry.Name, agentEntry.ID.String())
+			}
+		}
+	}
+
+	return k, nil
 }
 
 func (k *Kernel) Start(ctx context.Context) error {
@@ -292,29 +360,52 @@ func Boot(dataDir string) (*Kernel, error) {
 }
 
 // ActivateHand activates a hand and spawns an agent.
-func (k *Kernel) ActivateHand(handID string, config map[string]interface{}) (*hands.HandInstance, error) {
+func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) (*hands.HandInstance, error) {
 	k.mu.Lock()
-	defer k.mu.Unlock()
 
 	def, ok := k.handRegistry.GetDefinition(handID)
 	if !ok {
+		k.mu.Unlock()
 		return nil, fmt.Errorf("hand not found: %s", handID)
 	}
 
-	instance, err := k.handRegistry.ActivateHand(handID, def.Agent.Name, config)
+	instance, err := k.handRegistry.ActivateHand(handID, def.Agent.Name, handConfig)
 	if err != nil {
+		k.mu.Unlock()
 		return nil, err
 	}
 
 	agentID := types.NewAgentID()
+
+	// 加载配置文件，获取默认模型配置
+	cfg, err := config.Load("")
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	// 声明变量
+	var agentProvider, agentModel, agentAPIKeyEnv string
+
+	// 如果 hand 定义中缺少任何一个配置（provider、model 或 APIKeyEnv），就全部使用 config.toml 中的默认值
+	if def.Agent.Provider == "" || def.Agent.Model == "" || def.Agent.APIKeyEnv == "" {
+		agentProvider = cfg.DefaultModel.Provider
+		agentModel = cfg.DefaultModel.Model
+		agentAPIKeyEnv = cfg.DefaultModel.APIKeyEnv
+	} else {
+		// 否则使用 hand 定义中的配置
+		agentProvider = def.Agent.Provider
+		agentModel = def.Agent.Model
+		agentAPIKeyEnv = def.Agent.APIKeyEnv
+	}
+
 	manifest := types.AgentManifest{
 		Name:         def.Agent.Name,
 		Description:  def.Agent.Description,
 		SystemPrompt: def.Agent.SystemPrompt,
 		Model: types.ModelConfig{
-			Provider:  def.Agent.Provider,
-			Model:     def.Agent.Model,
-			APIKeyEnv: def.Agent.APIKeyEnv,
+			Provider:  agentProvider,
+			Model:     agentModel,
+			APIKeyEnv: agentAPIKeyEnv,
 		},
 		Tools: def.Tools,
 	}
@@ -331,14 +422,50 @@ func (k *Kernel) ActivateHand(handID string, config map[string]interface{}) (*ha
 	}
 
 	if err := k.agentRegistry.Register(entry); err != nil {
+		k.mu.Unlock()
 		return nil, err
 	}
 
 	if err := k.handRegistry.UpdateInstanceAgent(instance.InstanceID, agentID.String()); err != nil {
+		k.mu.Unlock()
 		return nil, err
 	}
 
+	agentName := def.Agent.Name
+	agentSystemPrompt := def.Agent.SystemPrompt
+	agentTools := def.Tools
+
+	k.mu.Unlock()
+
+	apiKey := os.Getenv(agentAPIKeyEnv)
+	if apiKey == "" {
+		return nil, fmt.Errorf("API key not set for agent %s: %s", agentName, agentAPIKeyEnv)
+	}
+
+	driver, err := llm.NewDriver(agentProvider, apiKey, agentModel)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create LLM driver for %s: %w", agentProvider, err)
+	}
+
+	k.agentRuntime.RegisterDriver(agentProvider, driver)
+
+	_, err = k.agentRuntime.RegisterAgent(
+		context.Background(),
+		agentID.String(),
+		agentName,
+		agentProvider,
+		agentModel,
+		agentSystemPrompt,
+		agentTools,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register agent in runtime: %w", err)
+	}
+
+	k.mu.Lock()
 	updatedInstance, _ := k.handRegistry.GetInstance(instance.InstanceID)
+	k.mu.Unlock()
+
 	return updatedInstance, nil
 }
 
@@ -363,6 +490,8 @@ func (k *Kernel) DeactivateHand(instanceID string) error {
 				return err
 			}
 		}
+		// 同时从AgentRuntime中删除agent
+		k.agentRuntime.DeleteAgent(instance.AgentID)
 	}
 
 	return nil
@@ -396,4 +525,46 @@ func expandPath(path string) (string, error) {
 	}
 
 	return filepath.Join(home, path[1:]), nil
+}
+
+// SendMessage sends a message to an agent and gets the response.
+func (k *Kernel) SendMessage(ctx context.Context, agentID string, message string) (string, error) {
+	runner := agent.NewAgentRunner(k.agentRuntime)
+	result, err := runner.RunAgent(ctx, agentID, message, nil)
+	if err != nil {
+		return "", err
+	}
+	return result.Response, nil
+}
+
+// FindAgentByName finds an agent by name.
+func (k *Kernel) FindAgentByName(ctx context.Context, name string) (string, bool) {
+	entry := k.agentRegistry.FindByName(name)
+	if entry == nil {
+		return "", false
+	}
+	return entry.ID.String(), true
+}
+
+// ListAgents lists all running agents.
+func (k *Kernel) ListAgents(ctx context.Context) ([]channels.AgentInfo, error) {
+	entries := k.agentRegistry.List()
+	infos := make([]channels.AgentInfo, 0, len(entries))
+	for _, entry := range entries {
+		infos = append(infos, channels.AgentInfo{
+			ID:   entry.ID.String(),
+			Name: entry.Name,
+		})
+	}
+	return infos, nil
+}
+
+// SpawnAgentByName spawns an agent by manifest name.
+func (k *Kernel) SpawnAgentByName(ctx context.Context, manifestName string) (string, error) {
+	return "", fmt.Errorf("not implemented yet")
+}
+
+// AgentRuntime returns the agent runtime.
+func (k *Kernel) AgentRuntime() *agent.Runtime {
+	return k.agentRuntime
 }

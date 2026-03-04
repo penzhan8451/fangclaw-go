@@ -588,14 +588,14 @@ func (r *AgentRunner) RunAgent(ctx context.Context, agentID, input string, onPha
 	return r.Runtime.RunLoop(ctx, agentCtx, onPhase)
 }
 
-func (r *Runtime) RegisterAgent(ctx context.Context, name, provider, model, systemPrompt string, tools []string) (*AgentContext, error) {
+func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, systemPrompt string, tools []string) (*AgentContext, error) {
 	_, err := r.GetDriver(provider)
 	if err != nil {
 		return nil, err
 	}
 
 	agentCtx := NewAgentContext(
-		fmt.Sprintf("agent_%d", time.Now().Unix()),
+		id,
 		name, provider, model, systemPrompt, tools,
 	)
 

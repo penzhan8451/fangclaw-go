@@ -74,6 +74,21 @@ func (a *BaseAdapter) RecordMessageReceived() {
 	a.healthMonitor.RecordMessageReceived()
 }
 
+// GetChannel returns the channel associated with this adapter.
+func (a *BaseAdapter) GetChannel() *Channel {
+	return a.Channel
+}
+
+// Start starts the channel adapter.
+func (a *BaseAdapter) Start() error {
+	return nil
+}
+
+// Stop stops the channel adapter.
+func (a *BaseAdapter) Stop() error {
+	return nil
+}
+
 // Send sends a message to the channel.
 func (a *BaseAdapter) Send(msg *Message) error {
 	return fmt.Errorf("send not implemented for %s channel", a.Channel.Type)

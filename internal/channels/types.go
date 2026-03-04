@@ -152,32 +152,32 @@ type Channel struct {
 
 // ChannelConfig represents the configuration for a channel.
 type ChannelConfig struct {
-	APIKey              string            `json:"api_key,omitempty"`
-	Token               string            `json:"token,omitempty"`
-	TelegramBotToken    string            `json:"telegram_bot_token,omitempty"`
-	SlackBotToken       string            `json:"slack_bot_token,omitempty"`
-	DiscordBotToken     string            `json:"discord_bot_token,omitempty"`
-	FeishuAppID         string            `json:"feishu_app_id,omitempty"`
-	FeishuAppSecret     string            `json:"feishu_app_secret,omitempty"`
-	DingTalkAppKey      string            `json:"dingtalk_app_key,omitempty"`
-	DingTalkAppSecret   string            `json:"dingtalk_app_secret,omitempty"`
-	DingTalkAgentID     string            `json:"dingtalk_agent_id,omitempty"`
-	WhatsAppPhoneID     string            `json:"whatsapp_phone_id,omitempty"`
-	WhatsAppBusinessID  string            `json:"whatsapp_business_id,omitempty"`
-	WhatsAppAccessToken string            `json:"whatsapp_access_token,omitempty"`
-	QQAppID             string            `json:"qq_app_id,omitempty"`
-	QQAppSecret         string            `json:"qq_app_secret,omitempty"`
-	QQGroupTrigger      string            `json:"qq_group_trigger,omitempty"`
-	QQReasoningChannelID string           `json:"qq_reasoning_channel_id,omitempty"`
-	QQAllowFrom         []string          `json:"qq_allow_from,omitempty"`
-	Username            string            `json:"username,omitempty"`
-	Password            string            `json:"password,omitempty"`
-	Server              string            `json:"server,omitempty"`
-	Port                int               `json:"port,omitempty"`
-	ChannelID           string            `json:"channel_id,omitempty"`
-	ChatID              string            `json:"chat_id,omitempty"`
-	WebhookURL          string            `json:"webhook_url,omitempty"`
-	Settings            map[string]string `json:"settings,omitempty"`
+	APIKey               string            `json:"api_key,omitempty"`
+	Token                string            `json:"token,omitempty"`
+	TelegramBotToken     string            `json:"telegram_bot_token,omitempty"`
+	SlackBotToken        string            `json:"slack_bot_token,omitempty"`
+	DiscordBotToken      string            `json:"discord_bot_token,omitempty"`
+	FeishuAppID          string            `json:"feishu_app_id,omitempty"`
+	FeishuAppSecret      string            `json:"feishu_app_secret,omitempty"`
+	DingTalkAppKey       string            `json:"dingtalk_app_key,omitempty"`
+	DingTalkAppSecret    string            `json:"dingtalk_app_secret,omitempty"`
+	DingTalkAgentID      string            `json:"dingtalk_agent_id,omitempty"`
+	WhatsAppPhoneID      string            `json:"whatsapp_phone_id,omitempty"`
+	WhatsAppBusinessID   string            `json:"whatsapp_business_id,omitempty"`
+	WhatsAppAccessToken  string            `json:"whatsapp_access_token,omitempty"`
+	QQAppID              string            `json:"qq_app_id,omitempty"`
+	QQAppSecret          string            `json:"qq_app_secret,omitempty"`
+	QQGroupTrigger       string            `json:"qq_group_trigger,omitempty"`
+	QQReasoningChannelID string            `json:"qq_reasoning_channel_id,omitempty"`
+	QQAllowFrom          []string          `json:"qq_allow_from,omitempty"`
+	Username             string            `json:"username,omitempty"`
+	Password             string            `json:"password,omitempty"`
+	Server               string            `json:"server,omitempty"`
+	Port                 int               `json:"port,omitempty"`
+	ChannelID            string            `json:"channel_id,omitempty"`
+	ChatID               string            `json:"chat_id,omitempty"`
+	WebhookURL           string            `json:"webhook_url,omitempty"`
+	Settings             map[string]string `json:"settings,omitempty"`
 }
 
 // Message represents a message sent through a channel.
@@ -199,6 +199,12 @@ type Adapter interface {
 	// Disconnect disconnects from the channel.
 	Disconnect() error
 
+	// Start starts the channel adapter.
+	Start() error
+
+	// Stop stops the channel adapter.
+	Stop() error
+
 	// Send sends a message to the channel.
 	Send(msg *Message) error
 
@@ -219,6 +225,9 @@ type Adapter interface {
 
 	// RecordMessageReceived records that a message was received.
 	RecordMessageReceived()
+
+	// GetChannel returns the channel associated with this adapter.
+	GetChannel() *Channel
 }
 
 // AdapterFactory is a function that creates an adapter for a channel.

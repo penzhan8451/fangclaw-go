@@ -38,12 +38,15 @@ func NewQQAdapter(channel *Channel) (Adapter, error) {
 
 // Connect connects to QQ using WebSocket.
 func (a *QQAdapter) Connect() error {
-	return a.Start()
+	return a.BaseAdapter.Connect()
 }
 
 // Disconnect disconnects from QQ.
 func (a *QQAdapter) Disconnect() error {
-	return a.Stop()
+	if err := a.Stop(); err != nil {
+		return err
+	}
+	return a.BaseAdapter.Disconnect()
 }
 
 // Receive receives messages from QQ.

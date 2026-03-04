@@ -15,6 +15,7 @@ import (
 type Config struct {
 	APIListen    string           `toml:"api_listen"`
 	DefaultModel ModelSettings    `toml:"default_model"`
+	DefaultAgent string           `toml:"default_agent"`
 	Memory       MemorySettings   `toml:"memory"`
 	Security     SecuritySettings `toml:"security"`
 	Log          LogSettings      `toml:"log"`
@@ -53,6 +54,7 @@ func DefaultConfig() *Config {
 			Model:     "llama-3.3-70b-versatile",
 			APIKeyEnv: "GROQ_API_KEY",
 		},
+		DefaultAgent: "",
 		Memory: MemorySettings{
 			DecayRate: 0.05,
 		},
@@ -136,6 +138,8 @@ func Get(key string) (string, error) {
 	switch key {
 	case "api_listen":
 		return cfg.APIListen, nil
+	case "default_agent":
+		return cfg.DefaultAgent, nil
 	case "default_model.provider":
 		return cfg.DefaultModel.Provider, nil
 	case "default_model.model":
@@ -160,6 +164,8 @@ func Set(key, value string) error {
 	switch key {
 	case "api_listen":
 		cfg.APIListen = value
+	case "default_agent":
+		cfg.DefaultAgent = value
 	case "default_model.provider":
 		cfg.DefaultModel.Provider = value
 	case "default_model.model":
@@ -186,6 +192,8 @@ func Unset(key string) error {
 	switch key {
 	case "api_listen":
 		cfg.APIListen = "127.0.0.1:4200"
+	case "default_agent":
+		cfg.DefaultAgent = ""
 	case "default_model.provider":
 		cfg.DefaultModel.Provider = "groq"
 	case "default_model.model":

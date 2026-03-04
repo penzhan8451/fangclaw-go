@@ -170,6 +170,17 @@ func (r *Registry) GetAdapter(channelID string) (Adapter, bool) {
 	return adapter, ok
 }
 
+// ListAdapters returns all registered adapters.
+func (r *Registry) ListAdapters() map[string]Adapter {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make(map[string]Adapter, len(r.adapters))
+	for id, adapter := range r.adapters {
+		result[id] = adapter
+	}
+	return result
+}
+
 // UpdateChannel updates a channel.
 func (r *Registry) UpdateChannel(channel *Channel) error {
 	r.mu.Lock()
