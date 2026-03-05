@@ -30,8 +30,10 @@ func autoRegisterQQ(registry *Registry) error {
 			Type:  ChannelTypeQQ,
 			State: ChannelStateIdle,
 			Config: ChannelConfig{
-				QQAppID:     qqAppID,
-				QQAppSecret: qqAppSecret,
+				QQ: &QQChannelConfig{
+					AppID:     qqAppID,
+					AppSecret: qqAppSecret,
+				},
 			},
 		}
 
@@ -88,7 +90,7 @@ func (a *QQAdapter) Receive(ctx context.Context) (<-chan *Message, error) {
 // Send sends a message via QQ Bot API.
 // QQ Bot send back message to the user or group.
 func (a *QQAdapter) Send(msg *Message) error {
-	if a.Channel.Config.QQAppID == "" || a.Channel.Config.QQAppSecret == "" {
+	if a.Channel.Config.QQ == nil || a.Channel.Config.QQ.AppID == "" || a.Channel.Config.QQ.AppSecret == "" {
 		return fmt.Errorf("qq app id or app secret not configured")
 	}
 
@@ -115,13 +117,13 @@ func (a *QQAdapter) Send(msg *Message) error {
 // Start starts the QQ adapter with WebSocket.
 // QQ Bot connect to QQ server with WebSocket.
 func (a *QQAdapter) Start() error {
-	if a.Channel.Config.QQAppID == "" || a.Channel.Config.QQAppSecret == "" {
+	if a.Channel.Config.QQ == nil || a.Channel.Config.QQ.AppID == "" || a.Channel.Config.QQ.AppSecret == "" {
 		return fmt.Errorf("qq app id or app secret not configured")
 	}
 
 	credentials := &token.QQBotCredentials{
-		AppID:     a.Channel.Config.QQAppID,
-		AppSecret: a.Channel.Config.QQAppSecret,
+		AppID:     a.Channel.Config.QQ.AppID,
+		AppSecret: a.Channel.Config.QQ.AppSecret,
 	}
 	a.tokenSource = token.NewQQBotTokenSource(credentials)
 
@@ -131,7 +133,7 @@ func (a *QQAdapter) Start() error {
 		return fmt.Errorf("failed to start token refresh: %w", err)
 	}
 
-	a.api = botgo.NewOpenAPI(a.Channel.Config.QQAppID, a.tokenSource).WithTimeout(5 * time.Second)
+	a.api = botgo.NewOpenAPI(a.Channel.Config.QQ.AppID, a.tokenSource).WithTimeout(5 * time.Second)
 
 	intent := event.RegisterHandlers(
 		a.handleC2CMessage(),
@@ -273,11 +275,11 @@ func (a *QQAdapter) isDuplicate(messageID string) bool {
 
 // isAllowedSender checks if sender is allowed.
 func (a *QQAdapter) isAllowedSender(senderID string) bool {
-	if len(a.Channel.Config.QQAllowFrom) == 0 {
+	if a.Channel.Config.QQ == nil || len(a.Channel.Config.QQ.AllowFrom) == 0 {
 		return true
 	}
 
-	for _, allowed := range a.Channel.Config.QQAllowFrom {
+	for _, allowed := range a.Channel.Config.QQ.AllowFrom {
 		if allowed == senderID {
 			return true
 		}

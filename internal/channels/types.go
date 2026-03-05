@@ -150,34 +150,39 @@ type Channel struct {
 	UpdatedAt time.Time     `json:"updated_at"`
 }
 
+// QQChannelConfig represents the configuration for QQ channel.
+type QQChannelConfig struct {
+	AppID              string   `json:"app_id,omitempty"`
+	AppSecret          string   `json:"app_secret,omitempty"`
+	GroupTrigger       string   `json:"group_trigger,omitempty"`
+	ReasoningChannelID string   `json:"reasoning_channel_id,omitempty"`
+	AllowFrom          []string `json:"allow_from,omitempty"`
+}
+
 // ChannelConfig represents the configuration for a channel.
 type ChannelConfig struct {
-	APIKey               string            `json:"api_key,omitempty"`
-	Token                string            `json:"token,omitempty"`
-	TelegramBotToken     string            `json:"telegram_bot_token,omitempty"`
-	SlackBotToken        string            `json:"slack_bot_token,omitempty"`
-	DiscordBotToken      string            `json:"discord_bot_token,omitempty"`
-	FeishuAppID          string            `json:"feishu_app_id,omitempty"`
-	FeishuAppSecret      string            `json:"feishu_app_secret,omitempty"`
-	DingTalkAppKey       string            `json:"dingtalk_app_key,omitempty"`
-	DingTalkAppSecret    string            `json:"dingtalk_app_secret,omitempty"`
-	DingTalkAgentID      string            `json:"dingtalk_agent_id,omitempty"`
-	WhatsAppPhoneID      string            `json:"whatsapp_phone_id,omitempty"`
-	WhatsAppBusinessID   string            `json:"whatsapp_business_id,omitempty"`
-	WhatsAppAccessToken  string            `json:"whatsapp_access_token,omitempty"`
-	QQAppID              string            `json:"qq_app_id,omitempty"`
-	QQAppSecret          string            `json:"qq_app_secret,omitempty"`
-	QQGroupTrigger       string            `json:"qq_group_trigger,omitempty"`
-	QQReasoningChannelID string            `json:"qq_reasoning_channel_id,omitempty"`
-	QQAllowFrom          []string          `json:"qq_allow_from,omitempty"`
-	Username             string            `json:"username,omitempty"`
-	Password             string            `json:"password,omitempty"`
-	Server               string            `json:"server,omitempty"`
-	Port                 int               `json:"port,omitempty"`
-	ChannelID            string            `json:"channel_id,omitempty"`
-	ChatID               string            `json:"chat_id,omitempty"`
-	WebhookURL           string            `json:"webhook_url,omitempty"`
-	Settings             map[string]string `json:"settings,omitempty"`
+	APIKey              string            `json:"api_key,omitempty"`
+	Token               string            `json:"token,omitempty"`
+	TelegramBotToken    string            `json:"telegram_bot_token,omitempty"`
+	SlackBotToken       string            `json:"slack_bot_token,omitempty"`
+	DiscordBotToken     string            `json:"discord_bot_token,omitempty"`
+	FeishuAppID         string            `json:"feishu_app_id,omitempty"`
+	FeishuAppSecret     string            `json:"feishu_app_secret,omitempty"`
+	DingTalkAppKey      string            `json:"dingtalk_app_key,omitempty"`
+	DingTalkAppSecret   string            `json:"dingtalk_app_secret,omitempty"`
+	DingTalkAgentID     string            `json:"dingtalk_agent_id,omitempty"`
+	WhatsAppPhoneID     string            `json:"whatsapp_phone_id,omitempty"`
+	WhatsAppBusinessID  string            `json:"whatsapp_business_id,omitempty"`
+	WhatsAppAccessToken string            `json:"whatsapp_access_token,omitempty"`
+	QQ                  *QQChannelConfig  `json:"qq,omitempty"`
+	Username            string            `json:"username,omitempty"`
+	Password            string            `json:"password,omitempty"`
+	Server              string            `json:"server,omitempty"`
+	Port                int               `json:"port,omitempty"`
+	ChannelID           string            `json:"channel_id,omitempty"`
+	ChatID              string            `json:"chat_id,omitempty"`
+	WebhookURL          string            `json:"webhook_url,omitempty"`
+	Settings            map[string]string `json:"settings,omitempty"`
 }
 
 // Message represents a message sent through a channel.

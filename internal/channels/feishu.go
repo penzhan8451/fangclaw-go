@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -18,6 +19,35 @@ type FeishuAdapter struct {
 	msgChan      chan *Message
 	tokenCache   string
 	tokenExpiry  time.Time
+}
+
+func init() {
+	RegisterAutoRegister(autoRegisterFEISHU)
+}
+
+func autoRegisterFEISHU(registry *Registry) error {
+	FeishuAppID := os.Getenv("FEISHU_APP_ID")
+	FeishuAppSecret := os.Getenv("FEISHU_APP_SECRET")
+
+	if FeishuAppID != "" && FeishuAppSecret != "" {
+		fmt.Println("Auto Register Fei Shu Channel...")
+		if err := registry.RegisterChannel(&Channel{
+			Name:  "Feishu Bot",
+			Type:  ChannelTypeFeishu,
+			State: ChannelStateIdle,
+			Config: ChannelConfig{
+				FeishuAppID:     FeishuAppID,
+				FeishuAppSecret: FeishuAppSecret,
+			},
+		}); err != nil {
+			fmt.Printf("Warning: Failed to auto-register Feishu channel: %v\n", err)
+			return err
+		}
+
+		fmt.Println("Feishu channel auto-registered successfully")
+	}
+
+	return nil
 }
 
 // NewFeishuAdapter creates a new Feishu adapter.
