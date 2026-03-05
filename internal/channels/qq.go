@@ -106,7 +106,7 @@ func (a *QQAdapter) Send(msg *Message) error {
 		Content: msg.Content,
 	}
 
-	_, err := a.api.PostC2CMessage(a.ctx, msg.Recipient, msgToCreate)
+	_, err := a.api.PostC2CMessage(context.Background(), msg.Recipient, msgToCreate)
 	if err != nil {
 		return fmt.Errorf("qq send: %w", err)
 	}

@@ -54,7 +54,28 @@ func (s *SessionStore) initSchema() error {
 		CREATE INDEX IF NOT EXISTS idx_sessions_agent_id ON sessions(agent_id);
 		CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Function to check if column exists
+	columnExists := func(colName string) bool {
+		var dummy int
+		err := s.db.QueryRow("SELECT 1 FROM pragma_table_info('sessions') WHERE name = ?", colName).Scan(&dummy)
+		return err == nil
+	}
+
+	// Add context_window_tokens if missing
+	if !columnExists("context_window_tokens") {
+		_, _ = s.db.Exec("ALTER TABLE sessions ADD COLUMN context_window_tokens INTEGER NOT NULL DEFAULT 0")
+	}
+
+	// Add label if missing
+	if !columnExists("label") {
+		_, _ = s.db.Exec("ALTER TABLE sessions ADD COLUMN label TEXT")
+	}
+
+	return nil
 }
 
 // GetSession loads a session from the database.

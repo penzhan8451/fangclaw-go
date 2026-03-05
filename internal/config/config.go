@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 
@@ -238,4 +239,100 @@ func Unset(key string) error {
 	}
 
 	return Save(cfg, "")
+}
+
+// GetSecretsPath returns the path to secrets.env file.
+func GetSecretsPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("could not determine home directory: %w", err)
+	}
+	return filepath.Join(homeDir, ".fangclaw-go", "secrets.env"), nil
+}
+
+// WriteSecretEnv writes a secret to secrets.env file.
+func WriteSecretEnv(key, value string) error {
+	secretsPath, err := GetSecretsPath()
+	if err != nil {
+		return err
+	}
+
+	// Ensure directory exists
+	dir := filepath.Dir(secretsPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create secrets directory: %w", err)
+	}
+
+	// Read existing secrets if file exists
+	var lines []string
+	data, err := os.ReadFile(secretsPath)
+	if err == nil {
+		lines = strings.Split(string(data), "\n")
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read secrets: %w", err)
+	}
+
+	// Find and replace or add the key
+	found := false
+	newLine := fmt.Sprintf("%s=%s", key, value)
+	for i, line := range lines {
+		if strings.HasPrefix(line, key+"=") {
+			lines[i] = newLine
+			found = true
+			break
+		}
+	}
+	if !found {
+		lines = append(lines, newLine)
+	}
+
+	// Write back - os.WriteFile will create file if it doesn't exist
+	content := strings.Join(lines, "\n")
+	if err := os.WriteFile(secretsPath, []byte(content), 0600); err != nil {
+		return fmt.Errorf("failed to write secrets: %w", err)
+	}
+
+	// Also set in current process
+	os.Setenv(key, value)
+
+	return nil
+}
+
+// RemoveSecretEnv removes a secret from secrets.env file.
+func RemoveSecretEnv(key string) error {
+	secretsPath, err := GetSecretsPath()
+	if err != nil {
+		return err
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(secretsPath); os.IsNotExist(err) {
+		return nil
+	}
+
+	// Read existing secrets
+	data, err := os.ReadFile(secretsPath)
+	if err != nil {
+		return fmt.Errorf("failed to read secrets: %w", err)
+	}
+	lines := strings.Split(string(data), "\n")
+
+	// Filter out the key
+	var newLines []string
+	for _, line := range lines {
+		if !strings.HasPrefix(line, key+"=") {
+			newLines = append(newLines, line)
+		}
+	}
+
+	// Write back
+	content := strings.Join(newLines, "\n")
+	if err := os.WriteFile(secretsPath, []byte(content), 0600); err != nil {
+		return fmt.Errorf("failed to write secrets: %w", err)
+	}
+
+	// Also remove from current process
+	os.Unsetenv(key)
+
+	return nil
 }

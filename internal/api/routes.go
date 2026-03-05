@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
+	"github.com/penzhan8451/fangclaw-go/internal/channels"
 	"github.com/penzhan8451/fangclaw-go/internal/clawhub"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/cron"
@@ -294,11 +295,15 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/channels", r.handleListChannels)
 	mux.HandleFunc("POST /api/v1/channels", r.handleCreateChannel)
 	mux.HandleFunc("DELETE /api/v1/channels/{id}", r.handleDeleteChannel)
+	mux.HandleFunc("POST /api/v1/channels/{name}/configure", r.handleConfigureChannel)
+	mux.HandleFunc("POST /api/v1/channels/{name}/test", r.handleTestChannel)
 
 	// Channel endpoints (aliases)
 	mux.HandleFunc("GET /api/channels", r.handleListChannels)
 	mux.HandleFunc("POST /api/channels", r.handleCreateChannel)
 	mux.HandleFunc("DELETE /api/channels/{id}", r.handleDeleteChannel)
+	mux.HandleFunc("POST /api/channels/{name}/configure", r.handleConfigureChannel)
+	mux.HandleFunc("POST /api/channels/{name}/test", r.handleTestChannel)
 
 	// OpenAI-compatible endpoints
 	mux.HandleFunc("GET /v1/models", r.handleListModels)
@@ -945,6 +950,342 @@ func isChannelConfigured(channelName string) bool {
 
 func (r *Router) handleCreateChannel(w http.ResponseWriter, req *http.Request) {
 	respondJSON(w, http.StatusCreated, map[string]string{"status": "created"})
+}
+
+// handleConfigureChannel handles POST /api/channels/{name}/configure — Configures a channel.
+func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request) {
+	name := req.PathValue("name")
+
+	// Find channel metadata
+	var channelMeta *ChannelMeta
+	for _, meta := range CHANNEL_REGISTRY {
+		if meta.Name == name {
+			channelMeta = &meta
+			break
+		}
+	}
+
+	if channelMeta == nil {
+		respondError(w, http.StatusNotFound, "channel not found")
+		return
+	}
+
+	// Parse request body
+	var reqBody map[string]interface{}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Load current config
+	cfg, err := config.Load("")
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load config")
+		return
+	}
+
+	// Create or update channel config
+	var channelConfig *config.ChannelConfig
+	switch name {
+	case "telegram":
+		if cfg.Channels.Telegram == nil {
+			cfg.Channels.Telegram = &config.ChannelConfig{}
+		}
+		channelConfig = cfg.Channels.Telegram
+	case "discord":
+		if cfg.Channels.Discord == nil {
+			cfg.Channels.Discord = &config.ChannelConfig{}
+		}
+		channelConfig = cfg.Channels.Discord
+	case "slack":
+		if cfg.Channels.Slack == nil {
+			cfg.Channels.Slack = &config.ChannelConfig{}
+		}
+		channelConfig = cfg.Channels.Slack
+	case "whatsapp":
+		if cfg.Channels.WhatsApp == nil {
+			cfg.Channels.WhatsApp = &config.ChannelConfig{}
+		}
+		channelConfig = cfg.Channels.WhatsApp
+	case "qq":
+		if cfg.Channels.QQ == nil {
+			cfg.Channels.QQ = &config.ChannelConfig{}
+		}
+		channelConfig = cfg.Channels.QQ
+	case "dingtalk":
+		if cfg.Channels.DingTalk == nil {
+			cfg.Channels.DingTalk = &config.ChannelConfig{}
+		}
+		channelConfig = cfg.Channels.DingTalk
+	case "feishu":
+		if cfg.Channels.Feishu == nil {
+			cfg.Channels.Feishu = &config.ChannelConfig{}
+		}
+		channelConfig = cfg.Channels.Feishu
+	default:
+		respondError(w, http.StatusBadRequest, "unsupported channel")
+		return
+	}
+
+	// Process fields
+	for _, field := range channelMeta.Fields {
+		value, exists := reqBody[field.Key]
+		if !exists {
+			continue
+		}
+
+		valueStr, ok := value.(string)
+		if !ok {
+			continue
+		}
+
+		// If value is empty, skip (don't overwrite existing)
+		if valueStr == "" {
+			continue
+		}
+
+		// Handle env vars (secrets)
+		if field.EnvVar != nil && field.FieldType == FieldTypeSecret {
+			// Try to write secret to file (non-fatal if fails)
+			if err := config.WriteSecretEnv(*field.EnvVar, valueStr); err != nil {
+				fmt.Printf("Warning: failed to write secret to file: %v\n", err)
+			}
+			// Always set in current process
+			os.Setenv(*field.EnvVar, valueStr)
+			// Store env var name in config
+			switch field.Key {
+			case "bot_token_env":
+				channelConfig.BotTokenEnv = *field.EnvVar
+			case "app_token_env":
+				channelConfig.AppTokenEnv = *field.EnvVar
+			case "access_token_env":
+				channelConfig.AccessTokenEnv = *field.EnvVar
+			case "app_secret_env":
+				channelConfig.AppSecretEnv = *field.EnvVar
+			case "secret_env":
+				channelConfig.SecretEnv = *field.EnvVar
+			case "verify_token_env":
+				channelConfig.VerifyTokenEnv = *field.EnvVar
+			}
+		} else {
+			// Handle regular fields
+			switch field.Key {
+			case "app_id":
+				channelConfig.AppID = valueStr
+			case "bot_token_env":
+				channelConfig.BotTokenEnv = valueStr
+			case "app_token_env":
+				channelConfig.AppTokenEnv = valueStr
+			case "access_token_env":
+				channelConfig.AccessTokenEnv = valueStr
+			case "app_secret_env":
+				channelConfig.AppSecretEnv = valueStr
+			case "secret_env":
+				channelConfig.SecretEnv = valueStr
+			case "verify_token_env":
+				channelConfig.VerifyTokenEnv = valueStr
+			case "allowed_users":
+				channelConfig.AllowedUsers = valueStr
+			case "allowed_guilds":
+				channelConfig.AllowedGuilds = valueStr
+			case "allowed_channels":
+				channelConfig.AllowedChannels = valueStr
+			case "default_agent":
+				channelConfig.DefaultAgent = valueStr
+			case "phone_number_id":
+				channelConfig.PhoneNumberID = valueStr
+			case "poll_interval_secs":
+				if i, err := strconv.Atoi(valueStr); err == nil {
+					channelConfig.PollIntervalSecs = i
+				}
+			case "intents":
+				if i, err := strconv.Atoi(valueStr); err == nil {
+					channelConfig.Intents = i
+				}
+			case "webhook_port":
+				if i, err := strconv.Atoi(valueStr); err == nil {
+					channelConfig.WebhookPort = i
+				}
+			}
+		}
+	}
+
+	// Save config
+	if err := config.Save(cfg, ""); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save config")
+		return
+	}
+
+	// Reload channels
+	started, err := reloadChannelsFromDisk(r.kernel, name)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to reload channels: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status":           "configured",
+		"started_channels": started,
+	})
+}
+
+// nameToChannelType converts channel name to ChannelType
+func nameToChannelType(name string) channels.ChannelType {
+	switch name {
+	case "telegram":
+		return channels.ChannelTypeTelegram
+	case "discord":
+		return channels.ChannelTypeDiscord
+	case "slack":
+		return channels.ChannelTypeSlack
+	case "whatsapp":
+		return channels.ChannelTypeWhatsApp
+	case "qq":
+		return channels.ChannelTypeQQ
+	case "dingtalk":
+		return channels.ChannelTypeDingTalk
+	case "feishu":
+		return channels.ChannelTypeFeishu
+	default:
+		return channels.ChannelType(name)
+	}
+}
+
+// reloadChannelsFromDisk reloads a specific channel from disk and restarts it.
+func reloadChannelsFromDisk(k *kernel.Kernel, channelName string) ([]string, error) {
+	// Load fresh config
+	cfg, err := config.Load("")
+	if err != nil {
+		return nil, err
+	}
+
+	registry := k.Registry()
+	var started []string
+
+	if registry != nil {
+		channelType := nameToChannelType(channelName)
+
+		// Check if this channel has an adapter factory
+		_, hasFactory := registry.GetFactory(channelType)
+		if !hasFactory {
+			return started, nil
+		}
+
+		// Stop existing channels of this type
+		existingChannels := registry.ListChannels()
+		for _, ch := range existingChannels {
+			if ch.Type == channelType {
+				if adapter, ok := registry.GetAdapter(ch.ID); ok {
+					adapter.Disconnect()
+				}
+				registry.RemoveChannel(ch.ID)
+			}
+		}
+
+		// Check if channel is configured
+		isConfigured := false
+		switch channelName {
+		case "telegram":
+			isConfigured = cfg.Channels.Telegram != nil && cfg.Channels.Telegram.BotTokenEnv != ""
+		case "discord":
+			isConfigured = cfg.Channels.Discord != nil && cfg.Channels.Discord.BotTokenEnv != ""
+		case "slack":
+			isConfigured = cfg.Channels.Slack != nil && cfg.Channels.Slack.BotTokenEnv != "" && cfg.Channels.Slack.AppTokenEnv != ""
+		case "whatsapp":
+			isConfigured = cfg.Channels.WhatsApp != nil && (cfg.Channels.WhatsApp.AccessTokenEnv != "" || cfg.Channels.WhatsApp.PhoneNumberID != "")
+		case "qq":
+			isConfigured = cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" && cfg.Channels.QQ.AppSecretEnv != ""
+		case "dingtalk":
+			isConfigured = cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.AccessTokenEnv != "" && cfg.Channels.DingTalk.SecretEnv != ""
+		case "feishu":
+			isConfigured = cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && cfg.Channels.Feishu.AppSecretEnv != ""
+		}
+
+		if isConfigured {
+			// Create and register new channel
+			newChannel := &channels.Channel{
+				Name:  channelName + " Channel",
+				Type:  channelType,
+				State: channels.ChannelStateIdle,
+			}
+
+			// Set channel-specific config
+			switch channelName {
+			case "qq":
+				newChannel.Config.QQ = &channels.QQChannelConfig{
+					AppID:     cfg.Channels.QQ.AppID,
+					AppSecret: os.Getenv(cfg.Channels.QQ.AppSecretEnv),
+				}
+			case "dingtalk":
+				newChannel.Config.DingTalk = &channels.DingTalkChannelConfig{
+					AppSecret: os.Getenv(cfg.Channels.DingTalk.SecretEnv),
+				}
+			case "feishu":
+				newChannel.Config.Feishu = &channels.FeishuChannelConfig{
+					AppID:     cfg.Channels.Feishu.AppID,
+					AppSecret: os.Getenv(cfg.Channels.Feishu.AppSecretEnv),
+				}
+			}
+
+			if err := registry.RegisterChannel(newChannel); err == nil {
+				// Try to start the adapter
+				if adapter, ok := registry.GetAdapter(newChannel.ID); ok {
+					if err := adapter.Start(); err == nil {
+						started = append(started, channelName)
+					}
+				}
+			}
+		}
+	}
+
+	return started, nil
+}
+
+// handleTestChannel tests if a channel is properly configured and connected.
+func (r *Router) handleTestChannel(w http.ResponseWriter, req *http.Request) {
+	name := req.PathValue("name")
+	if name == "" {
+		respondError(w, http.StatusBadRequest, "channel name is required")
+		return
+	}
+
+	// Find channel meta
+	var channelMeta *ChannelMeta
+	for _, meta := range CHANNEL_REGISTRY {
+		if meta.Name == name {
+			channelMeta = &meta
+			break
+		}
+	}
+
+	if channelMeta == nil {
+		respondError(w, http.StatusNotFound, "unknown channel")
+		return
+	}
+
+	// Check all required env vars are set
+	var missing []string
+	for _, fieldDef := range channelMeta.Fields {
+		if fieldDef.Required && fieldDef.EnvVar != nil {
+			value := os.Getenv(*fieldDef.EnvVar)
+			if value == "" {
+				missing = append(missing, *fieldDef.EnvVar)
+			}
+		}
+	}
+
+	if len(missing) > 0 {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"status":  "error",
+			"message": fmt.Sprintf("Missing required env vars: %s", strings.Join(missing, ", ")),
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "ok",
+		"message": fmt.Sprintf("All required credentials for %s are set.", channelMeta.DisplayName),
+	})
 }
 
 func (r *Router) handleDeleteChannel(w http.ResponseWriter, req *http.Request) {
