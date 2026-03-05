@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/clawhub"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
@@ -22,6 +23,191 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
+
+// Field type for the channel configuration form.
+type FieldType string
+
+const (
+	FieldTypeSecret FieldType = "secret"
+	FieldTypeText   FieldType = "text"
+	FieldTypeNumber FieldType = "number"
+	FieldTypeList   FieldType = "list"
+)
+
+// A single configurable field for a channel adapter.
+type ChannelField struct {
+	Key         string    `json:"key"`
+	Label       string    `json:"label"`
+	FieldType   FieldType `json:"field_type"`
+	EnvVar      *string   `json:"env_var,omitempty"`
+	Required    bool      `json:"required"`
+	Placeholder string    `json:"placeholder"`
+	Advanced    bool      `json:"advanced"`
+}
+
+// Metadata for one channel adapter.
+type ChannelMeta struct {
+	Name           string         `json:"name"`
+	DisplayName    string         `json:"display_name"`
+	Icon           string         `json:"icon"`
+	Description    string         `json:"description"`
+	Category       string         `json:"category"`
+	Difficulty     string         `json:"difficulty"`
+	SetupTime      string         `json:"setup_time"`
+	QuickSetup     string         `json:"quick_setup"`
+	SetupType      string         `json:"setup_type"`
+	Fields         []ChannelField `json:"fields"`
+	SetupSteps     []string       `json:"setup_steps"`
+	ConfigTemplate string         `json:"config_template"`
+}
+
+// CHANNEL_REGISTRY contains all available channel adapters.
+var CHANNEL_REGISTRY = []ChannelMeta{
+	{
+		Name:        "telegram",
+		DisplayName: "Telegram",
+		Icon:        "TG",
+		Description: "Telegram Bot API — long-polling adapter",
+		Category:    "messaging",
+		Difficulty:  "Easy",
+		SetupTime:   "~2 min",
+		QuickSetup:  "Paste your bot token from @BotFather",
+		SetupType:   "form",
+		Fields: []ChannelField{
+			{Key: "bot_token_env", Label: "Bot Token", FieldType: FieldTypeSecret, EnvVar: strPtr("TELEGRAM_BOT_TOKEN"), Required: true, Placeholder: "123456:ABC-DEF...", Advanced: false},
+			{Key: "allowed_users", Label: "Allowed User IDs", FieldType: FieldTypeList, EnvVar: nil, Required: false, Placeholder: "12345, 67890", Advanced: true},
+			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
+			{Key: "poll_interval_secs", Label: "Poll Interval (sec)", FieldType: FieldTypeNumber, EnvVar: nil, Required: false, Placeholder: "1", Advanced: true},
+		},
+		SetupSteps:     []string{"Open @BotFather on Telegram", "Send /newbot and follow the prompts", "Paste the token below"},
+		ConfigTemplate: "[channels.telegram]\nbot_token_env = \"TELEGRAM_BOT_TOKEN\"",
+	},
+	{
+		Name:        "discord",
+		DisplayName: "Discord",
+		Icon:        "DC",
+		Description: "Discord Gateway bot adapter",
+		Category:    "messaging",
+		Difficulty:  "Easy",
+		SetupTime:   "~3 min",
+		QuickSetup:  "Paste your bot token from the Discord Developer Portal",
+		SetupType:   "form",
+		Fields: []ChannelField{
+			{Key: "bot_token_env", Label: "Bot Token", FieldType: FieldTypeSecret, EnvVar: strPtr("DISCORD_BOT_TOKEN"), Required: true, Placeholder: "MTIz...", Advanced: false},
+			{Key: "allowed_guilds", Label: "Allowed Guild IDs", FieldType: FieldTypeList, EnvVar: nil, Required: false, Placeholder: "123456789, 987654321", Advanced: true},
+			{Key: "allowed_users", Label: "Allowed User IDs", FieldType: FieldTypeList, EnvVar: nil, Required: false, Placeholder: "123456789, 987654321", Advanced: true},
+			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
+			{Key: "intents", Label: "Intents Bitmask", FieldType: FieldTypeNumber, EnvVar: nil, Required: false, Placeholder: "37376", Advanced: true},
+		},
+		SetupSteps:     []string{"Go to discord.com/developers/applications", "Create a bot and copy the token", "Paste it below"},
+		ConfigTemplate: "[channels.discord]\nbot_token_env = \"DISCORD_BOT_TOKEN\"",
+	},
+	{
+		Name:        "slack",
+		DisplayName: "Slack",
+		Icon:        "SL",
+		Description: "Slack Socket Mode + Events API",
+		Category:    "messaging",
+		Difficulty:  "Medium",
+		SetupTime:   "~5 min",
+		QuickSetup:  "Paste your App Token and Bot Token from api.slack.com",
+		SetupType:   "form",
+		Fields: []ChannelField{
+			{Key: "app_token_env", Label: "App Token (xapp-)", FieldType: FieldTypeSecret, EnvVar: strPtr("SLACK_APP_TOKEN"), Required: true, Placeholder: "xapp-1-...", Advanced: false},
+			{Key: "bot_token_env", Label: "Bot Token (xoxb-)", FieldType: FieldTypeSecret, EnvVar: strPtr("SLACK_BOT_TOKEN"), Required: true, Placeholder: "xoxb-...", Advanced: false},
+			{Key: "allowed_channels", Label: "Allowed Channel IDs", FieldType: FieldTypeList, EnvVar: nil, Required: false, Placeholder: "C01234, C56789", Advanced: true},
+			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
+		},
+		SetupSteps:     []string{"Create app at api.slack.com/apps", "Enable Socket Mode and copy App Token", "Copy Bot Token from OAuth & Permissions"},
+		ConfigTemplate: "[channels.slack]\napp_token_env = \"SLACK_APP_TOKEN\"\nbot_token_env = \"SLACK_BOT_TOKEN\"",
+	},
+	{
+		Name:        "whatsapp",
+		DisplayName: "WhatsApp",
+		Icon:        "WA",
+		Description: "Connect your personal WhatsApp via QR scan",
+		Category:    "messaging",
+		Difficulty:  "Easy",
+		SetupTime:   "~1 min",
+		QuickSetup:  "Scan QR code with your phone — no developer account needed",
+		SetupType:   "qr",
+		Fields: []ChannelField{
+			{Key: "access_token_env", Label: "Access Token", FieldType: FieldTypeSecret, EnvVar: strPtr("WHATSAPP_ACCESS_TOKEN"), Required: false, Placeholder: "EAAx...", Advanced: true},
+			{Key: "phone_number_id", Label: "Phone Number ID", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "1234567890", Advanced: true},
+			{Key: "verify_token_env", Label: "Verify Token", FieldType: FieldTypeSecret, EnvVar: strPtr("WHATSAPP_VERIFY_TOKEN"), Required: false, Placeholder: "my-verify-token", Advanced: true},
+			{Key: "webhook_port", Label: "Webhook Port", FieldType: FieldTypeNumber, EnvVar: nil, Required: false, Placeholder: "8443", Advanced: true},
+			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
+		},
+		SetupSteps:     []string{"Open WhatsApp on your phone", "Go to Linked Devices", "Tap Link a Device and scan the QR code"},
+		ConfigTemplate: "[channels.whatsapp]\naccess_token_env = \"WHATSAPP_ACCESS_TOKEN\"\nphone_number_id = \"\"",
+	},
+	{
+		Name:        "qq",
+		DisplayName: "QQ",
+		Icon:        "QQ",
+		Description: "QQ Bot API adapter",
+		Category:    "messaging",
+		Difficulty:  "Easy",
+		SetupTime:   "~2 min",
+		QuickSetup:  "Paste your App ID and App Secret",
+		SetupType:   "form",
+		Fields: []ChannelField{
+			{Key: "app_id", Label: "App ID", FieldType: FieldTypeText, EnvVar: strPtr("QQ_APP_ID"), Required: true, Placeholder: "123456789", Advanced: false},
+			{Key: "app_secret_env", Label: "App Secret", FieldType: FieldTypeSecret, EnvVar: strPtr("QQ_APP_SECRET"), Required: true, Placeholder: "abc123...", Advanced: false},
+			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
+		},
+		SetupSteps:     []string{"Create QQ Bot at QQ Open Platform", "Copy App ID and App Secret", "Paste them below"},
+		ConfigTemplate: "[channels.qq]\napp_id = \"\"\napp_secret_env = \"QQ_APP_SECRET\"",
+	},
+	{
+		Name:        "dingtalk",
+		DisplayName: "DingTalk",
+		Icon:        "DT",
+		Description: "DingTalk Robot API adapter",
+		Category:    "enterprise",
+		Difficulty:  "Easy",
+		SetupTime:   "~3 min",
+		QuickSetup:  "Paste your webhook token and signing secret",
+		SetupType:   "form",
+		Fields: []ChannelField{
+			{Key: "access_token_env", Label: "Access Token", FieldType: FieldTypeSecret, EnvVar: strPtr("DINGTALK_ACCESS_TOKEN"), Required: true, Placeholder: "abc123...", Advanced: false},
+			{Key: "secret_env", Label: "Signing Secret", FieldType: FieldTypeSecret, EnvVar: strPtr("DINGTALK_SECRET"), Required: true, Placeholder: "SEC...", Advanced: false},
+			{Key: "webhook_port", Label: "Webhook Port", FieldType: FieldTypeNumber, EnvVar: nil, Required: false, Placeholder: "8457", Advanced: true},
+			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
+		},
+		SetupSteps:     []string{"Create a robot in your DingTalk group", "Copy the token and signing secret", "Paste them below"},
+		ConfigTemplate: "[channels.dingtalk]\naccess_token_env = \"DINGTALK_ACCESS_TOKEN\"\nsecret_env = \"DINGTALK_SECRET\"",
+	},
+	{
+		Name:        "feishu",
+		DisplayName: "Feishu/Lark",
+		Icon:        "FS",
+		Description: "Feishu/Lark Open Platform adapter",
+		Category:    "enterprise",
+		Difficulty:  "Easy",
+		SetupTime:   "~3 min",
+		QuickSetup:  "Paste your App ID and App Secret",
+		SetupType:   "form",
+		Fields: []ChannelField{
+			{Key: "app_id", Label: "App ID", FieldType: FieldTypeText, EnvVar: strPtr("FEISHU_APP_ID"), Required: true, Placeholder: "cli_abc123", Advanced: false},
+			{Key: "app_secret_env", Label: "App Secret", FieldType: FieldTypeSecret, EnvVar: strPtr("FEISHU_APP_SECRET"), Required: true, Placeholder: "abc123...", Advanced: false},
+			{Key: "webhook_port", Label: "Webhook Port", FieldType: FieldTypeNumber, EnvVar: nil, Required: false, Placeholder: "8453", Advanced: true},
+			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
+		},
+		SetupSteps:     []string{"Create an app at open.feishu.cn", "Copy App ID and Secret", "Paste them below"},
+		ConfigTemplate: "[channels.feishu]\napp_id = \"\"\napp_secret_env = \"FEISHU_APP_SECRET\"",
+	},
+}
+
+func strPtr(s string) *string {
+	return &s
+}
+
+// sharedMemoryAgentID is the well-known shared-memory agent ID used for cross-agent KV storage.
+// Must match the value in openfang-kernel.
+func sharedMemoryAgentID() string {
+	return uuid.UUID{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}.String()
+}
 
 // Router manages API routes.
 type Router struct {
@@ -82,6 +268,12 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/memories", r.handleCreateMemory)
 	mux.HandleFunc("GET /api/memories/search", r.handleSearchMemories)
 	mux.HandleFunc("DELETE /api/memories/{id}", r.handleDeleteMemory)
+
+	// Memory KV endpoints
+	mux.HandleFunc("GET /api/memory/agents/{id}/kv", r.handleGetAgentKV)
+	mux.HandleFunc("GET /api/memory/agents/{id}/kv/{key}", r.handleGetAgentKVKey)
+	mux.HandleFunc("PUT /api/memory/agents/{id}/kv/{key}", r.handleSetAgentKVKey)
+	mux.HandleFunc("DELETE /api/memory/agents/{id}/kv/{key}", r.handleDeleteAgentKVKey)
 
 	// Skill endpoints
 	mux.HandleFunc("GET /api/v1/skills", r.handleListSkills)
@@ -474,6 +666,116 @@ func (r *Router) handleDeleteMemory(w http.ResponseWriter, req *http.Request) {
 	respondJSON(w, http.StatusNoContent, nil)
 }
 
+// Memory KV handlers
+
+// handleGetAgentKV handles GET /api/memory/agents/{id}/kv — List KV pairs for an agent.
+// Note: memory_store tool writes to a shared namespace, so we read from that
+// same namespace regardless of which agent ID is in the URL.
+func (r *Router) handleGetAgentKV(w http.ResponseWriter, req *http.Request) {
+	agentID := sharedMemoryAgentID()
+
+	records, err := r.kernel.DB().ListKV(agentID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Memory operation failed")
+		return
+	}
+
+	var kvPairs []map[string]interface{}
+	for _, r := range records {
+		var value interface{}
+		if err := json.Unmarshal(r.Value, &value); err != nil {
+			value = string(r.Value)
+		}
+		kvPairs = append(kvPairs, map[string]interface{}{
+			"key":   r.Key,
+			"value": value,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"kv_pairs": kvPairs,
+	})
+}
+
+// handleGetAgentKVKey handles GET /api/memory/agents/{id}/kv/{key} — Get a specific KV value.
+func (r *Router) handleGetAgentKVKey(w http.ResponseWriter, req *http.Request) {
+	agentID := sharedMemoryAgentID()
+	key := req.PathValue("key")
+
+	record, err := r.kernel.DB().GetKV(agentID, key)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Memory operation failed")
+		return
+	}
+
+	if record == nil {
+		respondError(w, http.StatusNotFound, "Key not found")
+		return
+	}
+
+	var value interface{}
+	if err := json.Unmarshal(record.Value, &value); err != nil {
+		value = string(record.Value)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"key":   key,
+		"value": value,
+	})
+}
+
+// handleSetAgentKVKey handles PUT /api/memory/agents/{id}/kv/{key} — Set a KV value.
+// Note: memory_store tool writes to a shared namespace, so we write to that
+// same namespace regardless of which agent ID is in the URL.
+func (r *Router) handleSetAgentKVKey(w http.ResponseWriter, req *http.Request) {
+	agentID := sharedMemoryAgentID()
+	key := req.PathValue("key")
+
+	var reqBody struct {
+		Value interface{} `json:"value"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		var value interface{}
+		if err2 := json.NewDecoder(req.Body).Decode(&value); err2 != nil {
+			respondError(w, http.StatusBadRequest, "Invalid request body")
+			return
+		}
+		reqBody.Value = value
+	}
+
+	valueBytes, err := json.Marshal(reqBody.Value)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Memory operation failed")
+		return
+	}
+
+	if err := r.kernel.DB().SetKV(agentID, key, valueBytes); err != nil {
+		respondError(w, http.StatusInternalServerError, "Memory operation failed")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "stored",
+		"key":    key,
+	})
+}
+
+// handleDeleteAgentKVKey handles DELETE /api/memory/agents/{id}/kv/{key} — Delete a KV value.
+func (r *Router) handleDeleteAgentKVKey(w http.ResponseWriter, req *http.Request) {
+	agentID := sharedMemoryAgentID()
+	key := req.PathValue("key")
+
+	if err := r.kernel.DB().DeleteKV(agentID, key); err != nil {
+		respondError(w, http.StatusInternalServerError, "Memory operation failed")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "deleted",
+		"key":    key,
+	})
+}
+
 // Skill handlers
 func (r *Router) handleListSkills(w http.ResponseWriter, req *http.Request) {
 	skills, err := r.kernel.SkillLoader().ListSkills()
@@ -547,7 +849,98 @@ func (r *Router) handleUninstallSkill(w http.ResponseWriter, req *http.Request) 
 
 // Channel handlers
 func (r *Router) handleListChannels(w http.ResponseWriter, req *http.Request) {
-	respondJSON(w, http.StatusOK, []interface{}{})
+	var channels []map[string]interface{}
+	var configuredCount uint32 = 0
+
+	for _, meta := range CHANNEL_REGISTRY {
+		configured := isChannelConfigured(meta.Name)
+		if configured {
+			configuredCount++
+		}
+
+		hasToken := true
+		for _, f := range meta.Fields {
+			if f.Required && f.EnvVar != nil {
+				val := os.Getenv(*f.EnvVar)
+				if val == "" {
+					hasToken = false
+					break
+				}
+			}
+		}
+
+		var fields []map[string]interface{}
+		for _, f := range meta.Fields {
+			hasValue := false
+			if f.EnvVar != nil {
+				val := os.Getenv(*f.EnvVar)
+				hasValue = val != ""
+			}
+
+			field := map[string]interface{}{
+				"key":         f.Key,
+				"label":       f.Label,
+				"type":        f.FieldType,
+				"required":    f.Required,
+				"placeholder": f.Placeholder,
+				"advanced":    f.Advanced,
+				"has_value":   hasValue,
+			}
+			if f.EnvVar != nil {
+				field["env_var"] = *f.EnvVar
+			}
+			fields = append(fields, field)
+		}
+
+		channels = append(channels, map[string]interface{}{
+			"name":            meta.Name,
+			"display_name":    meta.DisplayName,
+			"icon":            meta.Icon,
+			"description":     meta.Description,
+			"category":        meta.Category,
+			"difficulty":      meta.Difficulty,
+			"setup_time":      meta.SetupTime,
+			"quick_setup":     meta.QuickSetup,
+			"setup_type":      meta.SetupType,
+			"configured":      configured,
+			"has_token":       hasToken,
+			"fields":          fields,
+			"setup_steps":     meta.SetupSteps,
+			"config_template": meta.ConfigTemplate,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"channels":         channels,
+		"total":            len(channels),
+		"configured_count": configuredCount,
+	})
+}
+
+func isChannelConfigured(channelName string) bool {
+	cfg, err := config.Load("")
+	if err != nil {
+		return false
+	}
+
+	switch channelName {
+	case "telegram":
+		return cfg.Channels.Telegram != nil && cfg.Channels.Telegram.BotTokenEnv != ""
+	case "discord":
+		return cfg.Channels.Discord != nil && cfg.Channels.Discord.BotTokenEnv != ""
+	case "slack":
+		return cfg.Channels.Slack != nil && cfg.Channels.Slack.BotTokenEnv != "" && cfg.Channels.Slack.AppTokenEnv != ""
+	case "whatsapp":
+		return cfg.Channels.WhatsApp != nil && (cfg.Channels.WhatsApp.AccessTokenEnv != "" || cfg.Channels.WhatsApp.PhoneNumberID != "")
+	case "qq":
+		return cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" && cfg.Channels.QQ.AppSecretEnv != ""
+	case "dingtalk":
+		return cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.AccessTokenEnv != "" && cfg.Channels.DingTalk.SecretEnv != ""
+	case "feishu":
+		return cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && cfg.Channels.Feishu.AppSecretEnv != ""
+	default:
+		return false
+	}
 }
 
 func (r *Router) handleCreateChannel(w http.ResponseWriter, req *http.Request) {

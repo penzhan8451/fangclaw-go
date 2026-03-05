@@ -330,6 +330,80 @@ func (db *DB) DeleteMemory(agentID, key string) error {
 	return err
 }
 
+// KVStore operations (for kv_store table)
+
+// KVRecord represents a KV pair from kv_store table.
+type KVRecord struct {
+	AgentID   string
+	Key       string
+	Value     []byte
+	Version   int
+	UpdatedAt time.Time
+}
+
+// SetKV sets a value in kv_store.
+func (db *DB) SetKV(agentID, key string, value []byte) error {
+	now := time.Now().Format(time.RFC3339)
+	_, err := db.Exec(`
+		INSERT INTO kv_store (agent_id, key, value, version, updated_at)
+		VALUES (?, ?, ?, 1, ?)
+		ON CONFLICT(agent_id, key) DO UPDATE SET 
+			value = ?, version = version + 1, updated_at = ?
+	`, agentID, key, value, now, value, now)
+	return err
+}
+
+// GetKV retrieves a value from kv_store.
+func (db *DB) GetKV(agentID, key string) (*KVRecord, error) {
+	var record KVRecord
+	var updatedAtStr string
+	err := db.QueryRow(`
+		SELECT agent_id, key, value, version, updated_at
+		FROM kv_store WHERE agent_id = ? AND key = ?
+	`, agentID, key).Scan(&record.AgentID, &record.Key, &record.Value, &record.Version, &updatedAtStr)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	record.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+	return &record, nil
+}
+
+// ListKV lists all KV pairs for an agent from kv_store.
+func (db *DB) ListKV(agentID string) ([]*KVRecord, error) {
+	rows, err := db.Query(`
+		SELECT agent_id, key, value, version, updated_at
+		FROM kv_store WHERE agent_id = ? ORDER BY key
+	`, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []*KVRecord
+	for rows.Next() {
+		var record KVRecord
+		var updatedAtStr string
+		if err := rows.Scan(&record.AgentID, &record.Key, &record.Value, &record.Version, &updatedAtStr); err != nil {
+			return nil, err
+		}
+		record.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+		records = append(records, &record)
+	}
+
+	return records, nil
+}
+
+// DeleteKV deletes a value from kv_store.
+func (db *DB) DeleteKV(agentID, key string) error {
+	_, err := db.Exec("DELETE FROM kv_store WHERE agent_id = ? AND key = ?", agentID, key)
+	return err
+}
+
 // Audit operations
 
 // AuditRecord represents an audit log entry.

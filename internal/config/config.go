@@ -20,6 +20,37 @@ type Config struct {
 	Security     SecuritySettings `toml:"security"`
 	Log          LogSettings      `toml:"log"`
 	LLM          llm.Config       `toml:"llm"`
+	Channels     ChannelsConfig   `toml:"channels"`
+}
+
+// ChannelsConfig contains configuration for all channel adapters.
+type ChannelsConfig struct {
+	Telegram *ChannelConfig `toml:"telegram,omitempty"`
+	Discord  *ChannelConfig `toml:"discord,omitempty"`
+	Slack    *ChannelConfig `toml:"slack,omitempty"`
+	WhatsApp *ChannelConfig `toml:"whatsapp,omitempty"`
+	QQ       *ChannelConfig `toml:"qq,omitempty"`
+	DingTalk *ChannelConfig `toml:"dingtalk,omitempty"`
+	Feishu   *ChannelConfig `toml:"feishu,omitempty"`
+}
+
+// ChannelConfig represents a single channel adapter's configuration.
+type ChannelConfig struct {
+	BotTokenEnv      string `toml:"bot_token_env,omitempty"`
+	AppTokenEnv      string `toml:"app_token_env,omitempty"`
+	AllowedUsers     string `toml:"allowed_users,omitempty"`
+	AllowedGuilds    string `toml:"allowed_guilds,omitempty"`
+	AllowedChannels  string `toml:"allowed_channels,omitempty"`
+	DefaultAgent     string `toml:"default_agent,omitempty"`
+	PollIntervalSecs int    `toml:"poll_interval_secs,omitempty"`
+	Intents          int    `toml:"intents,omitempty"`
+	AccessTokenEnv   string `toml:"access_token_env,omitempty"`
+	PhoneNumberID    string `toml:"phone_number_id,omitempty"`
+	VerifyTokenEnv   string `toml:"verify_token_env,omitempty"`
+	WebhookPort      int    `toml:"webhook_port,omitempty"`
+	AppID            string `toml:"app_id,omitempty"`
+	AppSecretEnv     string `toml:"app_secret_env,omitempty"`
+	SecretEnv        string `toml:"secret_env,omitempty"`
 }
 
 // ModelSettings defines the default model configuration.
