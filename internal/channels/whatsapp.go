@@ -48,7 +48,7 @@ func (a *WhatsAppAdapter) Receive(ctx context.Context) (<-chan *Message, error) 
 
 // Send sends a message via WhatsApp Business API.
 func (a *WhatsAppAdapter) Send(msg *Message) error {
-	if a.Channel.Config.WhatsAppPhoneID == "" || a.Channel.Config.WhatsAppAccessToken == "" {
+	if a.Channel.Config.WhatsApp == nil || a.Channel.Config.WhatsApp.PhoneID == "" || a.Channel.Config.WhatsApp.AccessToken == "" {
 		return fmt.Errorf("whatsapp phone id or access token not configured")
 	}
 
@@ -57,7 +57,7 @@ func (a *WhatsAppAdapter) Send(msg *Message) error {
 	}
 
 	apiBase := "https://graph.facebook.com/v18.0"
-	url := fmt.Sprintf("%s/%s/messages", apiBase, a.Channel.Config.WhatsAppPhoneID)
+	url := fmt.Sprintf("%s/%s/messages", apiBase, a.Channel.Config.WhatsApp.PhoneID)
 	
 	payload := map[string]interface{}{
 		"messaging_product": "whatsapp",
@@ -78,7 +78,7 @@ func (a *WhatsAppAdapter) Send(msg *Message) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", a.Channel.Config.WhatsAppAccessToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", a.Channel.Config.WhatsApp.AccessToken))
 
 	resp, err := a.client.Do(req)
 	if err != nil {

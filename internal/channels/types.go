@@ -150,6 +150,41 @@ type Channel struct {
 	UpdatedAt time.Time     `json:"updated_at"`
 }
 
+// TelegramChannelConfig represents the configuration for Telegram channel.
+type TelegramChannelConfig struct {
+	BotToken string `json:"bot_token,omitempty"`
+}
+
+// SlackChannelConfig represents the configuration for Slack channel.
+type SlackChannelConfig struct {
+	BotToken string `json:"bot_token,omitempty"`
+}
+
+// DiscordChannelConfig represents the configuration for Discord channel.
+type DiscordChannelConfig struct {
+	BotToken string `json:"bot_token,omitempty"`
+}
+
+// FeishuChannelConfig represents the configuration for Feishu channel.
+type FeishuChannelConfig struct {
+	AppID     string `json:"app_id,omitempty"`
+	AppSecret string `json:"app_secret,omitempty"`
+}
+
+// DingTalkChannelConfig represents the configuration for DingTalk channel.
+type DingTalkChannelConfig struct {
+	AppKey    string `json:"app_key,omitempty"`
+	AppSecret string `json:"app_secret,omitempty"`
+	AgentID   string `json:"agent_id,omitempty"`
+}
+
+// WhatsAppChannelConfig represents the configuration for WhatsApp channel.
+type WhatsAppChannelConfig struct {
+	PhoneID     string `json:"phone_id,omitempty"`
+	BusinessID  string `json:"business_id,omitempty"`
+	AccessToken string `json:"access_token,omitempty"`
+}
+
 // QQChannelConfig represents the configuration for QQ channel.
 type QQChannelConfig struct {
 	AppID              string   `json:"app_id,omitempty"`
@@ -159,30 +194,32 @@ type QQChannelConfig struct {
 	AllowFrom          []string `json:"allow_from,omitempty"`
 }
 
+// GenericChannelConfig represents the generic configuration for channels.
+// It is used for channels that don't have a specific configuration.
+type GenericChannelConfig struct {
+	APIKey     string            `json:"api_key,omitempty"`
+	Token      string            `json:"token,omitempty"`
+	Username   string            `json:"username,omitempty"`
+	Password   string            `json:"password,omitempty"`
+	Server     string            `json:"server,omitempty"`
+	Port       int               `json:"port,omitempty"`
+	ChannelID  string            `json:"channel_id,omitempty"`
+	ChatID     string            `json:"chat_id,omitempty"`
+	WebhookURL string            `json:"webhook_url,omitempty"`
+	Settings   map[string]string `json:"settings,omitempty"`
+}
+
 // ChannelConfig represents the configuration for a channel.
+// It is used to store the configuration for different types of channels.
 type ChannelConfig struct {
-	APIKey              string            `json:"api_key,omitempty"`
-	Token               string            `json:"token,omitempty"`
-	TelegramBotToken    string            `json:"telegram_bot_token,omitempty"`
-	SlackBotToken       string            `json:"slack_bot_token,omitempty"`
-	DiscordBotToken     string            `json:"discord_bot_token,omitempty"`
-	FeishuAppID         string            `json:"feishu_app_id,omitempty"`
-	FeishuAppSecret     string            `json:"feishu_app_secret,omitempty"`
-	DingTalkAppKey      string            `json:"dingtalk_app_key,omitempty"`
-	DingTalkAppSecret   string            `json:"dingtalk_app_secret,omitempty"`
-	DingTalkAgentID     string            `json:"dingtalk_agent_id,omitempty"`
-	WhatsAppPhoneID     string            `json:"whatsapp_phone_id,omitempty"`
-	WhatsAppBusinessID  string            `json:"whatsapp_business_id,omitempty"`
-	WhatsAppAccessToken string            `json:"whatsapp_access_token,omitempty"`
-	QQ                  *QQChannelConfig  `json:"qq,omitempty"`
-	Username            string            `json:"username,omitempty"`
-	Password            string            `json:"password,omitempty"`
-	Server              string            `json:"server,omitempty"`
-	Port                int               `json:"port,omitempty"`
-	ChannelID           string            `json:"channel_id,omitempty"`
-	ChatID              string            `json:"chat_id,omitempty"`
-	WebhookURL          string            `json:"webhook_url,omitempty"`
-	Settings            map[string]string `json:"settings,omitempty"`
+	Telegram *TelegramChannelConfig `json:"telegram,omitempty"`
+	Slack    *SlackChannelConfig    `json:"slack,omitempty"`
+	Discord  *DiscordChannelConfig  `json:"discord,omitempty"`
+	Feishu   *FeishuChannelConfig   `json:"feishu,omitempty"`
+	DingTalk *DingTalkChannelConfig `json:"dingtalk,omitempty"`
+	WhatsApp *WhatsAppChannelConfig `json:"whatsapp,omitempty"`
+	QQ       *QQChannelConfig       `json:"qq,omitempty"`
+	Generic  *GenericChannelConfig  `json:"generic,omitempty"`
 }
 
 // Message represents a message sent through a channel.

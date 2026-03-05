@@ -36,8 +36,10 @@ func autoRegisterFEISHU(registry *Registry) error {
 			Type:  ChannelTypeFeishu,
 			State: ChannelStateIdle,
 			Config: ChannelConfig{
-				FeishuAppID:     FeishuAppID,
-				FeishuAppSecret: FeishuAppSecret,
+				Feishu: &FeishuChannelConfig{
+					AppID:     FeishuAppID,
+					AppSecret: FeishuAppSecret,
+				},
 			},
 		}); err != nil {
 			fmt.Printf("Warning: Failed to auto-register Feishu channel: %v\n", err)
@@ -80,7 +82,7 @@ func (a *FeishuAdapter) Receive(ctx context.Context) (<-chan *Message, error) {
 
 // Send sends a message to Feishu.
 func (a *FeishuAdapter) Send(msg *Message) error {
-	if a.Channel.Config.FeishuAppID == "" || a.Channel.Config.FeishuAppSecret == "" {
+	if a.Channel.Config.Feishu == nil || a.Channel.Config.Feishu.AppID == "" || a.Channel.Config.Feishu.AppSecret == "" {
 		return fmt.Errorf("feishu app id or secret not configured")
 	}
 
@@ -167,8 +169,8 @@ func (a *FeishuAdapter) getTenantAccessToken(apiBase string) (string, error) {
 
 	url := fmt.Sprintf("%s/auth/v3/tenant_access_token/internal", apiBase)
 	payload := map[string]string{
-		"app_id":     a.Channel.Config.FeishuAppID,
-		"app_secret": a.Channel.Config.FeishuAppSecret,
+		"app_id":     a.Channel.Config.Feishu.AppID,
+		"app_secret": a.Channel.Config.Feishu.AppSecret,
 	}
 
 	body, err := json.Marshal(payload)

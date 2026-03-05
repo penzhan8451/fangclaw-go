@@ -48,7 +48,7 @@ func (a *SlackAdapter) Receive(ctx context.Context) (<-chan *Message, error) {
 
 // Send sends a message to Slack.
 func (a *SlackAdapter) Send(msg *Message) error {
-	if a.Channel.Config.SlackBotToken == "" {
+	if a.Channel.Config.Slack == nil || a.Channel.Config.Slack.BotToken == "" {
 		return fmt.Errorf("slack bot token not configured")
 	}
 
@@ -92,7 +92,7 @@ func (a *SlackAdapter) sendChunk(url, channel, chunk string) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", a.Channel.Config.SlackBotToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", a.Channel.Config.Slack.BotToken))
 
 	resp, err := a.client.Do(req)
 	if err != nil {

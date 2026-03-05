@@ -50,7 +50,7 @@ func (a *DingTalkAdapter) Receive(ctx context.Context) (<-chan *Message, error) 
 
 // Send sends a message to DingTalk.
 func (a *DingTalkAdapter) Send(msg *Message) error {
-	if a.Channel.Config.DingTalkAppKey == "" || a.Channel.Config.DingTalkAppSecret == "" {
+	if a.Channel.Config.DingTalk == nil || a.Channel.Config.DingTalk.AppKey == "" || a.Channel.Config.DingTalk.AppSecret == "" {
 		return fmt.Errorf("dingtalk app key or secret not configured")
 	}
 
@@ -86,8 +86,12 @@ func (a *DingTalkAdapter) Send(msg *Message) error {
 // sendChunk sends a single message chunk to DingTalk.
 func (a *DingTalkAdapter) sendChunk(apiBase, token, recipient, chunk string) error {
 	url := fmt.Sprintf("%s/topapi/message/corpconversation/asyncsend_v2?access_token=%s", apiBase, token)
+	var agentID string
+	if a.Channel.Config.DingTalk != nil {
+		agentID = a.Channel.Config.DingTalk.AgentID
+	}
 	payload := map[string]interface{}{
-		"agent_id":    a.Channel.Config.DingTalkAgentID,
+		"agent_id":    agentID,
 		"userid_list": recipient,
 		"msg": map[string]interface{}{
 			"msgtype": "text",
@@ -140,7 +144,7 @@ func (a *DingTalkAdapter) getAccessToken(apiBase string) (string, error) {
 		return a.tokenCache, nil
 	}
 
-	url := fmt.Sprintf("%s/gettoken?appkey=%s&appsecret=%s", apiBase, a.Channel.Config.DingTalkAppKey, a.Channel.Config.DingTalkAppSecret)
+	url := fmt.Sprintf("%s/gettoken?appkey=%s&appsecret=%s", apiBase, a.Channel.Config.DingTalk.AppKey, a.Channel.Config.DingTalk.AppSecret)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

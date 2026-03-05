@@ -48,7 +48,7 @@ func (a *DiscordAdapter) Receive(ctx context.Context) (<-chan *Message, error) {
 
 // Send sends a message to Discord.
 func (a *DiscordAdapter) Send(msg *Message) error {
-	if a.Channel.Config.DiscordBotToken == "" {
+	if a.Channel.Config.Discord == nil || a.Channel.Config.Discord.BotToken == "" {
 		return fmt.Errorf("discord bot token not configured")
 	}
 
@@ -91,7 +91,7 @@ func (a *DiscordAdapter) sendChunk(url, chunk string) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bot %s", a.Channel.Config.DiscordBotToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bot %s", a.Channel.Config.Discord.BotToken))
 
 	resp, err := a.client.Do(req)
 	if err != nil {

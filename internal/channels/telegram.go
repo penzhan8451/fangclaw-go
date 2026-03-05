@@ -56,7 +56,7 @@ func (a *TelegramAdapter) Receive(ctx context.Context) (<-chan *Message, error) 
 
 // Send sends a message to Telegram.
 func (a *TelegramAdapter) Send(msg *Message) error {
-	if a.Channel.Config.TelegramBotToken == "" {
+	if a.Channel.Config.Telegram == nil || a.Channel.Config.Telegram.BotToken == "" {
 		return fmt.Errorf("telegram bot token not configured")
 	}
 
@@ -90,7 +90,7 @@ func (a *TelegramAdapter) Stop() error {
 
 // validateToken validates the bot token by calling getMe.
 func (a *TelegramAdapter) validateToken() (string, error) {
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/getMe", a.Channel.Config.TelegramBotToken)
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/getMe", a.Channel.Config.Telegram.BotToken)
 	resp, err := a.client.Get(url)
 	if err != nil {
 		return "", err
@@ -119,7 +119,7 @@ func (a *TelegramAdapter) validateToken() (string, error) {
 
 // apiSendMessage calls sendMessage on the Telegram API.
 func (a *TelegramAdapter) apiSendMessage(chatID int64, text string) error {
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", a.Channel.Config.TelegramBotToken)
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", a.Channel.Config.Telegram.BotToken)
 
 	// Split message if needed (Telegram limit is 4096 chars)
 	chunks := splitMessage(text, 4096)
@@ -217,7 +217,7 @@ func (a *TelegramAdapter) pollLoop() {
 
 // getUpdates gets updates from Telegram.
 func (a *TelegramAdapter) getUpdates() ([]map[string]interface{}, error) {
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates", a.Channel.Config.TelegramBotToken)
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates", a.Channel.Config.Telegram.BotToken)
 
 	payload := map[string]interface{}{
 		"offset":          a.lastUpdateID + 1,
