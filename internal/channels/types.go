@@ -232,3 +232,23 @@ type Adapter interface {
 
 // AdapterFactory is a function that creates an adapter for a channel.
 type AdapterFactory func(channel *Channel) (Adapter, error)
+
+// AutoRegisterFunc is a function that auto-registers a channel.
+type AutoRegisterFunc func(registry *Registry) error
+
+var autoRegisterFuncs []AutoRegisterFunc
+
+// RegisterAutoRegister adds an auto-register function.
+func RegisterAutoRegister(f AutoRegisterFunc) {
+	autoRegisterFuncs = append(autoRegisterFuncs, f)
+}
+
+// AutoRegisterAll runs all registered auto-register functions.
+func AutoRegisterAll(registry *Registry) error {
+	for _, f := range autoRegisterFuncs {
+		if err := f(registry); err != nil {
+			return err
+		}
+	}
+	return nil
+}

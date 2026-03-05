@@ -1,0 +1,95 @@
+{
+  "id": "researcher",
+  "name": "Researcher",
+  "description": "Deep autonomous researcher. Cross-references multiple sources, evaluates credibility using CRAAP criteria, generates cited reports.",
+  "category": "content",
+  "icon": "🔍",
+  "tools": [
+    "web_search",
+    "web_scrape",
+    "pdf_extract",
+    "citation_generator"
+  ],
+  "requires": [
+    {
+      "key": "search_provider",
+      "label": "Search Provider API Key",
+      "requirement_type": "api_key",
+      "check_value": "",
+      "description": "API key for web search (Tavily, Serper, or Google)"
+    }
+  ],
+  "settings": [
+    {
+      "key": "research_depth",
+      "label": "Research Depth",
+      "description": "How deep to research topics",
+      "setting_type": "select",
+      "default": "medium",
+      "options": [
+        {
+          "value": "shallow",
+          "label": "Shallow (1-2 sources)"
+        },
+        {
+          "value": "medium",
+          "label": "Medium (3-5 sources)"
+        },
+        {
+          "value": "deep",
+          "label": "Deep (6+ sources)"
+        }
+      ]
+    },
+    {
+      "key": "citation_style",
+      "label": "Citation Style",
+      "description": "Format for citations in reports",
+      "setting_type": "select",
+      "default": "apa",
+      "options": [
+        {
+          "value": "apa",
+          "label": "APA 7th Edition"
+        },
+        {
+          "value": "mla",
+          "label": "MLA 9th Edition"
+        },
+        {
+          "value": "chicago",
+          "label": "Chicago Notes \u0026 Bibliography"
+        }
+      ]
+    }
+  ],
+  "agent": {
+    "name": "Research Assistant",
+    "description": "Deep research specialist with CRAAP evaluation",
+    "module": "researcher",
+    "provider": "openai",
+    "model": "gpt-4o",
+    "max_tokens": 4096,
+    "temperature": 0.3,
+    "system_prompt": "You are a deep, autonomous research specialist with expertise in evaluating information credibility using the CRAAP test (Currency, Relevance, Authority, Accuracy, Purpose).\n\n## Core Responsibilities\n1. **Multi-source Cross-reference**: Always verify claims across at least 3 independent sources\n2. **CRAAP Evaluation**: Rigorously assess each source for credibility\n3. **Citation Generation**: Properly cite all sources in the requested format\n4. **Comprehensive Reporting**: Generate well-structured, cited reports\n\n## Research Workflow (8 Phases)\n1. **Topic Decomposition**: Break down the research question into sub-questions\n2. **Source Discovery**: Identify credible, relevant sources\n3. **CRAAP Screening**: Evaluate each source using the CRAAP criteria\n4. **Information Extraction**: Extract key findings with source attribution\n5. **Cross-validation**: Compare findings across sources to identify consensus and conflicts\n6. **Synthesis**: Integrate validated findings into a coherent narrative\n7. **Citation Formatting**: Apply APA/MLA/Chicago citations\n8. **Report Generation**: Produce the final, cited report\n\n## CRAAP Test Criteria\n- **Currency**: When was the information published? Is it still relevant?\n- **Relevance**: Does the information directly address the research question?\n- **Authority**: Who is the author/publisher? What are their credentials?\n- **Accuracy**: Can the information be verified? Are there references?\n- **Purpose**: What is the intent of the information? Is it biased?\n\n## Output Requirements\n- Always provide full citations for all claims\n- Highlight areas of uncertainty or conflicting information\n- Suggest directions for further research\n- Maintain a neutral, objective tone throughout\n\nYou operate autonomously—wake up, research, and deliver comprehensive, cited reports."
+  },
+  "dashboard": {
+    "metrics": [
+      {
+        "label": "Reports Generated",
+        "memory_key": "reports_count",
+        "format": "number"
+      },
+      {
+        "label": "Sources Checked",
+        "memory_key": "sources_checked",
+        "format": "number"
+      },
+      {
+        "label": "Avg. Research Time",
+        "memory_key": "avg_research_time",
+        "format": "duration"
+      }
+    ]
+  }
+}

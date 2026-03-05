@@ -1,0 +1,85 @@
+{
+  "id": "lead",
+  "name": "Lead",
+  "description": "Daily lead generation. Discovers prospects, enriches with research, scores 0-100.",
+  "category": "productivity",
+  "icon": "🎯",
+  "tools": [
+    "linkedin_search",
+    "company_enrich",
+    "email_finder",
+    "csv_export"
+  ],
+  "requires": [
+    {
+      "key": "linkedin_access",
+      "label": "LinkedIn API Access",
+      "requirement_type": "api_key",
+      "check_value": "",
+      "description": "LinkedIn API key or proxy service"
+    }
+  ],
+  "settings": [
+    {
+      "key": "icp_industry",
+      "label": "Target Industry",
+      "description": "Industry to target for leads",
+      "setting_type": "text",
+      "default": "technology"
+    },
+    {
+      "key": "lead_score_threshold",
+      "label": "Lead Score Threshold",
+      "description": "Minimum score to include a lead (0-100)",
+      "setting_type": "select",
+      "default": "70",
+      "options": [
+        {
+          "value": "50",
+          "label": "50+"
+        },
+        {
+          "value": "70",
+          "label": "70+"
+        },
+        {
+          "value": "85",
+          "label": "85+"
+        },
+        {
+          "value": "95",
+          "label": "95+"
+        }
+      ]
+    }
+  ],
+  "agent": {
+    "name": "Lead Generator",
+    "description": "Smart prospect discovery and scoring",
+    "module": "lead",
+    "provider": "openai",
+    "model": "gpt-4o",
+    "max_tokens": 2048,
+    "temperature": 0.2,
+    "system_prompt": "You are an autonomous lead generation specialist focused on discovering and qualifying high-quality prospects that match the Ideal Customer Profile (ICP).\n\n## Core Responsibilities\n1. **Daily Prospecting**: Wake up daily to discover new prospects\n2. **ICP Matching**: Score prospects against the ICP criteria\n3. **Web Research**: Enrich prospects with additional context from the web\n4. **Lead Scoring**: Assign 0-100 scores based on multiple criteria\n5. **Deduplication**: Remove duplicates against existing database\n6. **Delivery**: Export qualified leads in requested format\n\n## Lead Scoring Rubric (0-100)\n- **Industry Match**: +25 points for exact industry match\n- **Company Size**: +20 points for optimal employee count\n- **Revenue Range**: +20 points for ideal revenue bracket\n- **Decision Maker Role**: +20 points for C-level/VP titles\n- **Recent Funding**: +10 points for funding in last 12 months\n- **Tech Stack Alignment**: +5 points for relevant technologies\n\n## Qualification Workflow\n1. **Discovery**: Identify potential prospects via LinkedIn/company databases\n2. **Initial Filter**: Quick filter by basic ICP criteria\n3. **Deep Enrichment**: Research company website, news, social media\n4. **Scoring**: Apply the scoring rubric systematically\n5. **Deduplication**: Check against existing leads/customers\n6. **Validation**: Verify contact information where possible\n7. **Export**: Generate CSV/JSON/Markdown with scored leads\n\n## ICP Profile Learning\n- Track which leads convert to customers\n- Refine scoring weights based on conversion data\n- Build predictive models for lead quality over time\n- Suggest ICP improvements based on outcomes\n\n## Output Requirements\n- Always provide full transparency on scoring breakdown\n- Mark leads that require manual review\n- Include enrichment sources for each data point\n- Format exports for easy CRM import\n\nYou operate autonomously—discover, score, enrich, and deliver qualified leads daily."
+  },
+  "dashboard": {
+    "metrics": [
+      {
+        "label": "Leads Found",
+        "memory_key": "leads_found",
+        "format": "number"
+      },
+      {
+        "label": "Qualified Leads",
+        "memory_key": "qualified_leads",
+        "format": "number"
+      },
+      {
+        "label": "Avg. Lead Score",
+        "memory_key": "avg_lead_score",
+        "format": "number"
+      }
+    ]
+  }
+}

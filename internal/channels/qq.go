@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -13,6 +14,35 @@ import (
 	"github.com/tencent-connect/botgo/token"
 	"golang.org/x/oauth2"
 )
+
+func init() {
+	RegisterAutoRegister(autoRegisterQQ)
+}
+
+func autoRegisterQQ(registry *Registry) error {
+	qqAppID := os.Getenv("QQ_APP_ID")
+	qqAppSecret := os.Getenv("QQ_APP_SECRET")
+
+	if qqAppID != "" && qqAppSecret != "" {
+		fmt.Println("Auto-registering QQ channel...")
+		qqChannel := &Channel{
+			Name:  "QQ Bot",
+			Type:  ChannelTypeQQ,
+			State: ChannelStateIdle,
+			Config: ChannelConfig{
+				QQAppID:     qqAppID,
+				QQAppSecret: qqAppSecret,
+			},
+		}
+
+		if err := registry.RegisterChannel(qqChannel); err != nil {
+			fmt.Printf("Warning: Failed to auto-register QQ channel: %v\n", err)
+			return err
+		}
+		fmt.Println("QQ channel auto-registered successfully")
+	}
+	return nil
+}
 
 // QQAdapter implements the Adapter interface for QQ.
 type QQAdapter struct {

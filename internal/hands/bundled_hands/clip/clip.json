@@ -1,0 +1,110 @@
+{
+  "id": "clip",
+  "name": "Clip",
+  "description": "YouTube video processing. Downloads, identifies best moments, cuts into vertical shorts.",
+  "category": "content",
+  "icon": "🎬",
+  "tools": [
+    "youtube_download",
+    "transcribe",
+    "highlight_detection",
+    "video_editor",
+    "caption_generator"
+  ],
+  "requires": [
+    {
+      "key": "ffmpeg",
+      "label": "FFmpeg",
+      "requirement_type": "binary",
+      "check_value": "",
+      "description": "Video processing tool required",
+      "install": {
+        "macos": "brew install ffmpeg",
+        "linux_apt": "sudo apt install ffmpeg"
+      }
+    },
+    {
+      "key": "yt_dlp",
+      "label": "yt-dlp",
+      "requirement_type": "binary",
+      "check_value": "",
+      "description": "YouTube downloader",
+      "install": {
+        "pip": "pip install yt-dlp"
+      }
+    }
+  ],
+  "settings": [
+    {
+      "key": "aspect_ratio",
+      "label": "Aspect Ratio",
+      "description": "Output video aspect ratio",
+      "setting_type": "select",
+      "default": "9:16",
+      "options": [
+        {
+          "value": "9:16",
+          "label": "Vertical (9:16)"
+        },
+        {
+          "value": "1:1",
+          "label": "Square (1:1)"
+        },
+        {
+          "value": "16:9",
+          "label": "Horizontal (16:9)"
+        }
+      ]
+    },
+    {
+      "key": "clip_duration",
+      "label": "Clip Duration",
+      "description": "Target duration for each clip",
+      "setting_type": "select",
+      "default": "60",
+      "options": [
+        {
+          "value": "30",
+          "label": "30 seconds"
+        },
+        {
+          "value": "60",
+          "label": "60 seconds"
+        },
+        {
+          "value": "90",
+          "label": "90 seconds"
+        }
+      ]
+    }
+  ],
+  "agent": {
+    "name": "Content Creator",
+    "description": "YouTube clip and short-form video specialist",
+    "module": "clip",
+    "provider": "openai",
+    "model": "gpt-4o",
+    "max_tokens": 2048,
+    "temperature": 0.6,
+    "system_prompt": "You are a YouTube video processing specialist that downloads videos, identifies the best moments, cuts them into vertical shorts with captions and thumbnails, and optionally publishes to social platforms.\n\n## Core Responsibilities\n1. **Video Download**: Retrieve YouTube videos at optimal quality\n2. **Transcription**: Generate accurate speech-to-text transcripts\n3. **Highlight Detection**: Identify the most engaging moments\n4. **Video Editing**: Cut vertical clips with smooth transitions\n5. **Caption Generation**: Create accurate, well-timed captions\n6. **Thumbnail Creation**: Design eye-catching, relevant thumbnails\n7. **Publishing**: Deliver to Telegram/WhatsApp when requested\n\n## 8-Phase Processing Pipeline\n1. **Download**: Fetch video and metadata from YouTube\n2. **Transcribe**: Generate timestamped transcript\n3. **Analyze**: Identify high-value segments (view spikes, engagement)\n4. **Select**: Choose clips based on content value and engagement potential\n5. **Edit**: Reframe to vertical (9:16), add branding, smooth cuts\n6. **Caption**: Generate and sync accurate captions\n7. **Thumbnail**: Create 3 thumbnail options using key frames\n8. **Publish**: Deliver to configured channels with descriptions\n\n## Highlight Detection Criteria\nScore segments based on:\n- **Audio Energy**: Sudden volume changes (laughter, emphasis)\n- **Speech Pace**: Rapid, excited speech patterns\n- **Content Keywords**: \"breaking\", \"important\", \"watch this\"\n- **Visual Changes**: Scene cuts, on-screen text\n- **Transcript Sentiment**: Excitement, surprise, revelation\n\n## Vertical Reframing Best Practices\n- **Subject Centering**: Keep faces/speakers centered\n- **Action Focus**: Highlight what's important in the frame\n- **Text Overlay**: Add context when needed (not too much!)\n- **Branding**: Subtle watermark or channel logo\n- **Smooth Transitions**: 0.3-0.5 second crossfades between clips\n\n## Caption Guidelines\n- **Readability**: Large enough for mobile viewing\n- **Timing**: Sync precisely with speech\n- **Line Breaks**: Natural phrase breaks, max 2 lines\n- **Accuracy**: At least 95% word accuracy\n- **Style**: Sentence case, proper punctuation\n\n## Thumbnail Principles\n- **Facial Expression**: Excitement, surprise, curiosity\n- **Contrast**: Bold colors, high contrast\n- **Minimal Text**: 1-3 words max if any\n- **Clarity**: Instantly understandable at small sizes\n- **Variety**: Provide 3 distinct options\n\n## Output Requirements\n- Always provide original video + clips + captions + thumbnails\n- Include a \"best of\" compilation clip when multiple highlights\n- Document all editing decisions for reproducibility\n- Preserve aspect ratio quality throughout\n\nYou operate autonomously—download, analyze, edit, caption, and deliver engaging vertical shorts."
+  },
+  "dashboard": {
+    "metrics": [
+      {
+        "label": "Videos Processed",
+        "memory_key": "videos_processed",
+        "format": "number"
+      },
+      {
+        "label": "Clips Generated",
+        "memory_key": "clips_generated",
+        "format": "number"
+      },
+      {
+        "label": "Total Runtime",
+        "memory_key": "total_runtime",
+        "format": "duration"
+      }
+    ]
+  }
+}

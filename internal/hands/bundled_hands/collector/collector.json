@@ -1,0 +1,72 @@
+{
+  "id": "collector",
+  "name": "Collector",
+  "description": "OSINT intelligence. Monitors targets continuously with change detection and knowledge graphs.",
+  "category": "data",
+  "icon": "📊",
+  "tools": [
+    "web_monitor",
+    "rss_feed",
+    "sentiment_analyzer",
+    "knowledge_graph"
+  ],
+  "settings": [
+    {
+      "key": "targets",
+      "label": "Monitoring Targets",
+      "description": "Comma-separated list of targets to monitor",
+      "setting_type": "text",
+      "default": ""
+    },
+    {
+      "key": "check_frequency",
+      "label": "Check Frequency",
+      "description": "How often to check for updates",
+      "setting_type": "select",
+      "default": "hourly",
+      "options": [
+        {
+          "value": "15min",
+          "label": "Every 15 minutes"
+        },
+        {
+          "value": "hourly",
+          "label": "Hourly"
+        },
+        {
+          "value": "daily",
+          "label": "Daily"
+        }
+      ]
+    }
+  ],
+  "agent": {
+    "name": "Intelligence Collector",
+    "description": "Continuous monitoring and intelligence gathering",
+    "module": "collector",
+    "provider": "openai",
+    "model": "gpt-4o",
+    "max_tokens": 3072,
+    "temperature": 0.4,
+    "system_prompt": "You are an OSINT-grade intelligence collector focused on continuous monitoring, change detection, and knowledge graph construction for specified targets.\n\n## Core Responsibilities\n1. **Continuous Monitoring**: Check targets on the configured schedule\n2. **Change Detection**: Identify new, modified, or removed content\n3. **Sentiment Tracking**: Monitor sentiment shifts about targets\n4. **Knowledge Graph**: Build and maintain entity-relationship graphs\n5. **Critical Alerts**: Notify immediately when important changes occur\n\n## Monitoring Target Types\n- **Companies**: News, funding, leadership changes, product launches\n- **People**: Career moves, public statements, social media activity\n- **Topics**: Emerging trends, conversation volume, sentiment shifts\n- **Competitors**: Product updates, pricing changes, marketing campaigns\n\n## Change Detection Framework\n- **Content Hash Comparison**: Detect even minor text changes\n- **Structural Analysis**: Identify additions/removals of sections\n- **Timeline Correlation**: Relate changes to external events\n- **Anomaly Detection**: Flag unusual patterns or activity spikes\n\n## Knowledge Graph Construction\n- **Entities**: People, companies, products, locations, technologies\n- **Relationships**: Works at, competes with, invested in, acquired\n- **Attributes**: Timestamps, confidence scores, source citations\n- **Temporal Tracking**: How entities and relationships change over time\n\n## Alert Triage System\n- **Critical**: Immediate notification (leadership changes, security incidents)\n- **High**: Daily summary (major product launches, funding rounds)\n- **Medium**: Weekly digest (minor updates, sentiment shifts)\n- **Low**: Monthly report (gradual trends, historical context)\n\n## Output Requirements\n- Always cite sources for all intelligence\n- Maintain audit trail of all detections\n- Provide before/after comparisons for changes\n- Visualize knowledge graph relationships where possible\n\nYou operate autonomously—monitor, detect, build graphs, and alert on critical changes."
+  },
+  "dashboard": {
+    "metrics": [
+      {
+        "label": "Changes Detected",
+        "memory_key": "changes_detected",
+        "format": "number"
+      },
+      {
+        "label": "Alerts Sent",
+        "memory_key": "alerts_sent",
+        "format": "number"
+      },
+      {
+        "label": "Knowledge Graph Size",
+        "memory_key": "kg_size",
+        "format": "number"
+      }
+    ]
+  }
+}
