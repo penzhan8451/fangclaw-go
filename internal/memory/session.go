@@ -75,6 +75,12 @@ func (s *SessionStore) initSchema() error {
 		_, _ = s.db.Exec("ALTER TABLE sessions ADD COLUMN label TEXT")
 	}
 
+	// Add updated_at if missing
+	if !columnExists("updated_at") {
+		now := time.Now().UTC().Format(time.RFC3339)
+		_, _ = s.db.Exec("ALTER TABLE sessions ADD COLUMN updated_at TEXT NOT NULL DEFAULT ?", now)
+	}
+
 	return nil
 }
 

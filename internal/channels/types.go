@@ -141,13 +141,13 @@ const (
 
 // Channel represents a communication channel.
 type Channel struct {
-	ID        string        `json:"id"`
-	Name      string        `json:"name"`
-	Type      ChannelType   `json:"type"`
-	State     ChannelState  `json:"state"`
-	Config    ChannelConfig `json:"config"`
-	CreatedAt time.Time     `json:"created_at"`
-	UpdatedAt time.Time     `json:"updated_at"`
+	ID        string               `json:"id"`
+	Name      string               `json:"name"`
+	Type      ChannelType          `json:"type"`
+	State     ChannelState         `json:"state"`
+	Config    ChannelAdapterConfig `json:"config"`
+	CreatedAt time.Time            `json:"created_at"`
+	UpdatedAt time.Time            `json:"updated_at"`
 }
 
 // TelegramChannelConfig represents the configuration for Telegram channel.
@@ -209,9 +209,9 @@ type GenericChannelConfig struct {
 	Settings   map[string]string `json:"settings,omitempty"`
 }
 
-// ChannelConfig represents the configuration for a channel.
+// ChannelAdapterConfig represents the configuration for a channel.
 // It is used to store the configuration for different types of channels.
-type ChannelConfig struct {
+type ChannelAdapterConfig struct {
 	Telegram *TelegramChannelConfig `json:"telegram,omitempty"`
 	Slack    *SlackChannelConfig    `json:"slack,omitempty"`
 	Discord  *DiscordChannelConfig  `json:"discord,omitempty"`

@@ -51,6 +51,7 @@ type ChannelConfig struct {
 	WebhookPort      int    `toml:"webhook_port,omitempty"`
 	AppID            string `toml:"app_id,omitempty"`
 	AppSecretEnv     string `toml:"app_secret_env,omitempty"`
+	AppSecret        string `toml:"app_secret,omitempty"`
 	SecretEnv        string `toml:"secret_env,omitempty"`
 }
 

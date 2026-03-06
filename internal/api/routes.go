@@ -864,22 +864,43 @@ func (r *Router) handleListChannels(w http.ResponseWriter, req *http.Request) {
 		}
 
 		hasToken := true
-		for _, f := range meta.Fields {
-			if f.Required && f.EnvVar != nil {
-				val := os.Getenv(*f.EnvVar)
-				if val == "" {
-					hasToken = false
-					break
+		if meta.Name == "feishu" {
+			cfg, err := config.Load("")
+			if err == nil && cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && (cfg.Channels.Feishu.AppSecret != "" || cfg.Channels.Feishu.AppSecretEnv != "") {
+				hasToken = true
+			} else {
+				hasToken = false
+			}
+		} else {
+			for _, f := range meta.Fields {
+				if f.Required && f.EnvVar != nil {
+					val := os.Getenv(*f.EnvVar)
+					if val == "" {
+						hasToken = false
+						break
+					}
 				}
 			}
 		}
 
 		var fields []map[string]interface{}
+		cfg, _ := config.Load("")
 		for _, f := range meta.Fields {
 			hasValue := false
-			if f.EnvVar != nil {
-				val := os.Getenv(*f.EnvVar)
-				hasValue = val != ""
+			if meta.Name == "feishu" {
+				if f.Key == "app_id" && cfg.Channels.Feishu != nil {
+					hasValue = cfg.Channels.Feishu.AppID != ""
+				} else if f.Key == "app_secret_env" && cfg.Channels.Feishu != nil {
+					hasValue = cfg.Channels.Feishu.AppSecret != "" || cfg.Channels.Feishu.AppSecretEnv != ""
+				} else if f.EnvVar != nil {
+					val := os.Getenv(*f.EnvVar)
+					hasValue = val != ""
+				}
+			} else {
+				if f.EnvVar != nil {
+					val := os.Getenv(*f.EnvVar)
+					hasValue = val != ""
+				}
 			}
 
 			field := map[string]interface{}{
@@ -942,7 +963,7 @@ func isChannelConfigured(channelName string) bool {
 	case "dingtalk":
 		return cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.AccessTokenEnv != "" && cfg.Channels.DingTalk.SecretEnv != ""
 	case "feishu":
-		return cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && cfg.Channels.Feishu.AppSecretEnv != ""
+		return cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && (cfg.Channels.Feishu.AppSecretEnv != "" || cfg.Channels.Feishu.AppSecret != "")
 	default:
 		return false
 	}
@@ -1028,8 +1049,13 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 	}
 
 	// Process fields
+	fieldsData, hasFields := reqBody["fields"].(map[string]interface{})
+	if !hasFields {
+		fieldsData = reqBody
+	}
+
 	for _, field := range channelMeta.Fields {
-		value, exists := reqBody[field.Key]
+		value, exists := fieldsData[field.Key]
 		if !exists {
 			continue
 		}
@@ -1046,26 +1072,33 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 
 		// Handle env vars (secrets)
 		if field.EnvVar != nil && field.FieldType == FieldTypeSecret {
-			// Try to write secret to file (non-fatal if fails)
-			if err := config.WriteSecretEnv(*field.EnvVar, valueStr); err != nil {
-				fmt.Printf("Warning: failed to write secret to file: %v\n", err)
-			}
-			// Always set in current process
-			os.Setenv(*field.EnvVar, valueStr)
-			// Store env var name in config
-			switch field.Key {
-			case "bot_token_env":
-				channelConfig.BotTokenEnv = *field.EnvVar
-			case "app_token_env":
-				channelConfig.AppTokenEnv = *field.EnvVar
-			case "access_token_env":
-				channelConfig.AccessTokenEnv = *field.EnvVar
-			case "app_secret_env":
-				channelConfig.AppSecretEnv = *field.EnvVar
-			case "secret_env":
-				channelConfig.SecretEnv = *field.EnvVar
-			case "verify_token_env":
-				channelConfig.VerifyTokenEnv = *field.EnvVar
+			// For Feishu, directly save the secret in config (no secrets.env dependency)
+			if name == "feishu" && field.Key == "app_secret_env" {
+				channelConfig.AppSecret = valueStr
+				// Also set in current process for backward compatibility
+				os.Setenv(*field.EnvVar, valueStr)
+			} else {
+				// Try to write secret to file (non-fatal if fails)
+				if err := config.WriteSecretEnv(*field.EnvVar, valueStr); err != nil {
+					fmt.Printf("Warning: failed to write secret to file: %v\n", err)
+				}
+				// Always set in current process
+				os.Setenv(*field.EnvVar, valueStr)
+				// Store env var name in config
+				switch field.Key {
+				case "bot_token_env":
+					channelConfig.BotTokenEnv = *field.EnvVar
+				case "app_token_env":
+					channelConfig.AppTokenEnv = *field.EnvVar
+				case "access_token_env":
+					channelConfig.AccessTokenEnv = *field.EnvVar
+				case "app_secret_env":
+					channelConfig.AppSecretEnv = *field.EnvVar
+				case "secret_env":
+					channelConfig.SecretEnv = *field.EnvVar
+				case "verify_token_env":
+					channelConfig.VerifyTokenEnv = *field.EnvVar
+				}
 			}
 		} else {
 			// Handle regular fields
@@ -1198,7 +1231,7 @@ func reloadChannelsFromDisk(k *kernel.Kernel, channelName string) ([]string, err
 		case "dingtalk":
 			isConfigured = cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.AccessTokenEnv != "" && cfg.Channels.DingTalk.SecretEnv != ""
 		case "feishu":
-			isConfigured = cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && cfg.Channels.Feishu.AppSecretEnv != ""
+			isConfigured = cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && (cfg.Channels.Feishu.AppSecretEnv != "" || cfg.Channels.Feishu.AppSecret != "")
 		}
 
 		if isConfigured {
@@ -1221,9 +1254,13 @@ func reloadChannelsFromDisk(k *kernel.Kernel, channelName string) ([]string, err
 					AppSecret: os.Getenv(cfg.Channels.DingTalk.SecretEnv),
 				}
 			case "feishu":
+				appSecret := cfg.Channels.Feishu.AppSecret
+				if appSecret == "" && cfg.Channels.Feishu.AppSecretEnv != "" {
+					appSecret = os.Getenv(cfg.Channels.Feishu.AppSecretEnv)
+				}
 				newChannel.Config.Feishu = &channels.FeishuChannelConfig{
 					AppID:     cfg.Channels.Feishu.AppID,
-					AppSecret: os.Getenv(cfg.Channels.Feishu.AppSecretEnv),
+					AppSecret: appSecret,
 				}
 			}
 
@@ -1263,7 +1300,45 @@ func (r *Router) handleTestChannel(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Check all required env vars are set
+	// For Feishu, check config file directly instead of env vars
+	if name == "feishu" {
+		cfg, err := config.Load("")
+		if err != nil {
+			respondJSON(w, http.StatusOK, map[string]interface{}{
+				"status":  "error",
+				"message": fmt.Sprintf("Failed to load config: %v", err),
+			})
+			return
+		}
+		if cfg.Channels.Feishu == nil {
+			respondJSON(w, http.StatusOK, map[string]interface{}{
+				"status":  "error",
+				"message": "Feishu config not found",
+			})
+			return
+		}
+		if cfg.Channels.Feishu.AppID == "" {
+			respondJSON(w, http.StatusOK, map[string]interface{}{
+				"status":  "error",
+				"message": "Feishu App ID is missing",
+			})
+			return
+		}
+		if cfg.Channels.Feishu.AppSecret == "" && cfg.Channels.Feishu.AppSecretEnv == "" {
+			respondJSON(w, http.StatusOK, map[string]interface{}{
+				"status":  "error",
+				"message": "Feishu App Secret is missing",
+			})
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"status":  "ok",
+			"message": fmt.Sprintf("All required credentials for %s are set.", channelMeta.DisplayName),
+		})
+		return
+	}
+
+	// Check all required env vars are set for other channels
 	var missing []string
 	for _, fieldDef := range channelMeta.Fields {
 		if fieldDef.Required && fieldDef.EnvVar != nil {

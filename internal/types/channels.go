@@ -19,6 +19,9 @@ const (
 	ChannelTypeMattermost ChannelType = "mattermost"
 	ChannelTypeWebChat   ChannelType = "webchat"
 	ChannelTypeCLI       ChannelType = "cli"
+	ChannelTypeQQ        ChannelType = "qq"
+	ChannelTypeDingTalk  ChannelType = "dingtalk"
+	ChannelTypeFeishu    ChannelType = "feishu"
 )
 
 // ChannelUser represents a user on a messaging platform.

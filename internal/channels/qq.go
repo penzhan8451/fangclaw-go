@@ -29,7 +29,7 @@ func autoRegisterQQ(registry *Registry) error {
 			Name:  "QQ Bot",
 			Type:  ChannelTypeQQ,
 			State: ChannelStateIdle,
-			Config: ChannelConfig{
+			Config: ChannelAdapterConfig{
 				QQ: &QQChannelConfig{
 					AppID:     qqAppID,
 					AppSecret: qqAppSecret,
