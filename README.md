@@ -50,9 +50,9 @@ go build -o fangclaw-go ./cmd/fangclaw-go
 
 ### Advanced Features
 
-- 🔌 **WhatsApp Gateway** - Integrated WhatsApp Web gateway (requires Node.js)
+- 🔌 **WhatsApp Gateway** - Integrated WhatsApp Web gateway (requires Node.js) -- TBD
 - 🧙 **Wizard System**
-  - NL Wizard - Natural language generation of Agent configuration
+  - NL Wizard - Natural language generation of Agent configuration -- TBD
   - Setup Wizard - Interactive command-line setup wizard
 - 🔄 **Hot Configuration Reload** - Supports runtime configuration updates
 - 📱 **Device Pairing** - QR code device pairing management
@@ -127,14 +127,35 @@ go build -o fangclaw-go ./cmd/fangclaw-go
 Run the setup wizard:
 
 ```bash
-./fangclaw-go setup
+./fangclaw-go init
 ```
 
 The wizard will guide you through:
-1. Selecting an LLM provider (OpenAI, Anthropic, Groq, Ollama)
+1. Selecting an LLM provider (OpenAI, Anthropic, Groq, Ollama, OpenRouter)
 2. Configuring API Key
 3. Selecting default model
 4. Setting data directory
+
+### Configuration Example
+```bash
+api_listen = "127.0.0.1:4200"
+default_agent = "browser"
+
+[default_model]
+  provider = "openrouter"
+  model = "openrouter/auto"
+  api_key_env = "OPENROUTER_API_KEY"
+
+[memory]
+  decay_rate = 0.05
+
+[security]
+  rate_limit_per_minute = 0
+
+[log]
+  level = ""
+  file = ""
+```
 
 ### Starting the Service
 
