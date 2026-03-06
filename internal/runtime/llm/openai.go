@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -46,20 +47,36 @@ func (p *OpenAIProvider) SupportsStreaming() bool {
 }
 
 type openaiRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Temperature float64   `json:"temperature,omitempty"`
-	TopP        float64   `json:"top_p,omitempty"`
-	Stream      bool      `json:"stream,omitempty"`
+	Model       string                   `json:"model"`
+	Messages    []Message                `json:"messages"`
+	Tools       []map[string]interface{} `json:"tools,omitempty"`
+	MaxTokens   int                      `json:"max_tokens,omitempty"`
+	Temperature float64                  `json:"temperature,omitempty"`
+	TopP        float64                  `json:"top_p,omitempty"`
+	Stream      bool                     `json:"stream,omitempty"`
+}
+
+type openaiToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+type openaiMessage struct {
+	Role      string           `json:"role"`
+	Content   string           `json:"content"`
+	ToolCalls []openaiToolCall `json:"tool_calls,omitempty"`
 }
 
 type openaiResponse struct {
 	ID      string `json:"id"`
 	Model   string `json:"model"`
 	Choices []struct {
-		Message Message `json:"message"`
-		Finish  string  `json:"finish_reason"`
+		Message openaiMessage `json:"message"`
+		Finish  string        `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
@@ -88,6 +105,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req *Request) (*Response, err
 	openaiReq := openaiRequest{
 		Model:       req.Model,
 		Messages:    req.Messages,
+		Tools:       req.Tools,
 		MaxTokens:   req.MaxTokens,
 		Temperature: req.Temperature,
 		TopP:        req.TopP,
@@ -132,10 +150,31 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req *Request) (*Response, err
 		return nil, ErrNoResponse
 	}
 
+	// Parse tool calls
+	var toolCalls []ToolCall
+	if len(openaiResp.Choices[0].Message.ToolCalls) > 0 {
+		toolCalls = make([]ToolCall, 0, len(openaiResp.Choices[0].Message.ToolCalls))
+		for _, tc := range openaiResp.Choices[0].Message.ToolCalls {
+			var input map[string]interface{}
+			if tc.Function.Arguments != "" {
+				if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
+					log.Printf("Warning: failed to parse tool arguments: %v", err)
+					input = map[string]interface{}{}
+				}
+			}
+			toolCalls = append(toolCalls, ToolCall{
+				ID:    tc.ID,
+				Name:  tc.Function.Name,
+				Input: input,
+			})
+		}
+	}
+
 	return &Response{
 		Model:      openaiResp.Model,
 		Content:    openaiResp.Choices[0].Message.Content,
 		StopReason: openaiResp.Choices[0].Finish,
+		ToolCalls:  toolCalls,
 		Usage: Usage{
 			InputTokens:  openaiResp.Usage.PromptTokens,
 			OutputTokens: openaiResp.Usage.CompletionTokens,

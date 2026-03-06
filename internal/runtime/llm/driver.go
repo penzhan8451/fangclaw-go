@@ -13,7 +13,7 @@ var ErrNoResponse = errors.New("no response received")
 type StreamEventType string
 
 const (
-	StreamEventTextDelta    StreamEventType = "text_delta"
+	StreamEventTextDelta       StreamEventType = "text_delta"
 	StreamEventContentComplete StreamEventType = "content_complete"
 )
 
@@ -31,20 +31,29 @@ type Message struct {
 
 // Request represents a chat completion request.
 type Request struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Temperature float64   `json:"temperature,omitempty"`
-	TopP        float64   `json:"top_p,omitempty"`
-	Stream      bool      `json:"stream,omitempty"`
+	Model       string                   `json:"model"`
+	Messages    []Message                `json:"messages"`
+	Tools       []map[string]interface{} `json:"tools,omitempty"`
+	MaxTokens   int                      `json:"max_tokens,omitempty"`
+	Temperature float64                  `json:"temperature,omitempty"`
+	TopP        float64                  `json:"top_p,omitempty"`
+	Stream      bool                     `json:"stream,omitempty"`
+}
+
+// ToolCall represents a tool call in the response.
+type ToolCall struct {
+	ID    string                 `json:"id"`
+	Name  string                 `json:"name"`
+	Input map[string]interface{} `json:"input"`
 }
 
 // Response represents a chat completion response.
 type Response struct {
-	Model      string `json:"model"`
-	Content    string `json:"content"`
-	StopReason string `json:"stop_reason,omitempty"`
-	Usage      Usage  `json:"usage,omitempty"`
+	Model      string     `json:"model"`
+	Content    string     `json:"content"`
+	StopReason string     `json:"stop_reason,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	Usage      Usage      `json:"usage,omitempty"`
 }
 
 // Usage represents token usage.
@@ -68,11 +77,11 @@ type Driver interface {
 
 // Config holds LLM provider configuration.
 type Config struct {
-	Anthropic   AnthropicConfig   `json:"anthropic,omitempty"`
-	OpenAI      OpenAIConfig      `json:"openai,omitempty"`
-	Groq        GroqConfig        `json:"groq,omitempty"`
-	Gemini      GeminiConfig      `json:"gemini,omitempty"`
-	OpenRouter  OpenRouterConfig  `json:"openrouter,omitempty"`
+	Anthropic  AnthropicConfig  `json:"anthropic,omitempty"`
+	OpenAI     OpenAIConfig     `json:"openai,omitempty"`
+	Groq       GroqConfig       `json:"groq,omitempty"`
+	Gemini     GeminiConfig     `json:"gemini,omitempty"`
+	OpenRouter OpenRouterConfig `json:"openrouter,omitempty"`
 }
 
 // AnthropicConfig holds Anthropic API configuration.

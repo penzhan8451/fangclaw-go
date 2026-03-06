@@ -20,6 +20,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/cron"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
@@ -1458,53 +1459,31 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	driver, err := getLLMDriver()
-	if err != nil {
-		message := "👋 Hi! I'm FangClaw-go. To use the full chat capabilities, please set up an API key.\n\n**Supported providers:**\n- OpenRouter (recommended)\n- OpenAI\n- Anthropic\n- Groq\n\n**How to set up:**\n1. Go to Settings page\n2. Select your preferred provider\n3. Enter your API key\n\nOr set the API key via environment variables:\n- `OPENROUTER_API_KEY`\n- `OPENAI_API_KEY`\n- `ANTHROPIC_API_KEY`\n- `GROQ_API_KEY`"
-		respondJSON(w, http.StatusOK, map[string]interface{}{
-			"response": message,
-			"message": map[string]string{
-				"role":    "assistant",
-				"content": message,
-			},
-		})
+	agentRuntime := r.kernel.AgentRuntime()
+	if agentRuntime == nil {
+		respondError(w, http.StatusInternalServerError, "agent runtime not available")
 		return
 	}
 
-	var messages []llm.Message
-
-	if hand, _ := hands.GetBundledHand(agentID); hand != nil {
-		systemPrompt := getHandSystemPrompt(agentID)
-		if systemPrompt != "" {
-			messages = append(messages, llm.Message{
-				Role:    "system",
-				Content: systemPrompt,
-			})
-		}
-	}
-
-	messages = append(messages, llm.Message{
-		Role:    "user",
-		Content: reqBody.Message,
-	})
-
-	llmReq := &llm.Request{
-		Messages:    messages,
-		Temperature: 0.7,
-	}
+	runner := agent.NewAgentRunner(agentRuntime)
 
 	ctx := context.Background()
-	resp, err := driver.Chat(ctx, llmReq)
+	result, err := runner.RunAgent(ctx, agentID, reqBody.Message, nil)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"response": resp.Content,
+		"response": result.Response,
 		"message": map[string]string{
 			"role":    "assistant",
-			"content": resp.Content,
+			"content": result.Response,
+		},
+		"usage": map[string]interface{}{
+			"input_tokens":  result.TotalUsage.PromptTokens,
+			"output_tokens": result.TotalUsage.CompletionTokens,
+			"total_tokens":  result.TotalUsage.TotalTokens,
 		},
 	})
 }

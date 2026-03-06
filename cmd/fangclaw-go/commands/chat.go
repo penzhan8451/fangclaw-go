@@ -7,13 +7,19 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
+	"github.com/penzhan8451/fangclaw-go/internal/memory"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
+	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
 func chatCmd() *cobra.Command {
@@ -100,9 +106,49 @@ func runChatWithDaemon(agentID string) error {
 }
 
 func runChatLocal(agentID string) error {
-	fmt.Println("Starting interactive chat (local mode)...")
+	fmt.Println("Starting interactive chat (local mode with AgentLoop)...")
 	fmt.Printf("Chatting with agent: %s\n\n", agentID)
 
+	// 1. 创建数据库
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	dbDir := filepath.Join(homeDir, ".fangclaw-go")
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		return fmt.Errorf("failed to create db directory: %w", err)
+	}
+	dbPath := filepath.Join(dbDir, "fangclaw-go.db")
+	db, err := memory.NewDB(dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to create database: %w", err)
+	}
+	defer db.Close()
+
+	if err := db.Migrate(); err != nil {
+		return fmt.Errorf("failed to migrate database: %w", err)
+	}
+
+	// 2. 创建 memory store
+	semanticStore, err := memory.NewSemanticStore(dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to create semantic store: %w", err)
+	}
+	defer semanticStore.Close()
+
+	sessionStore, err := memory.NewSessionStore(dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to create session store: %w", err)
+	}
+	defer sessionStore.Close()
+
+	knowledgeStore := memory.NewKnowledgeStore(db)
+	usageStore := memory.NewUsageStore(db)
+
+	// 3. 创建 Agent Runtime
+	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore)
+
+	// 4. 获取 LLM driver
 	driver, err := getLLMDriver()
 	if err != nil {
 		fmt.Printf("Warning: %v\n", err)
@@ -110,18 +156,32 @@ func runChatLocal(agentID string) error {
 		return runChatEcho(agentID)
 	}
 
-	var messages []llm.Message
-	var systemPrompt string
+	// 5. 注册 LLM driver 和工具
+	cfg, err := config.Load("")
+	var providerName string
+	if err == nil && cfg.DefaultModel.Provider != "" {
+		providerName = cfg.DefaultModel.Provider
+	} else {
+		providerName = "openai"
+	}
+	runtime.RegisterDriver(providerName, driver)
+	tools.RegisterAllTools(runtime)
 
+	// 6. 创建 AgentContext
+	var systemPrompt string
+	var toolNames []string
 	if hand, _ := hands.GetBundledHand(agentID); hand != nil {
 		systemPrompt = getHandSystemPrompt(agentID)
-		if systemPrompt != "" {
-			messages = append(messages, llm.Message{
-				Role:    "system",
-				Content: systemPrompt,
-			})
-		}
 	}
+
+	agentCtx := agent.NewAgentContext(
+		agentID,
+		agentID,
+		providerName,
+		"",
+		systemPrompt,
+		toolNames,
+	)
 
 	fmt.Println("Enter your message (Ctrl+C to exit):")
 	fmt.Print("> ")
@@ -139,26 +199,37 @@ func runChatLocal(agentID string) error {
 			break
 		}
 
-		messages = append(messages, llm.Message{
-			Role:    "user",
-			Content: text,
-		})
+		// 添加用户消息
+		userMsg := types.Message{
+			ID:        fmt.Sprintf("msg_%d", time.Now().Unix()),
+			Role:      "user",
+			Content:   text,
+			Timestamp: time.Now(),
+		}
+		agentCtx.AddMessage(userMsg)
 
-		req := &llm.Request{
-			Messages:    messages,
-			Temperature: 0.7,
+		// 运行 AgentLoop
+		ctx := context.Background()
+		onPhase := func(phase agent.LoopPhase) {
+			switch phase {
+			case agent.PhaseThinking:
+				fmt.Print("\n[Thinking...] ")
+			case agent.PhaseToolUse:
+				fmt.Print("\n[Using tools...] ")
+			case agent.PhaseDone:
+				fmt.Println("\n")
+			}
 		}
 
-		ctx := context.Background()
-		resp, err := driver.Chat(ctx, req)
+		result, err := runtime.RunAgentLoop(ctx, agentCtx, onPhase)
 		if err != nil {
 			fmt.Printf("Error: %v\n\n", err)
 		} else {
-			fmt.Printf("[%s] %s\n\n", agentID, resp.Content)
-			messages = append(messages, llm.Message{
-				Role:    "assistant",
-				Content: resp.Content,
-			})
+			fmt.Printf("[%s] %s\n\n", agentID, result.Response)
+			fmt.Printf("(Tokens used: %d input, %d output, %d total)\n",
+				result.TotalUsage.PromptTokens,
+				result.TotalUsage.CompletionTokens,
+				result.TotalUsage.TotalTokens)
 		}
 
 		fmt.Print("> ")

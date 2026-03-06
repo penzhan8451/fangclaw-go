@@ -100,9 +100,10 @@ type Runtime struct {
 	semantic  *memory.SemanticStore
 	sessions  *memory.SessionStore
 	knowledge *memory.KnowledgeStore
+	usage     *memory.UsageStore
 }
 
-func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore) *Runtime {
+func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore) *Runtime {
 	return &Runtime{
 		drivers:   make(map[string]llm.Driver),
 		tools:     NewToolRegistry(),
@@ -110,6 +111,7 @@ func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, k
 		semantic:  semantic,
 		sessions:  sessions,
 		knowledge: knowledge,
+		usage:     usage,
 	}
 }
 
@@ -175,8 +177,8 @@ func (c *AgentContext) GetMessages() []types.Message {
 	return c.Messages
 }
 
-// RunLoop runs the agent execution loop.
-func (r *Runtime) RunLoop(ctx context.Context, agentCtx *AgentContext, onPhase PhaseCallback) (*AgentLoopResult, error) {
+// RunAgentLoop runs the agent execution loop.
+func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPhase PhaseCallback) (*AgentLoopResult, error) {
 	driver, err := r.GetDriver(agentCtx.Provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get driver: %w", err)
@@ -220,6 +222,31 @@ func (r *Runtime) RunLoop(ctx context.Context, agentCtx *AgentContext, onPhase P
 		maxIterations = MAX_ITERATIONS
 	}
 
+	// Get available tools
+	availableTools := r.getAvailableTools(agentCtx.Tools)
+	toolSchemas := make([]map[string]interface{}, len(availableTools))
+	for i, tool := range availableTools {
+		toolSchemas[i] = tool.Schema()
+	}
+
+	// Record usage helper
+	recordUsage := func(usage types.TokenUsage, iterations uint32) {
+		if r.usage == nil {
+			return
+		}
+		record := &types.UsageRecord{
+			AgentID:   agentCtx.AgentID,
+			SessionID: agentCtx.SessionID,
+			Model:     agentCtx.Model,
+			Provider:  agentCtx.Provider,
+			Usage:     usage,
+			CreatedAt: time.Now(),
+		}
+		if err := r.usage.RecordUsage(record); err != nil {
+			log.Printf("Warning: failed to record usage: %v", err)
+		}
+	}
+
 	for iteration := 0; iteration < maxIterations; iteration++ {
 		if onPhase != nil {
 			onPhase(PhaseThinking)
@@ -228,13 +255,11 @@ func (r *Runtime) RunLoop(ctx context.Context, agentCtx *AgentContext, onPhase P
 		// Build LLM messages
 		llmMessages := r.buildLLMMessages(systemPrompt, messages)
 
-		// Get available tools (for future use)
-		_ = r.getAvailableTools(agentCtx.Tools)
-
 		// Call LLM with retry
 		req := &llm.Request{
 			Model:       agentCtx.Model,
 			Messages:    llmMessages,
+			Tools:       toolSchemas,
 			MaxTokens:   agentCtx.Config.MaxTokens,
 			Temperature: agentCtx.Config.Temperature,
 			TopP:        agentCtx.Config.TopP,
@@ -260,9 +285,40 @@ func (r *Runtime) RunLoop(ctx context.Context, agentCtx *AgentContext, onPhase P
 		agentCtx.AddMessage(assistantMsg)
 		messages = append(messages, assistantMsg)
 
+		// Check if we have tool calls to execute
+		if len(resp.ToolCalls) > 0 {
+			// Execute tool calls
+			if onPhase != nil {
+				onPhase(PhaseToolUse)
+			}
+			consecutiveMaxTokens = 0
+
+			toolCalls := resp.ToolCalls
+			var toolResults []string
+			for _, tc := range toolCalls {
+				result, err := r.executeTool(ctx, tc.Name, tc.Input)
+				if err != nil {
+					toolResults = append(toolResults, fmt.Sprintf("Error executing %s: %v", tc.Name, err))
+				} else {
+					toolResults = append(toolResults, fmt.Sprintf("Result from %s:\n%s", tc.Name, result))
+				}
+			}
+
+			// Add tool results as user message
+			toolResultMsg := types.Message{
+				ID:        fmt.Sprintf("msg_%d", len(agentCtx.GetMessages())),
+				Role:      "user",
+				Content:   strings.Join(toolResults, "\n\n"),
+				Timestamp: time.Now(),
+			}
+			agentCtx.AddMessage(toolResultMsg)
+			messages = append(messages, toolResultMsg)
+			continue
+		}
+
 		// Check stop reason
 		switch resp.StopReason {
-		case "stop", "end_turn":
+		case "stop", "end_turn", "":
 			// LLM is done
 			finalResponse = resp.Content
 
@@ -280,6 +336,9 @@ func (r *Runtime) RunLoop(ctx context.Context, agentCtx *AgentContext, onPhase P
 				onPhase(PhaseDone)
 			}
 
+			// Record usage
+			recordUsage(totalUsage, uint32(iteration+1))
+
 			return &AgentLoopResult{
 				Response:   finalResponse,
 				TotalUsage: totalUsage,
@@ -288,56 +347,8 @@ func (r *Runtime) RunLoop(ctx context.Context, agentCtx *AgentContext, onPhase P
 			}, nil
 
 		case "tool_calls", "tool_use":
-			// Reset max tokens counter
-			consecutiveMaxTokens = 0
-
-			if onPhase != nil {
-				onPhase(PhaseToolUse)
-			}
-
-			// Parse tool calls (simplified - in real implementation, you'd parse structured tool calls)
-			toolCalls := r.parseToolCalls(resp.Content)
-
-			if len(toolCalls) > 0 {
-				// Execute tool calls
-				toolResults := make([]string, 0, len(toolCalls))
-				for _, tc := range toolCalls {
-					result, err := r.executeTool(ctx, tc.Name, tc.Args)
-					if err != nil {
-						toolResults = append(toolResults, fmt.Sprintf("Error: %v", err))
-					} else {
-						toolResults = append(toolResults, result)
-					}
-				}
-
-				// Add tool results as user message
-				toolResultMsg := types.Message{
-					ID:        fmt.Sprintf("msg_%d", len(agentCtx.GetMessages())),
-					Role:      "user",
-					Content:   strings.Join(toolResults, "\n"),
-					Timestamp: time.Now(),
-				}
-				agentCtx.AddMessage(toolResultMsg)
-				messages = append(messages, toolResultMsg)
-			} else {
-				// No tool calls found, just continue with response
-				finalResponse = resp.Content
-
-				if err := r.saveSession(ctx, agentCtx); err != nil {
-					log.Printf("Warning: failed to save session: %v", err)
-				}
-
-				if onPhase != nil {
-					onPhase(PhaseDone)
-				}
-
-				return &AgentLoopResult{
-					Response:   finalResponse,
-					TotalUsage: totalUsage,
-					Iterations: uint32(iteration + 1),
-					Silent:     false,
-				}, nil
-			}
+			// This case is handled above, but keep it for completeness
+			continue
 
 		case "length", "max_tokens":
 			consecutiveMaxTokens++
@@ -355,6 +366,9 @@ func (r *Runtime) RunLoop(ctx context.Context, agentCtx *AgentContext, onPhase P
 				if onPhase != nil {
 					onPhase(PhaseDone)
 				}
+
+				// Record usage
+				recordUsage(totalUsage, uint32(iteration+1))
 
 				return &AgentLoopResult{
 					Response:   finalResponse,
@@ -400,6 +414,9 @@ func (r *Runtime) RunLoop(ctx context.Context, agentCtx *AgentContext, onPhase P
 		onPhase(PhaseError)
 	}
 
+	// Record usage
+	recordUsage(totalUsage, uint32(maxIterations))
+
 	return &AgentLoopResult{
 		Response:   "Max iterations exceeded. Please try again with a more specific request.",
 		TotalUsage: totalUsage,
@@ -408,18 +425,22 @@ func (r *Runtime) RunLoop(ctx context.Context, agentCtx *AgentContext, onPhase P
 	}, fmt.Errorf("max iterations exceeded")
 }
 
-// ToolCall represents a parsed tool call.
-type ToolCall struct {
-	Name string
-	Args map[string]interface{}
-}
+// parseToolCalls parses tool calls from response content (fallback for models that don't support structured tool calls).
+func (r *Runtime) parseToolCalls(content string) []llm.ToolCall {
+	var calls []llm.ToolCall
 
-// parseToolCalls parses tool calls from response content (simplified).
-func (r *Runtime) parseToolCalls(content string) []ToolCall {
-	// This is a simplified implementation.
-	// In a real implementation, you'd parse structured tool calls from the LLM response.
-	// For now, we'll return an empty slice to indicate no tool calls.
-	return []ToolCall{}
+	// Try to parse JSON-based tool calls from text
+	// This is a simplified implementation - in production, you'd want more robust parsing
+	content = strings.TrimSpace(content)
+
+	// Look for patterns like {"name": "tool", "input": {...}}
+	// This is a basic parser, real implementation would need to handle edge cases
+	if strings.Contains(content, "{") && strings.Contains(content, "}") {
+		// Try to find and parse JSON objects
+		// For now, return empty to avoid complexity - rely on structured tool_calls
+	}
+
+	return calls
 }
 
 // callLLMWithRetry calls the LLM with exponential backoff retry.
@@ -585,7 +606,7 @@ func (r *AgentRunner) RunAgent(ctx context.Context, agentID, input string, onPha
 	}
 	agentCtx.AddMessage(userMsg)
 
-	return r.Runtime.RunLoop(ctx, agentCtx, onPhase)
+	return r.Runtime.RunAgentLoop(ctx, agentCtx, onPhase)
 }
 
 func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, systemPrompt string, tools []string) (*AgentContext, error) {

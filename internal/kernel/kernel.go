@@ -18,6 +18,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
 	"github.com/penzhan8451/fangclaw-go/internal/pairing"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
@@ -123,7 +124,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 
 	modelCatalog := model_catalog.NewModelCatalog()
 	workflowEngine := NewWorkflowEngine()
-	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore)
+	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore)
 
 	kernelConfig.DataDir = dataDir
 
@@ -149,6 +150,9 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		workflowEngine: workflowEngine,
 		agentRuntime:   agentRuntime,
 	}
+
+	// 注册所有内置工具到 AgentRuntime
+	tools.RegisterAllTools(agentRuntime)
 
 	// 从磁盘加载的 agents 也需要注册到 AgentRuntime 中
 	agents := agentRegistry.List()
