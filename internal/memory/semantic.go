@@ -154,45 +154,38 @@ func (s *SemanticStore) RecallWithEmbedding(
 		FROM memories WHERE deleted = 0
 	`
 	var args []interface{}
-	paramIdx := 1
 
 	if queryEmbedding == nil && query != "" {
-		sql += fmt.Sprintf(" AND content LIKE ?%d", paramIdx)
+		sql += " AND content LIKE ?"
 		args = append(args, "%"+query+"%")
-		paramIdx++
 	}
 
 	if filter != nil {
 		if filter.AgentID != nil {
-			sql += fmt.Sprintf(" AND agent_id = ?%d", paramIdx)
+			sql += " AND agent_id = ?"
 			args = append(args, filter.AgentID.String())
-			paramIdx++
 		}
 		if filter.Scope != nil {
-			sql += fmt.Sprintf(" AND scope = ?%d", paramIdx)
+			sql += " AND scope = ?"
 			args = append(args, *filter.Scope)
-			paramIdx++
 		}
 		if filter.MinConfidence != nil {
-			sql += fmt.Sprintf(" AND confidence >= ?%d", paramIdx)
+			sql += " AND confidence >= ?"
 			args = append(args, *filter.MinConfidence)
-			paramIdx++
 		}
 		if filter.Source != nil {
-			sql += fmt.Sprintf(" AND source = ?%d", paramIdx)
+			sql += " AND source = ?"
 			sourceBytes, _ := json.Marshal(*filter.Source)
 			args = append(args, string(sourceBytes))
-			paramIdx++
 		}
 		if filter.Since != nil {
-			sql += fmt.Sprintf(" AND created_at >= ?%d", paramIdx)
+			sql += " AND created_at >= ?"
 			args = append(args, filter.Since.Format(time.RFC3339))
-			paramIdx++
 		}
 	}
 
 	sql += " ORDER BY created_at DESC"
-	sql += fmt.Sprintf(" LIMIT ?%d", paramIdx)
+	sql += " LIMIT ?"
 	args = append(args, fetchLimit)
 
 	rows, err := s.db.Query(sql, args...)

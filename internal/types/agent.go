@@ -51,6 +51,7 @@ type AgentManifest struct {
 	SystemPrompt string            `toml:"system_prompt" json:"system_prompt,omitempty"`
 	Model        ModelConfig       `toml:"model" json:"model,omitempty"`
 	Tools        []string          `toml:"tools" json:"tools,omitempty"`
+	Skills       []string          `toml:"skills" json:"skills,omitempty"`
 	Metadata     map[string]string `toml:"metadata" json:"metadata,omitempty"`
 }
 

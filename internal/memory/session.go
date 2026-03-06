@@ -67,7 +67,9 @@ func (s *SessionStore) initSchema() error {
 
 	// Add context_window_tokens if missing
 	if !columnExists("context_window_tokens") {
-		_, _ = s.db.Exec("ALTER TABLE sessions ADD COLUMN context_window_tokens INTEGER NOT NULL DEFAULT 0")
+		_, _ = s.db.Exec("ALTER TABLE sessions ADD COLUMN context_window_tokens INTEGER")
+		// 设置默认值为0
+		_, _ = s.db.Exec("UPDATE sessions SET context_window_tokens = 0 WHERE context_window_tokens IS NULL")
 	}
 
 	// Add label if missing
@@ -77,8 +79,9 @@ func (s *SessionStore) initSchema() error {
 
 	// Add updated_at if missing
 	if !columnExists("updated_at") {
-		now := time.Now().UTC().Format(time.RFC3339)
-		_, _ = s.db.Exec("ALTER TABLE sessions ADD COLUMN updated_at TEXT NOT NULL DEFAULT ?", now)
+		_, _ = s.db.Exec("ALTER TABLE sessions ADD COLUMN updated_at TEXT")
+		// 设置默认值为当前时间
+		_, _ = s.db.Exec("UPDATE sessions SET updated_at = created_at WHERE updated_at IS NULL")
 	}
 
 	return nil

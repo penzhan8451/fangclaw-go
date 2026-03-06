@@ -124,7 +124,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 
 	modelCatalog := model_catalog.NewModelCatalog()
 	workflowEngine := NewWorkflowEngine()
-	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore)
+	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader)
 
 	kernelConfig.DataDir = dataDir
 
@@ -205,6 +205,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 				agentModel,
 				agentEntry.Manifest.SystemPrompt,
 				agentEntry.Manifest.Tools,
+				agentEntry.Manifest.Skills,
 			)
 			if err != nil {
 				fmt.Printf("Warning: Failed to register agent %s in runtime: %v, skipping\n", agentEntry.Name, err)
@@ -470,6 +471,7 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 		agentModel,
 		agentSystemPrompt,
 		agentTools,
+		[]string{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register agent in runtime: %w", err)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
+	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
@@ -49,13 +51,18 @@ func runChat(cmd *cobra.Command, args []string) error {
 }
 
 func runChatWithDaemon(agentID string) error {
+	log.Printf("[DEBUG] runChatWithDaemon: Checking if daemon is running...")
 	resp, err := http.Get("http://127.0.0.1:4200/api/agents")
 	if err != nil {
+		log.Printf("[DEBUG] runChatWithDaemon: Daemon not reachable, falling back to local: %v", err)
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
 
+	log.Printf("[DEBUG] runChatWithDaemon: Got response from daemon: %d", resp.StatusCode)
+
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("[DEBUG] runChatWithDaemon: Daemon returned non-OK status, falling back to local")
 		return runChatLocal(agentID)
 	}
 
@@ -80,6 +87,7 @@ func runChatWithDaemon(agentID string) error {
 			"message": text,
 		}
 		jsonData, _ := json.Marshal(messageReq)
+		log.Printf("[DEBUG] runChatWithDaemon: Sending request to daemon with agent: %s, message: %q", agentID, text)
 
 		client := &http.Client{}
 		req, _ := http.NewRequest("POST",
@@ -89,12 +97,17 @@ func runChatWithDaemon(agentID string) error {
 
 		resp, err := client.Do(req)
 		if err != nil {
+			log.Printf("[DEBUG] runChatWithDaemon: Error from daemon: %v", err)
 			fmt.Printf("Error: %v\n", err)
 		} else {
+			log.Printf("[DEBUG] runChatWithDaemon: Got response from daemon: %d", resp.StatusCode)
 			var result map[string]interface{}
 			json.NewDecoder(resp.Body).Decode(&result)
+			log.Printf("[DEBUG] runChatWithDaemon: Response body: %#v", result)
 			if respText, ok := result["response"].(string); ok {
 				fmt.Printf("[%s] %s\n\n", agentID, respText)
+			} else {
+				log.Printf("[DEBUG] runChatWithDaemon: No 'response' field in result")
 			}
 			resp.Body.Close()
 		}
@@ -145,8 +158,15 @@ func runChatLocal(agentID string) error {
 	knowledgeStore := memory.NewKnowledgeStore(db)
 	usageStore := memory.NewUsageStore(db)
 
+	// 2.5. 创建 skills loader
+	skillsPath := filepath.Join(dbDir, "skills")
+	skillLoader, err := skills.NewLoader(skillsPath)
+	if err != nil {
+		fmt.Printf("Warning: failed to create skill loader: %v\n", err)
+	}
+
 	// 3. 创建 Agent Runtime
-	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore)
+	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader)
 
 	// 4. 获取 LLM driver
 	driver, err := getLLMDriver()
@@ -170,17 +190,38 @@ func runChatLocal(agentID string) error {
 	// 6. 创建 AgentContext
 	var systemPrompt string
 	var toolNames []string
+	var modelName string
 	if hand, _ := hands.GetBundledHand(agentID); hand != nil {
 		systemPrompt = getHandSystemPrompt(agentID)
+	} else {
+		// 默认的系统提示词
+		systemPrompt = "You are a helpful assistant."
+	}
+
+	// 获取实际的 model 名称
+	if cfg, err := config.Load(""); err == nil && cfg.DefaultModel.Model != "" {
+		modelName = cfg.DefaultModel.Model
+	} else {
+		// 默认值
+		if providerName == "openai" {
+			modelName = "gpt-4o"
+		} else if providerName == "anthropic" {
+			modelName = "claude-sonnet-4-20250514"
+		} else if providerName == "groq" {
+			modelName = "groq/llama-3.3-70b-versatile"
+		} else {
+			modelName = "meta-llama/llama-3.1-8b-instruct"
+		}
 	}
 
 	agentCtx := agent.NewAgentContext(
 		agentID,
 		agentID,
 		providerName,
-		"",
+		modelName,
 		systemPrompt,
 		toolNames,
+		[]string{},
 	)
 
 	fmt.Println("Enter your message (Ctrl+C to exit):")
@@ -200,15 +241,19 @@ func runChatLocal(agentID string) error {
 		}
 
 		// 添加用户消息
+		fmt.Println("[DEBUG] About to create user message")
 		userMsg := types.Message{
 			ID:        fmt.Sprintf("msg_%d", time.Now().Unix()),
 			Role:      "user",
 			Content:   text,
 			Timestamp: time.Now(),
 		}
+		fmt.Println("[DEBUG] User message created, about to AddMessage")
 		agentCtx.AddMessage(userMsg)
+		fmt.Println("[DEBUG] AddMessage done")
 
 		// 运行 AgentLoop
+		fmt.Println("[DEBUG] About to call RunAgentLoop")
 		ctx := context.Background()
 		onPhase := func(phase agent.LoopPhase) {
 			switch phase {
@@ -222,6 +267,7 @@ func runChatLocal(agentID string) error {
 		}
 
 		result, err := runtime.RunAgentLoop(ctx, agentCtx, onPhase)
+		fmt.Printf("[DEBUG] RunAgentLoop returned, err: %v\n", err)
 		if err != nil {
 			fmt.Printf("Error: %v\n\n", err)
 		} else {

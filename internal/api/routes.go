@@ -1449,8 +1449,9 @@ func (r *Router) handleCompactSession(w http.ResponseWriter, req *http.Request) 
 }
 
 func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
-	agentID := req.PathValue("id")
+	agentIdentifier := req.PathValue("id")
 
+	// Parse request body
 	var reqBody struct {
 		Message string `json:"message"`
 	}
@@ -1465,10 +1466,33 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Agent lookup strategy:
+	// 1. First try direct ID lookup
+	// 2. If not found, try name lookup in agentRuntime
+	// 3. If still not found, try name lookup in kernel's AgentRegistry
+	// 4. If all fail, use the first available agent
+	var actualAgentID string
+	if _, ok := agentRuntime.GetAgent(agentIdentifier); ok {
+		actualAgentID = agentIdentifier
+	} else if agentCtx, ok := agentRuntime.FindAgentByName(agentIdentifier); ok {
+		actualAgentID = agentCtx.ID
+	} else {
+		if agentEntry := r.kernel.AgentRegistry().FindByName(agentIdentifier); agentEntry != nil {
+			actualAgentID = agentEntry.ID.String()
+		} else {
+			if agentCtx, ok := agentRuntime.GetFirstAgent(); ok {
+				actualAgentID = agentCtx.ID
+			} else {
+				respondError(w, http.StatusNotFound, "no agents available")
+				return
+			}
+		}
+	}
+
 	runner := agent.NewAgentRunner(agentRuntime)
 
 	ctx := context.Background()
-	result, err := runner.RunAgent(ctx, agentID, reqBody.Message, nil)
+	result, err := runner.RunAgent(ctx, actualAgentID, reqBody.Message, nil)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

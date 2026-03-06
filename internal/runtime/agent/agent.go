@@ -13,6 +13,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
+	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
@@ -101,9 +102,10 @@ type Runtime struct {
 	sessions  *memory.SessionStore
 	knowledge *memory.KnowledgeStore
 	usage     *memory.UsageStore
+	skills    *skills.Loader
 }
 
-func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore) *Runtime {
+func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader) *Runtime {
 	return &Runtime{
 		drivers:   make(map[string]llm.Driver),
 		tools:     NewToolRegistry(),
@@ -112,6 +114,7 @@ func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, k
 		sessions:  sessions,
 		knowledge: knowledge,
 		usage:     usage,
+		skills:    skills,
 	}
 }
 
@@ -144,13 +147,14 @@ type AgentContext struct {
 	SystemPrompt string
 	Messages     []types.Message
 	Tools        []string
+	Skills       []string
 	Config       types.LoopConfig
 	SessionID    types.SessionID
 	AgentID      types.AgentID
 	mu           sync.Mutex
 }
 
-func NewAgentContext(id, name, provider, model, systemPrompt string, tools []string) *AgentContext {
+func NewAgentContext(id, name, provider, model, systemPrompt string, tools []string, skills []string) *AgentContext {
 	return &AgentContext{
 		ID:           id,
 		Name:         name,
@@ -158,6 +162,7 @@ func NewAgentContext(id, name, provider, model, systemPrompt string, tools []str
 		Model:        model,
 		SystemPrompt: systemPrompt,
 		Tools:        tools,
+		Skills:       skills,
 		Messages:     make([]types.Message, 0),
 		Config:       types.LoopConfig{MaxIterations: 10, MaxTokens: 4096, Temperature: 0.7, TopP: 0.9},
 		SessionID:    types.NewSessionID(),
@@ -178,22 +183,24 @@ func (c *AgentContext) GetMessages() []types.Message {
 }
 
 // RunAgentLoop runs the agent execution loop.
+// It handles the complete agent workflow: memory recall, LLM calls, tool execution, and session management.
 func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPhase PhaseCallback) (*AgentLoopResult, error) {
+	// Get LLM driver for the agent's provider
 	driver, err := r.GetDriver(agentCtx.Provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get driver: %w", err)
 	}
 
-	// Recall relevant memories
+	// Recall relevant memories from semantic store
 	memories, err := r.recallMemories(ctx, agentCtx)
 	if err != nil {
 		log.Printf("Warning: failed to recall memories: %v", err)
 	}
 
-	// Build system prompt with memories
-	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories)
+	// Build system prompt with memories and skills
+	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills)
 
-	// Add user message to history
+	// Find user message from context
 	var userMessage string
 	for _, msg := range agentCtx.GetMessages() {
 		if msg.Role == "user" {
@@ -206,7 +213,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 		return nil, fmt.Errorf("no user message found")
 	}
 
-	// Trim message history if too long
+	// Trim message history if it exceeds maximum length
 	messages := agentCtx.GetMessages()
 	if len(messages) > MAX_HISTORY_MESSAGES {
 		trimCount := len(messages) - MAX_HISTORY_MESSAGES
@@ -222,14 +229,14 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 		maxIterations = MAX_ITERATIONS
 	}
 
-	// Get available tools
+	// Get available tools for this agent
 	availableTools := r.getAvailableTools(agentCtx.Tools)
 	toolSchemas := make([]map[string]interface{}, len(availableTools))
 	for i, tool := range availableTools {
 		toolSchemas[i] = tool.Schema()
 	}
 
-	// Record usage helper
+	// Helper function to record token usage
 	recordUsage := func(usage types.TokenUsage, iterations uint32) {
 		if r.usage == nil {
 			return
@@ -247,15 +254,16 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 		}
 	}
 
+	// Main agent loop - iterate up to maxIterations
 	for iteration := 0; iteration < maxIterations; iteration++ {
 		if onPhase != nil {
 			onPhase(PhaseThinking)
 		}
 
-		// Build LLM messages
+		// Build messages for LLM including system prompt and history
 		llmMessages := r.buildLLMMessages(systemPrompt, messages)
 
-		// Call LLM with retry
+		// Call LLM with retry mechanism
 		req := &llm.Request{
 			Model:       agentCtx.Model,
 			Messages:    llmMessages,
@@ -496,18 +504,41 @@ func (r *Runtime) recallMemories(ctx context.Context, agentCtx *AgentContext) ([
 	return memories, nil
 }
 
-// buildSystemPrompt builds the system prompt with memories.
-func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFragment) string {
-	if len(memories) == 0 {
-		return basePrompt
+// buildSystemPrompt builds the system prompt with memories and skills.
+func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFragment, skillIDs []string) string {
+	prompt := basePrompt
+
+	// Add skills
+	if r.skills != nil && len(skillIDs) > 0 {
+		var skillsSection strings.Builder
+		skillsSection.WriteString("\n\nSkills:\n")
+		for _, skillID := range skillIDs {
+			skill, err := r.skills.LoadSkill(skillID)
+			if err != nil {
+				log.Printf("Warning: failed to load skill %s: %v", skillID, err)
+				continue
+			}
+			if skill.Manifest.PromptContext != "" {
+				skillsSection.WriteString(fmt.Sprintf("\n--- %s ---\n", skill.Manifest.Name))
+				skillsSection.WriteString(skill.Manifest.PromptContext)
+				skillsSection.WriteString("\n")
+			}
+		}
+		if skillsSection.Len() > len("\n\nSkills:\n") {
+			prompt += skillsSection.String()
+		}
 	}
 
-	memoriesSection := "\n\nRelevant memories:\n"
-	for i, mem := range memories {
-		memoriesSection += fmt.Sprintf("%d. %s\n", i+1, mem.Content)
+	// Add memories
+	if len(memories) > 0 {
+		memoriesSection := "\n\nRelevant memories:\n"
+		for i, mem := range memories {
+			memoriesSection += fmt.Sprintf("%d. %s\n", i+1, mem.Content)
+		}
+		prompt += memoriesSection
 	}
 
-	return basePrompt + memoriesSection
+	return prompt
 }
 
 // buildLLMMessages builds the messages for the LLM.
@@ -589,7 +620,10 @@ func NewAgentRunner(rt *Runtime) *AgentRunner {
 	return &AgentRunner{Runtime: rt}
 }
 
+// RunAgent runs the agent with the given input message.
+// It looks up the agent by ID, adds the user message, and executes the AgentLoop.
 func (r *AgentRunner) RunAgent(ctx context.Context, agentID, input string, onPhase PhaseCallback) (*AgentLoopResult, error) {
+	// Look up agent in runtime
 	r.Runtime.mu.RLock()
 	agentCtx, ok := r.Runtime.agents[agentID]
 	r.Runtime.mu.RUnlock()
@@ -609,7 +643,7 @@ func (r *AgentRunner) RunAgent(ctx context.Context, agentID, input string, onPha
 	return r.Runtime.RunAgentLoop(ctx, agentCtx, onPhase)
 }
 
-func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, systemPrompt string, tools []string) (*AgentContext, error) {
+func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, systemPrompt string, tools []string, skills []string) (*AgentContext, error) {
 	_, err := r.GetDriver(provider)
 	if err != nil {
 		return nil, err
@@ -617,7 +651,7 @@ func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, 
 
 	agentCtx := NewAgentContext(
 		id,
-		name, provider, model, systemPrompt, tools,
+		name, provider, model, systemPrompt, tools, skills,
 	)
 
 	r.mu.Lock()
@@ -627,11 +661,34 @@ func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, 
 	return agentCtx, nil
 }
 
+// GetAgent retrieves an agent by its ID.
 func (r *Runtime) GetAgent(id string) (*AgentContext, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	agent, ok := r.agents[id]
 	return agent, ok
+}
+
+// FindAgentByName finds an agent by its name.
+func (r *Runtime) FindAgentByName(name string) (*AgentContext, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, agent := range r.agents {
+		if agent.Name == name {
+			return agent, true
+		}
+	}
+	return nil, false
+}
+
+// GetFirstAgent returns the first available agent.
+func (r *Runtime) GetFirstAgent() (*AgentContext, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, agent := range r.agents {
+		return agent, true
+	}
+	return nil, false
 }
 
 func (r *Runtime) ListAgents() []*AgentContext {
