@@ -20,6 +20,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 	"github.com/penzhan8451/fangclaw-go/internal/vector"
@@ -161,8 +162,11 @@ func runChatLocal(agentID string) error {
 	embeddingAdapter := embedding.NewVectorEmbedderAdapter(openAIEmbedder)
 	embeddingDriver.Register("openai", embeddingAdapter)
 
+	// 2.7. 创建 model catalog
+	modelCatalog := model_catalog.NewModelCatalog()
+
 	// 3. 创建 Agent Runtime
-	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver)
+	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog)
 
 	// 4. 获取 LLM driver
 	driver, err := getLLMDriver()

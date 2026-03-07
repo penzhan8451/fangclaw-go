@@ -2376,7 +2376,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                     <!-- Actions -->
                     <div class="flex justify-between items-center mt-3">
                       <button class="btn btn-ghost btn-sm" @click="showDetail(hand.id)">Details</button>
-                      <button class="btn btn-primary btn-sm" @click="openSetupWizard(hand.id)" :disabled="setupLoading || activatingId === hand.id" x-text="setupLoading ? 'Loading...' : 'Activate'"></button>
+                      <button class="btn btn-primary btn-sm" @click="hand.status === 'active' ? deactivateFromAvailable(hand) : openSetupWizard(hand.id)" :disabled="setupLoading || activatingId === hand.id" x-text="setupLoading ? 'Loading...' : (hand.status === 'active' ? 'Deactivate' : 'Activate')"></button>
                     </div>
                   </div>
                 </template>

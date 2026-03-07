@@ -203,7 +203,8 @@ func (s *UsageStore) GetUsageSummary(agentID *types.AgentID, start, end *time.Ti
 		SELECT COUNT(*), COALESCE(SUM(json_extract(usage, '$.prompt_tokens')), 0),
 		       COALESCE(SUM(json_extract(usage, '$.completion_tokens')), 0),
 		       COALESCE(SUM(json_extract(usage, '$.total_tokens')), 0),
-		       COALESCE(SUM(cost_usd), 0)
+		       COALESCE(SUM(cost_usd), 0),
+		       COALESCE(SUM(json_extract(usage, '$.tool_calls')), 0)
 		FROM usage WHERE 1=1
 	`
 	args := []interface{}{}
@@ -228,11 +229,11 @@ func (s *UsageStore) GetUsageSummary(agentID *types.AgentID, start, end *time.Ti
 	}
 
 	var recordCount int
-	var totalPrompt, totalCompletion, totalTotal int
+	var totalPrompt, totalCompletion, totalTotal, totalToolCalls int
 	var totalCost float64
 
 	err := s.db.QueryRow(query, args...).Scan(
-		&recordCount, &totalPrompt, &totalCompletion, &totalTotal, &totalCost,
+		&recordCount, &totalPrompt, &totalCompletion, &totalTotal, &totalCost, &totalToolCalls,
 	)
 
 	if err != nil {
@@ -248,7 +249,7 @@ func (s *UsageStore) GetUsageSummary(agentID *types.AgentID, start, end *time.Ti
 		TotalInputTokens:      totalPrompt,
 		TotalOutputTokens:     totalCompletion,
 		CallCount:             recordCount,
-		TotalToolCalls:        0,
+		TotalToolCalls:        totalToolCalls,
 	}, nil
 }
 

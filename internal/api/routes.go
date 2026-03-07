@@ -205,6 +205,108 @@ func strPtr(s string) *string {
 	return &s
 }
 
+func getHandsFilePath() string {
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".fangclaw-go", "hands.json")
+}
+
+func loadHandsStatus() []map[string]string {
+	var bundledHands = []map[string]string{
+		{
+			"id":          "researcher",
+			"name":        "Researcher",
+			"description": "Deep autonomous researcher. Cross-references multiple sources, evaluates credibility, generates cited reports.",
+			"category":    "content",
+			"status":      "inactive",
+		},
+		{
+			"id":          "lead",
+			"name":        "Lead",
+			"description": "Runs daily. Discovers prospects matching your ICP, enriches with research, scores 0-100.",
+			"category":    "productivity",
+			"status":      "inactive",
+		},
+		{
+			"id":          "collector",
+			"name":        "Collector",
+			"description": "OSINT-grade intelligence. Monitors targets continuously with change detection and knowledge graphs.",
+			"category":    "data",
+			"status":      "inactive",
+		},
+		{
+			"id":          "predictor",
+			"name":        "Predictor",
+			"description": "Superforecasting engine. Collects signals, builds calibrated reasoning chains, makes predictions.",
+			"category":    "data",
+			"status":      "inactive",
+		},
+		{
+			"id":          "clip",
+			"name":        "Clip",
+			"description": "YouTube video processing. Downloads, identifies best moments, cuts into vertical shorts.",
+			"category":    "content",
+			"status":      "inactive",
+		},
+		{
+			"id":          "twitter",
+			"name":        "Twitter",
+			"description": "Autonomous Twitter/X account manager. Creates content, schedules posts, responds to mentions.",
+			"category":    "communication",
+			"status":      "inactive",
+		},
+		{
+			"id":          "browser",
+			"name":        "Browser",
+			"description": "Web automation agent. Navigates sites, fills forms, handles multi-step workflows.",
+			"category":    "productivity",
+			"status":      "inactive",
+		},
+	}
+
+	path := getHandsFilePath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return bundledHands
+	}
+	var savedHands []map[string]string
+	if err := json.Unmarshal(data, &savedHands); err != nil {
+		return bundledHands
+	}
+	for _, saved := range savedHands {
+		for j := range bundledHands {
+			if bundledHands[j]["id"] == saved["id"] {
+				bundledHands[j]["status"] = saved["status"]
+				break
+			}
+		}
+	}
+	return bundledHands
+}
+
+func saveHandsStatus(hands []map[string]string) {
+	path := getHandsFilePath()
+	data, err := json.MarshalIndent(hands, "", "  ")
+	if err != nil {
+		return
+	}
+	dir := filepath.Dir(path)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		os.MkdirAll(dir, 0755)
+	}
+	os.WriteFile(path, data, 0644)
+}
+
+func updateHandStatus(handID, status string) {
+	hands := loadHandsStatus()
+	for i := range hands {
+		if hands[i]["id"] == handID {
+			hands[i]["status"] = status
+			break
+		}
+	}
+	saveHandsStatus(hands)
+}
+
 // sharedMemoryAgentID is the well-known shared-memory agent ID used for cross-agent KV storage.
 // Must match the value in openfang-kernel.
 func sharedMemoryAgentID() string {
@@ -1745,6 +1847,13 @@ func (r *Router) handleListHands(w http.ResponseWriter, req *http.Request) {
 	handDefs := r.kernel.HandRegistry().ListDefinitions()
 	instances := r.kernel.HandRegistry().ListInstances()
 
+	// 读取本地保存的hand状态
+	handsStatus := loadHandsStatus()
+	handStatusMap := make(map[string]string)
+	for _, h := range handsStatus {
+		handStatusMap[h["id"]] = h["status"]
+	}
+
 	var handsResult []map[string]interface{}
 	for _, hand := range handDefs {
 		tools := hand.Tools
@@ -1755,6 +1864,12 @@ func (r *Router) handleListHands(w http.ResponseWriter, req *http.Request) {
 		dashboardMetrics := 0
 		if hand.Dashboard.Metrics != nil {
 			dashboardMetrics = len(hand.Dashboard.Metrics)
+		}
+
+		// 获取hand的状态
+		status := "inactive"
+		if s, ok := handStatusMap[hand.ID]; ok {
+			status = s
 		}
 
 		handsResult = append(handsResult, map[string]interface{}{
@@ -1769,6 +1884,7 @@ func (r *Router) handleListHands(w http.ResponseWriter, req *http.Request) {
 			"settings_count":    len(hand.Settings),
 			"requires":          hand.Requires,
 			"settings":          hand.Settings,
+			"status":            status,
 		})
 	}
 
@@ -1853,6 +1969,8 @@ func (r *Router) handleActivateHand(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	updateHandStatus(handID, "active")
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"success":     true,
 		"instance_id": instance.InstanceID,
@@ -1866,10 +1984,20 @@ func (r *Router) handleActivateHand(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleDeactivateHand(w http.ResponseWriter, req *http.Request) {
 	instanceID := req.PathValue("instanceID")
 
+	instance, ok := r.kernel.HandRegistry().GetInstance(instanceID)
+	var handID string
+	if ok {
+		handID = instance.HandID
+	}
+
 	err := r.kernel.DeactivateHand(instanceID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	if handID != "" {
+		updateHandStatus(handID, "inactive")
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -1880,10 +2008,20 @@ func (r *Router) handleDeactivateHand(w http.ResponseWriter, req *http.Request) 
 func (r *Router) handlePauseHand(w http.ResponseWriter, req *http.Request) {
 	instanceID := req.PathValue("instanceID")
 
+	instance, ok := r.kernel.HandRegistry().GetInstance(instanceID)
+	var handID string
+	if ok {
+		handID = instance.HandID
+	}
+
 	err := r.kernel.PauseHand(instanceID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	if handID != "" {
+		updateHandStatus(handID, "paused")
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -1894,10 +2032,20 @@ func (r *Router) handlePauseHand(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleResumeHand(w http.ResponseWriter, req *http.Request) {
 	instanceID := req.PathValue("instanceID")
 
+	instance, ok := r.kernel.HandRegistry().GetInstance(instanceID)
+	var handID string
+	if ok {
+		handID = instance.HandID
+	}
+
 	err := r.kernel.ResumeHand(instanceID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	if handID != "" {
+		updateHandStatus(handID, "active")
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{

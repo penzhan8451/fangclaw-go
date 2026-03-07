@@ -82,6 +82,36 @@ function handsPage() {
       this.openSetupWizard(handId);
     },
 
+    async deactivateFromAvailable(hand) {
+      // 首先加载active实例
+      await this.loadActive();
+      
+      // 查找对应的实例
+      var instance = this.instances.find(function(i) { return i.hand_id === hand.id; });
+      if (instance) {
+        // 找到实例，停用它
+        var self = this;
+        var handName = instance.agent_name || instance.hand_id;
+        FangClawGoToast.confirm('Deactivate Hand', 'Deactivate hand "' + handName + '"? This will kill its agent.', async function() {
+          try {
+            await FangClawGoAPI.delete('/api/hands/instances/' + instance.instance_id);
+            self.instances = self.instances.filter(function(i) { return i.instance_id !== instance.instance_id; });
+            // 更新本地hand状态
+            hand.status = 'inactive';
+            // 重新加载数据
+            await self.loadData();
+            FangClawGoToast.success('Hand deactivated.');
+          } catch(e) {
+            FangClawGoToast.error('Deactivation failed: ' + (e.message || 'unknown error'));
+          }
+        });
+      } else {
+        // 没找到实例，可能是状态不同步，重新加载数据
+        await this.loadData();
+        this.showToast('Hand is not active.');
+      }
+    },
+
     async openSetupWizard(handId) {
       this.setupLoading = true;
       this.setupWizard = null;

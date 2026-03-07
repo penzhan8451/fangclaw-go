@@ -14,6 +14,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
@@ -105,9 +106,10 @@ type Runtime struct {
 	usage           *memory.UsageStore
 	skills          *skills.Loader
 	embeddingDriver *embedding.EmbeddingDriver
+	modelCatalog    *model_catalog.ModelCatalog
 }
 
-func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader, embeddingDriver *embedding.EmbeddingDriver) *Runtime {
+func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader, embeddingDriver *embedding.EmbeddingDriver, modelCatalog *model_catalog.ModelCatalog) *Runtime {
 	return &Runtime{
 		drivers:         make(map[string]llm.Driver),
 		tools:           NewToolRegistry(),
@@ -118,6 +120,7 @@ func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, k
 		usage:           usage,
 		skills:          skills,
 		embeddingDriver: embeddingDriver,
+		modelCatalog:    modelCatalog,
 	}
 }
 
@@ -229,6 +232,20 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 	var finalResponse string
 	consecutiveMaxTokens := uint32(0)
 
+	// Helper function to calculate cost based on model and token usage
+	calculateCost := func(modelName string, usage types.TokenUsage) float64 {
+		if r.modelCatalog == nil {
+			return 0
+		}
+		model := r.modelCatalog.FindModel(modelName)
+		if model == nil {
+			return 0
+		}
+		inputCost := (float64(usage.PromptTokens) / 1000000.0) * model.InputCostPerM
+		outputCost := (float64(usage.CompletionTokens) / 1000000.0) * model.OutputCostPerM
+		return inputCost + outputCost
+	}
+
 	maxIterations := agentCtx.Config.MaxIterations
 	if maxIterations == 0 {
 		maxIterations = MAX_ITERATIONS
@@ -252,6 +269,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			Model:     agentCtx.Model,
 			Provider:  agentCtx.Provider,
 			Usage:     usage,
+			CostUSD:   calculateCost(agentCtx.Model, usage),
 			CreatedAt: time.Now(),
 		}
 		if err := r.usage.RecordUsage(record); err != nil {
@@ -307,6 +325,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			consecutiveMaxTokens = 0
 
 			toolCalls := resp.ToolCalls
+			totalUsage.ToolCalls += len(toolCalls)
 			var toolResults []string
 			for _, tc := range toolCalls {
 				result, err := r.executeTool(ctx, tc.Name, tc.Input)
