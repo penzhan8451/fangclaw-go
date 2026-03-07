@@ -9,13 +9,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -547,77 +548,127 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 						typingStart, _ := json.Marshal(WSMessage{Type: "typing", Data: json.RawMessage(`{"state":"start"}`)})
 						client.Send <- typingStart
 
-						var response string
-						var inputTokens, outputTokens int
-
 						// Get message content
 						text := msg.Content
 						if text == "" {
-							response = "Error: No message content"
+							// Send error
+							errorData := map[string]string{"content": "Error: No message content"}
+							errorDataBytes, _ := json.Marshal(errorData)
+							errorResp := WSMessage{Type: "error", Data: errorDataBytes}
+							errorRespBytes, _ := json.Marshal(errorResp)
+							client.Send <- errorRespBytes
+							return
+						}
+
+						// Get agent runtime
+						agentRuntime := k.AgentRuntime()
+						if agentRuntime == nil {
+							// Send error
+							errorData := map[string]string{"content": "Error: Agent runtime not available"}
+							errorDataBytes, _ := json.Marshal(errorData)
+							errorResp := WSMessage{Type: "error", Data: errorDataBytes}
+							errorRespBytes, _ := json.Marshal(errorResp)
+							client.Send <- errorRespBytes
+							return
+						}
+
+						// Agent lookup
+						var actualAgentID string
+						if _, ok := agentRuntime.GetAgent(agentID); ok {
+							actualAgentID = agentID
+						} else if agentCtx, ok := agentRuntime.FindAgentByName(agentID); ok {
+							actualAgentID = agentCtx.ID
 						} else {
-							// Try to get LLM driver
-							driver, err := getLLMDriver()
-							if err != nil {
-								response = "👋 Hi! I'm FangClaw-go. To use the full chat capabilities, please set up an API key.\n\n**Supported providers:**\n- OpenRouter (recommended)\n- OpenAI\n- Anthropic\n- Groq\n\n**How to set up:**\n1. Go to Settings page\n2. Select your preferred provider\n3. Enter your API key\n\nOr set the API key via environment variables:\n- `OPENROUTER_API_KEY`\n- `OPENAI_API_KEY`\n- `ANTHROPIC_API_KEY`\n- `GROQ_API_KEY`"
+							if agentEntry := k.AgentRegistry().FindByName(agentID); agentEntry != nil {
+								actualAgentID = agentEntry.ID.String()
 							} else {
-								// Build messages
-								var messages []llm.Message
-
-								// Get hand system prompt
-								if hand, _ := hands.GetBundledHand(agentID); hand != nil {
-									systemPrompt := getHandSystemPrompt(agentID)
-									if systemPrompt != "" {
-										messages = append(messages, llm.Message{
-											Role:    "system",
-											Content: systemPrompt,
-										})
-									}
-								}
-
-								// Add user message
-								messages = append(messages, llm.Message{
-									Role:    "user",
-									Content: text,
-								})
-
-								// Call LLM
-								llmReq := &llm.Request{
-									Messages:    messages,
-									Temperature: 0.7,
-								}
-
-								ctx := context.Background()
-								resp, err := driver.Chat(ctx, llmReq)
-								if err != nil {
-									fmt.Fprintf(os.Stderr, "[WebSocket] LLM error: %v\n", err)
-									response = "Error: " + err.Error()
+								if agentCtx, ok := agentRuntime.GetFirstAgent(); ok {
+									actualAgentID = agentCtx.ID
 								} else {
-									response = resp.Content
+									// Send error
+									errorData := map[string]string{"content": "Error: No agents available"}
+									errorDataBytes, _ := json.Marshal(errorData)
+									errorResp := WSMessage{Type: "error", Data: errorDataBytes}
+									errorRespBytes, _ := json.Marshal(errorResp)
+									client.Send <- errorRespBytes
+									return
 								}
 							}
 						}
+
+						// Stream callback to send text delta via WebSocket
+						var fullResponse strings.Builder
+						streamCb := func(event llm.StreamEvent) {
+							switch event.Type {
+							case llm.StreamEventTextDelta:
+								if event.Text != "" {
+									fullResponse.WriteString(event.Text)
+									// Send streaming response using text_delta type
+									deltaData := map[string]string{"content": event.Text}
+									deltaDataBytes, _ := json.Marshal(deltaData)
+									deltaMsg := WSMessage{Type: "text_delta", Data: deltaDataBytes}
+									deltaMsgBytes, _ := json.Marshal(deltaMsg)
+									client.Send <- deltaMsgBytes
+								}
+							}
+						}
+
+						// Phase callback
+						onPhase := func(phase agent.LoopPhase) {
+							switch phase {
+							case agent.PhaseThinking:
+								// Send thinking state
+								thinkingData := map[string]interface{}{"phase": "thinking", "detail": "Thinking..."}
+								thinkingDataBytes, _ := json.Marshal(thinkingData)
+								thinkingMsg := WSMessage{Type: "phase", Data: thinkingDataBytes}
+								thinkingMsgBytes, _ := json.Marshal(thinkingMsg)
+								client.Send <- thinkingMsgBytes
+							case agent.PhaseToolUse:
+								// Send tool use state
+								toolData := map[string]interface{}{"phase": "tool_use", "detail": "Using tools..."}
+								toolDataBytes, _ := json.Marshal(toolData)
+								toolMsg := WSMessage{Type: "phase", Data: toolDataBytes}
+								toolMsgBytes, _ := json.Marshal(toolMsg)
+								client.Send <- toolMsgBytes
+							}
+						}
+
+						// Run agent with full loop
+						runner := agent.NewAgentRunner(agentRuntime)
+						ctx := context.Background()
+						result, err := runner.RunAgent(ctx, actualAgentID, text, onPhase, streamCb)
 
 						// Send typing stop
 						typingStop, _ := json.Marshal(WSMessage{Type: "typing", Data: json.RawMessage(`{"state":"stop"}`)})
 						client.Send <- typingStop
 
-						// Send final response
-						type ResponseData struct {
-							Content      string `json:"content"`
-							InputTokens  int    `json:"input_tokens"`
-							OutputTokens int    `json:"output_tokens"`
-							Iterations   int    `json:"iterations"`
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "[WebSocket] Agent error: %v\n", err)
+							// Send error
+							errorData := map[string]string{"content": "Error: " + err.Error()}
+							errorDataBytes, _ := json.Marshal(errorData)
+							errorResp := WSMessage{Type: "error", Data: errorDataBytes}
+							errorRespBytes, _ := json.Marshal(errorResp)
+							client.Send <- errorRespBytes
+						} else {
+							// Send final response
+							type ResponseData struct {
+								Content      string `json:"content"`
+								InputTokens  int    `json:"input_tokens"`
+								OutputTokens int    `json:"output_tokens"`
+								Iterations   int    `json:"iterations"`
+							}
+							respData := ResponseData{
+								Content:      result.Response,
+								InputTokens:  result.TotalUsage.PromptTokens,
+								OutputTokens: result.TotalUsage.CompletionTokens,
+								Iterations:   int(result.Iterations),
+							}
+							respDataBytes, _ := json.Marshal(respData)
+							respMsg := WSMessage{Type: "response", Data: respDataBytes}
+							respBytes, _ := json.Marshal(respMsg)
+							client.Send <- respBytes
 						}
-						respData := ResponseData{
-							Content:      response,
-							InputTokens:  inputTokens,
-							OutputTokens: outputTokens,
-							Iterations:   1,
-						}
-						respDataBytes, _ := json.Marshal(respData)
-						respMsg := WSMessage{Type: "response", Data: respDataBytes}
-						respBytes, _ := json.Marshal(respMsg)
-						client.Send <- respBytes
 					}()
 
 				case "ping":

@@ -42,6 +42,9 @@ const (
 // PhaseCallback is a callback for agent lifecycle phase changes.
 type PhaseCallback func(phase LoopPhase)
 
+// StreamCallback is a callback for streaming content.
+type StreamCallback func(event llm.StreamEvent)
+
 // AgentLoopResult represents the result of an agent loop execution.
 type AgentLoopResult struct {
 	Response   string
@@ -192,7 +195,7 @@ func (c *AgentContext) GetMessages() []types.Message {
 
 // RunAgentLoop runs the agent execution loop.
 // It handles the complete agent workflow: memory recall, LLM calls, tool execution, and session management.
-func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPhase PhaseCallback) (*AgentLoopResult, error) {
+func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPhase PhaseCallback, streamCb StreamCallback) (*AgentLoopResult, error) {
 	// Get LLM driver for the agent's provider
 	driver, err := r.GetDriver(agentCtx.Provider)
 	if err != nil {
@@ -296,7 +299,11 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			TopP:        agentCtx.Config.TopP,
 		}
 
-		resp, err := r.callLLMWithRetry(ctx, driver, req)
+		if onPhase != nil {
+			onPhase(PhaseStreaming)
+		}
+
+		resp, err := r.callLLMStreamWithRetry(ctx, driver, req, streamCb)
 		if err != nil {
 			return nil, fmt.Errorf("LLM call failed after retries: %w", err)
 		}
@@ -498,6 +505,57 @@ func (r *Runtime) callLLMWithRetry(ctx context.Context, driver llm.Driver, req *
 		}
 	}
 	return nil, fmt.Errorf("all retry attempts failed: %w", lastErr)
+}
+
+// callLLMStreamWithRetry calls the LLM with streaming and exponential backoff retry.
+func (r *Runtime) callLLMStreamWithRetry(ctx context.Context, driver llm.Driver, req *llm.Request, streamCb StreamCallback) (*llm.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt <= MAX_RETRIES; attempt++ {
+		if !driver.SupportsStreaming() {
+			log.Printf("Provider does not support streaming, falling back to non-streaming")
+			fmt.Println("Falling back to non-streaming - callLLMWithRetry")
+			return r.callLLMWithRetry(ctx, driver, req)
+		}
+
+		fmt.Println("Streaming call - ChatStream")
+		eventChan, err := driver.ChatStream(ctx, req)
+		if err == nil {
+			var fullResponse strings.Builder
+
+			for event := range eventChan {
+				if streamCb != nil {
+					streamCb(event)
+				}
+
+				switch event.Type {
+				case llm.StreamEventTextDelta:
+					if event.Text != "" {
+						fullResponse.WriteString(event.Text)
+					}
+				}
+			}
+
+			resp := &llm.Response{
+				Content: fullResponse.String(),
+				Usage:   llm.Usage{},
+			}
+			return resp, nil
+		}
+
+		lastErr = err
+		log.Printf("LLM stream call failed (attempt %d/%d): %v", attempt+1, MAX_RETRIES+1, err)
+
+		if attempt < MAX_RETRIES {
+			delay := time.Duration(BASE_RETRY_DELAY_MS*(1<<attempt)) * time.Millisecond
+			log.Printf("Retrying in %v...", delay)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+	}
+	return nil, fmt.Errorf("all stream retry attempts failed: %w", lastErr)
 }
 
 // recallMemories recalls relevant memories for the agent.
@@ -765,7 +823,7 @@ func NewAgentRunner(rt *Runtime) *AgentRunner {
 
 // RunAgent runs the agent with the given input message.
 // It looks up the agent by ID, adds the user message, and executes the AgentLoop.
-func (r *AgentRunner) RunAgent(ctx context.Context, agentID, input string, onPhase PhaseCallback) (*AgentLoopResult, error) {
+func (r *AgentRunner) RunAgent(ctx context.Context, agentID, input string, onPhase PhaseCallback, streamCb StreamCallback) (*AgentLoopResult, error) {
 	// Look up agent in runtime
 	r.Runtime.mu.RLock()
 	agentCtx, ok := r.Runtime.agents[agentID]
@@ -783,7 +841,7 @@ func (r *AgentRunner) RunAgent(ctx context.Context, agentID, input string, onPha
 	}
 	agentCtx.AddMessage(userMsg)
 
-	return r.Runtime.RunAgentLoop(ctx, agentCtx, onPhase)
+	return r.Runtime.RunAgentLoop(ctx, agentCtx, onPhase, streamCb)
 }
 
 func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, systemPrompt string, tools []string, skills []string, skillPromptContext string) (*AgentContext, error) {

@@ -1616,7 +1616,7 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 	runner := agent.NewAgentRunner(agentRuntime)
 
 	ctx := context.Background()
-	result, err := runner.RunAgent(ctx, actualAgentID, reqBody.Message, nil)
+	result, err := runner.RunAgent(ctx, actualAgentID, reqBody.Message, nil, nil)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -11148,11 +11148,22 @@ function chatPage() {
     async _sendPayload(finalText, uploadedFiles, msgImages) {
       this.sending = true;
 
-      // Priority: Use HTTP endpoint first (complete agent runtime)
+      // Try WebSocket first
+      var wsPayload = { type: 'message', content: finalText };
+      if (uploadedFiles && uploadedFiles.length) wsPayload.attachments = uploadedFiles;
+      if (FangClawGoAPI.wsSend(wsPayload)) {
+        this.messages.push({ id: ++msgId, role: 'agent', text: '', meta: '', thinking: true, streaming: true, tools: [], ts: Date.now() });
+        this.scrollToBottom();
+        return;
+      }
+
+      // HTTP fallback
+      if (!FangClawGoAPI.isWsConnected()) {
+        FangClawGoToast.info('Using HTTP mode (no streaming)');
+      }
       this.messages.push({ id: ++msgId, role: 'agent', text: '', meta: '', thinking: true, tools: [], ts: Date.now() });
       this.scrollToBottom();
 
-      console.log('Sending message to agent by http mode');
       try {
         var httpBody = { message: finalText };
         if (uploadedFiles && uploadedFiles.length) httpBody.attachments = uploadedFiles;
@@ -11163,16 +11174,6 @@ function chatPage() {
         if (res.iterations) httpMeta += ' | ' + res.iterations + ' iter';
         this.messages.push({ id: ++msgId, role: 'agent', text: res.response, meta: httpMeta, tools: [], ts: Date.now() });
       } catch(e) {
-        // Fallback: Try WebSocket if HTTP fails
-        console.log('HTTP send failed, trying WebSocket:', e);
-        var wsPayload = { type: 'message', content: finalText };
-        if (uploadedFiles && uploadedFiles.length) wsPayload.attachments = uploadedFiles;
-        if (FangClawGoAPI.wsSend(wsPayload)) {
-          // WebSocket will handle response
-          return;
-        }
-
-        // Both failed, show error
         this.messages = this.messages.filter(function(m) { return !m.thinking; });
         var errorMsg = e.message || 'An unknown error occurred';
         this.messages.push({ id: ++msgId, role: 'system', text: 'Error: ' + errorMsg, meta: '', tools: [], ts: Date.now() });

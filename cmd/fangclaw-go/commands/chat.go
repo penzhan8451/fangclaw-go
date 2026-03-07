@@ -260,12 +260,21 @@ func runChatLocal(agentID string) error {
 				fmt.Print("\n[Thinking...] ")
 			case agent.PhaseToolUse:
 				fmt.Print("\n[Using tools...] ")
+			case agent.PhaseStreaming:
+				fmt.Print("\n[Streaming...] ")
 			case agent.PhaseDone:
 				fmt.Println("\n")
 			}
 		}
 
-		result, err := runtime.RunAgentLoop(ctx, agentCtx, onPhase)
+		streamCb := func(event llm.StreamEvent) {
+			switch event.Type {
+			case llm.StreamEventTextDelta:
+				fmt.Print(event.Text)
+			}
+		}
+
+		result, err := runtime.RunAgentLoop(ctx, agentCtx, onPhase, streamCb)
 		if err != nil {
 			fmt.Printf("Error: %v\n\n", err)
 		} else {

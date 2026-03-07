@@ -562,7 +562,7 @@ func expandPath(path string) (string, error) {
 // SendMessage sends a message to an agent and gets the response.
 func (k *Kernel) SendMessage(ctx context.Context, agentID string, message string) (string, error) {
 	runner := agent.NewAgentRunner(k.agentRuntime)
-	result, err := runner.RunAgent(ctx, agentID, message, nil)
+	result, err := runner.RunAgent(ctx, agentID, message, nil, nil)
 	if err != nil {
 		return "", err
 	}
