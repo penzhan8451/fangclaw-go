@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -51,18 +50,13 @@ func runChat(cmd *cobra.Command, args []string) error {
 }
 
 func runChatWithDaemon(agentID string) error {
-	log.Printf("[DEBUG] runChatWithDaemon: Checking if daemon is running...")
 	resp, err := http.Get("http://127.0.0.1:4200/api/agents")
 	if err != nil {
-		log.Printf("[DEBUG] runChatWithDaemon: Daemon not reachable, falling back to local: %v", err)
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
 	defer resp.Body.Close()
 
-	log.Printf("[DEBUG] runChatWithDaemon: Got response from daemon: %d", resp.StatusCode)
-
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("[DEBUG] runChatWithDaemon: Daemon returned non-OK status, falling back to local")
 		return runChatLocal(agentID)
 	}
 
@@ -87,7 +81,6 @@ func runChatWithDaemon(agentID string) error {
 			"message": text,
 		}
 		jsonData, _ := json.Marshal(messageReq)
-		log.Printf("[DEBUG] runChatWithDaemon: Sending request to daemon with agent: %s, message: %q", agentID, text)
 
 		client := &http.Client{}
 		req, _ := http.NewRequest("POST",
@@ -97,17 +90,12 @@ func runChatWithDaemon(agentID string) error {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Printf("[DEBUG] runChatWithDaemon: Error from daemon: %v", err)
 			fmt.Printf("Error: %v\n", err)
 		} else {
-			log.Printf("[DEBUG] runChatWithDaemon: Got response from daemon: %d", resp.StatusCode)
 			var result map[string]interface{}
 			json.NewDecoder(resp.Body).Decode(&result)
-			log.Printf("[DEBUG] runChatWithDaemon: Response body: %#v", result)
 			if respText, ok := result["response"].(string); ok {
 				fmt.Printf("[%s] %s\n\n", agentID, respText)
-			} else {
-				log.Printf("[DEBUG] runChatWithDaemon: No 'response' field in result")
 			}
 			resp.Body.Close()
 		}
@@ -191,8 +179,10 @@ func runChatLocal(agentID string) error {
 	var systemPrompt string
 	var toolNames []string
 	var modelName string
+	var skillPromptContext string
 	if hand, _ := hands.GetBundledHand(agentID); hand != nil {
 		systemPrompt = getHandSystemPrompt(agentID)
+		skillPromptContext = hand.SkillContent
 	} else {
 		// 默认的系统提示词
 		systemPrompt = "You are a helpful assistant."
@@ -222,6 +212,7 @@ func runChatLocal(agentID string) error {
 		systemPrompt,
 		toolNames,
 		[]string{},
+		skillPromptContext,
 	)
 
 	fmt.Println("Enter your message (Ctrl+C to exit):")
@@ -241,19 +232,15 @@ func runChatLocal(agentID string) error {
 		}
 
 		// 添加用户消息
-		fmt.Println("[DEBUG] About to create user message")
 		userMsg := types.Message{
 			ID:        fmt.Sprintf("msg_%d", time.Now().Unix()),
 			Role:      "user",
 			Content:   text,
 			Timestamp: time.Now(),
 		}
-		fmt.Println("[DEBUG] User message created, about to AddMessage")
 		agentCtx.AddMessage(userMsg)
-		fmt.Println("[DEBUG] AddMessage done")
 
 		// 运行 AgentLoop
-		fmt.Println("[DEBUG] About to call RunAgentLoop")
 		ctx := context.Background()
 		onPhase := func(phase agent.LoopPhase) {
 			switch phase {
@@ -267,7 +254,6 @@ func runChatLocal(agentID string) error {
 		}
 
 		result, err := runtime.RunAgentLoop(ctx, agentCtx, onPhase)
-		fmt.Printf("[DEBUG] RunAgentLoop returned, err: %v\n", err)
 		if err != nil {
 			fmt.Printf("Error: %v\n\n", err)
 		} else {

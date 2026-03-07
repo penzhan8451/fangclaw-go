@@ -9,6 +9,7 @@ import (
 )
 
 //go:embed bundled_hands/*/*.json
+//go:embed bundled_hands/*/SKILL.md
 var bundledHandsFS embed.FS
 
 var bundledHands []*HandDefinition
@@ -40,6 +41,12 @@ func loadBundledHands() {
 		if err := json.Unmarshal(data, &hand); err != nil {
 			fmt.Printf("Warning: Failed to parse %s: %v\n", path, err)
 			continue
+		}
+
+		skillPath := filepath.Join("bundled_hands", handID, "SKILL.md")
+		skillData, err := bundledHandsFS.ReadFile(skillPath)
+		if err == nil {
+			hand.SkillContent = string(skillData)
 		}
 
 		bundledHands = append(bundledHands, &hand)

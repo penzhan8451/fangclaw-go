@@ -140,33 +140,35 @@ func (r *Runtime) RegisterTool(tool tools.Tool) {
 
 // AgentContext represents the context for a running agent.
 type AgentContext struct {
-	ID           string
-	Name         string
-	Provider     string
-	Model        string
-	SystemPrompt string
-	Messages     []types.Message
-	Tools        []string
-	Skills       []string
-	Config       types.LoopConfig
-	SessionID    types.SessionID
-	AgentID      types.AgentID
-	mu           sync.Mutex
+	ID                 string
+	Name               string
+	Provider           string
+	Model              string
+	SystemPrompt       string
+	SkillPromptContext string
+	Messages           []types.Message
+	Tools              []string
+	Skills             []string
+	Config             types.LoopConfig
+	SessionID          types.SessionID
+	AgentID            types.AgentID
+	mu                 sync.Mutex
 }
 
-func NewAgentContext(id, name, provider, model, systemPrompt string, tools []string, skills []string) *AgentContext {
+func NewAgentContext(id, name, provider, model, systemPrompt string, tools []string, skills []string, skillPromptContext string) *AgentContext {
 	return &AgentContext{
-		ID:           id,
-		Name:         name,
-		Provider:     provider,
-		Model:        model,
-		SystemPrompt: systemPrompt,
-		Tools:        tools,
-		Skills:       skills,
-		Messages:     make([]types.Message, 0),
-		Config:       types.LoopConfig{MaxIterations: 10, MaxTokens: 4096, Temperature: 0.7, TopP: 0.9},
-		SessionID:    types.NewSessionID(),
-		AgentID:      types.NewAgentID(),
+		ID:                 id,
+		Name:               name,
+		Provider:           provider,
+		Model:              model,
+		SystemPrompt:       systemPrompt,       // agent definition，base system prompt
+		SkillPromptContext: skillPromptContext, // agent Skill prompt context is added to the system prompt
+		Tools:              tools,
+		Skills:             skills, // skills to be used，e.g.["github", "calculator"] in ～/homedir/skills/{github,calculator}/skill.md
+		Messages:           make([]types.Message, 0),
+		Config:             types.LoopConfig{MaxIterations: 10, MaxTokens: 4096, Temperature: 0.7, TopP: 0.9},
+		SessionID:          types.NewSessionID(),
+		AgentID:            types.NewAgentID(),
 	}
 }
 
@@ -198,7 +200,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 	}
 
 	// Build system prompt with memories and skills
-	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills)
+	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills, agentCtx.SkillPromptContext)
 
 	// Find user message from context
 	var userMessage string
@@ -505,8 +507,14 @@ func (r *Runtime) recallMemories(ctx context.Context, agentCtx *AgentContext) ([
 }
 
 // buildSystemPrompt builds the system prompt with memories and skills.
-func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFragment, skillIDs []string) string {
+func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFragment, skillIDs []string, skillPromptContext string) string {
 	prompt := basePrompt
+
+	// Add bundled hand skill prompt context
+	if skillPromptContext != "" {
+		prompt += "\n\n## Hand Skill Context\n"
+		prompt += skillPromptContext
+	}
 
 	// Add skills
 	if r.skills != nil && len(skillIDs) > 0 {
@@ -643,7 +651,7 @@ func (r *AgentRunner) RunAgent(ctx context.Context, agentID, input string, onPha
 	return r.Runtime.RunAgentLoop(ctx, agentCtx, onPhase)
 }
 
-func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, systemPrompt string, tools []string, skills []string) (*AgentContext, error) {
+func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, systemPrompt string, tools []string, skills []string, skillPromptContext string) (*AgentContext, error) {
 	_, err := r.GetDriver(provider)
 	if err != nil {
 		return nil, err
@@ -651,7 +659,7 @@ func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, 
 
 	agentCtx := NewAgentContext(
 		id,
-		name, provider, model, systemPrompt, tools, skills,
+		name, provider, model, systemPrompt, tools, skills, skillPromptContext,
 	)
 
 	r.mu.Lock()

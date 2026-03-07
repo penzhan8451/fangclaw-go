@@ -46,13 +46,14 @@ type Agent struct {
 
 // AgentManifest defines an agent's configuration.
 type AgentManifest struct {
-	Name         string            `toml:"name" json:"name"`
-	Description  string            `toml:"description" json:"description,omitempty"`
-	SystemPrompt string            `toml:"system_prompt" json:"system_prompt,omitempty"`
-	Model        ModelConfig       `toml:"model" json:"model,omitempty"`
-	Tools        []string          `toml:"tools" json:"tools,omitempty"`
-	Skills       []string          `toml:"skills" json:"skills,omitempty"`
-	Metadata     map[string]string `toml:"metadata" json:"metadata,omitempty"`
+	Name               string            `toml:"name" json:"name"`
+	Description        string            `toml:"description" json:"description,omitempty"`
+	SystemPrompt       string            `toml:"system_prompt" json:"system_prompt,omitempty"`               // agent definition，base system prompt, e.g. bundled hand/hand.json
+	SkillPromptContext string            `toml:"skill_prompt_context" json:"skill_prompt_context,omitempty"` // agent Skill prompt context is added to the system prompt
+	Model              ModelConfig       `toml:"model" json:"model,omitempty"`
+	Tools              []string          `toml:"tools" json:"tools,omitempty"`
+	Skills             []string          `toml:"skills" json:"skills,omitempty"` // skills，e.g.["github", "calculator"] in ～/homedir/skills/{github,calculator}/skill.md
+	Metadata           map[string]string `toml:"metadata" json:"metadata,omitempty"`
 }
 
 // ModelConfig defines the LLM configuration for an agent.

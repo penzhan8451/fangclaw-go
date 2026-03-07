@@ -206,6 +206,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 				agentEntry.Manifest.SystemPrompt,
 				agentEntry.Manifest.Tools,
 				agentEntry.Manifest.Skills,
+				agentEntry.Manifest.SkillPromptContext,
 			)
 			if err != nil {
 				fmt.Printf("Warning: Failed to register agent %s in runtime: %v, skipping\n", agentEntry.Name, err)
@@ -448,6 +449,11 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 	agentName := def.Agent.Name
 	agentSystemPrompt := def.Agent.SystemPrompt
 	agentTools := def.Tools
+	agentSkillPromptContext := ""
+
+	if hand, _ := hands.GetBundledHand(handID); hand != nil {
+		agentSkillPromptContext = hand.SkillContent
+	}
 
 	k.mu.Unlock()
 
@@ -472,6 +478,7 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 		agentSystemPrompt,
 		agentTools,
 		[]string{},
+		agentSkillPromptContext,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register agent in runtime: %w", err)
