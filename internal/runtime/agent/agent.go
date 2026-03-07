@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/penzhan8451/fangclaw-go/internal/embedding"
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
@@ -94,27 +95,29 @@ func (r *ToolRegistry) GetSchema() []map[string]interface{} {
 
 // Runtime is the agent runtime that manages agents and their execution.
 type Runtime struct {
-	mu        sync.RWMutex
-	drivers   map[string]llm.Driver
-	tools     *ToolRegistry
-	agents    map[string]*AgentContext
-	semantic  *memory.SemanticStore
-	sessions  *memory.SessionStore
-	knowledge *memory.KnowledgeStore
-	usage     *memory.UsageStore
-	skills    *skills.Loader
+	mu              sync.RWMutex
+	drivers         map[string]llm.Driver
+	tools           *ToolRegistry
+	agents          map[string]*AgentContext
+	semantic        *memory.SemanticStore
+	sessions        *memory.SessionStore
+	knowledge       *memory.KnowledgeStore
+	usage           *memory.UsageStore
+	skills          *skills.Loader
+	embeddingDriver *embedding.EmbeddingDriver
 }
 
-func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader) *Runtime {
+func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader, embeddingDriver *embedding.EmbeddingDriver) *Runtime {
 	return &Runtime{
-		drivers:   make(map[string]llm.Driver),
-		tools:     NewToolRegistry(),
-		agents:    make(map[string]*AgentContext),
-		semantic:  semantic,
-		sessions:  sessions,
-		knowledge: knowledge,
-		usage:     usage,
-		skills:    skills,
+		drivers:         make(map[string]llm.Driver),
+		tools:           NewToolRegistry(),
+		agents:          make(map[string]*AgentContext),
+		semantic:        semantic,
+		sessions:        sessions,
+		knowledge:       knowledge,
+		usage:           usage,
+		skills:          skills,
+		embeddingDriver: embeddingDriver,
 	}
 }
 
@@ -232,7 +235,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 	}
 
 	// Get available tools for this agent
-	availableTools := r.getAvailableTools(agentCtx.Tools)
+	availableTools := r.getAvailableTools(agentCtx.Tools, agentCtx.Skills)
 	toolSchemas := make([]map[string]interface{}, len(availableTools))
 	for i, tool := range availableTools {
 		toolSchemas[i] = tool.Schema()
@@ -496,9 +499,17 @@ func (r *Runtime) recallMemories(ctx context.Context, agentCtx *AgentContext) ([
 		return []types.MemoryFragment{}, nil
 	}
 
-	memories, err := r.semantic.Recall(userMessage, 5, &types.MemoryFilter{
+	var queryEmbedding []float32
+	if r.embeddingDriver != nil {
+		embeddings, err := r.embeddingDriver.EmbedText(ctx, []string{userMessage})
+		if err == nil && len(embeddings) > 0 {
+			queryEmbedding = embeddings[0]
+		}
+	}
+
+	memories, err := r.semantic.RecallWithEmbedding(userMessage, 5, &types.MemoryFilter{
 		AgentID: &agentCtx.AgentID,
-	})
+	}, queryEmbedding)
 	if err != nil {
 		return nil, err
 	}
@@ -562,32 +573,137 @@ func (r *Runtime) buildLLMMessages(systemPrompt string, messages []types.Message
 }
 
 // getAvailableTools gets the available tools for the agent.
-func (r *Runtime) getAvailableTools(toolNames []string) []tools.Tool {
-	if len(toolNames) == 0 {
-		return r.tools.List()
-	}
-
+// It includes both built-in tools and tools from the specified skills.
+func (r *Runtime) getAvailableTools(toolNames []string, skillIDs []string) []tools.Tool {
 	available := make([]tools.Tool, 0)
-	for _, name := range toolNames {
-		if tool, ok := r.tools.Get(name); ok {
-			available = append(available, tool)
+
+	// Add built-in tools
+	if len(toolNames) == 0 {
+		available = append(available, r.tools.List()...)
+	} else {
+		for _, name := range toolNames {
+			if tool, ok := r.tools.Get(name); ok {
+				available = append(available, tool)
+			}
 		}
 	}
+
+	// Add tools from skills if skill loader is available
+	if r.skills != nil {
+		for _, skillID := range skillIDs {
+			if skill, ok := r.skills.GetSkill(skillID); ok {
+				for _, toolDef := range skill.Manifest.Tools.Provided {
+					// Create a wrapper that implements tools.Tool
+					skillTool := &skillToolWrapper{
+						skill:   skill,
+						toolDef: toolDef,
+						loader:  r.skills,
+					}
+					available = append(available, skillTool)
+				}
+			}
+		}
+	}
+
 	return available
 }
 
-// executeTool executes a tool.
-func (r *Runtime) executeTool(ctx context.Context, name string, args map[string]interface{}) (string, error) {
-	tool, ok := r.tools.Get(name)
-	if !ok {
-		return "", fmt.Errorf("tool not found: %s", name)
+// skillToolWrapper wraps a skill tool to implement tools.Tool interface.
+type skillToolWrapper struct {
+	skill   *types.Skill
+	toolDef types.SkillToolDefinition
+	loader  *skills.Loader
+}
+
+func (t *skillToolWrapper) Name() string {
+	return t.toolDef.Name
+}
+
+func (t *skillToolWrapper) Description() string {
+	return t.toolDef.Description
+}
+
+func (t *skillToolWrapper) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
+	result, err := t.loader.ExecuteTool(t.skill.ID, t.toolDef.Name, args)
+	if err != nil {
+		return "", err
 	}
 
-	// Create a timeout context
-	toolCtx, cancel := context.WithTimeout(ctx, TOOL_TIMEOUT_SECS*time.Second)
-	defer cancel()
+	if result.IsError {
+		if outputStr, ok := result.Output.(string); ok {
+			return "", fmt.Errorf("%s", outputStr)
+		}
+		outputJSON, err := json.Marshal(result.Output)
+		if err != nil {
+			return "", fmt.Errorf("tool error")
+		}
+		return "", fmt.Errorf("%s", string(outputJSON))
+	}
 
-	return tool.Execute(toolCtx, args)
+	if outputStr, ok := result.Output.(string); ok {
+		return outputStr, nil
+	}
+	outputJSON, err := json.Marshal(result.Output)
+	if err != nil {
+		return fmt.Sprintf("%v", result.Output), nil
+	}
+	return string(outputJSON), nil
+}
+
+func (t *skillToolWrapper) Schema() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "function",
+		"function": map[string]interface{}{
+			"name":        t.toolDef.Name,
+			"description": t.toolDef.Description,
+			"parameters":  t.toolDef.Parameters,
+		},
+	}
+}
+
+// executeTool executes a tool.
+// It first tries built-in tools, then falls back to skill tools.
+func (r *Runtime) executeTool(ctx context.Context, name string, args map[string]interface{}) (string, error) {
+	// First, try to find a built-in tool
+	if tool, ok := r.tools.Get(name); ok {
+		// Create a timeout context
+		toolCtx, cancel := context.WithTimeout(ctx, TOOL_TIMEOUT_SECS*time.Second)
+		defer cancel()
+		return tool.Execute(toolCtx, args)
+	}
+
+	// If no built-in tool found, try to find a skill that provides this tool
+	if r.skills != nil {
+		if skill, ok := r.skills.FindToolProvider(name); ok {
+			// Execute the skill tool
+			result, err := r.skills.ExecuteTool(skill.ID, name, args)
+			if err != nil {
+				return "", err
+			}
+
+			if result.IsError {
+				if outputStr, ok := result.Output.(string); ok {
+					return "", fmt.Errorf("%s", outputStr)
+				}
+				outputJSON, err := json.Marshal(result.Output)
+				if err != nil {
+					return "", fmt.Errorf("tool error")
+				}
+				return "", fmt.Errorf("%s", string(outputJSON))
+			}
+
+			if outputStr, ok := result.Output.(string); ok {
+				return outputStr, nil
+			}
+			outputJSON, err := json.Marshal(result.Output)
+			if err != nil {
+				return fmt.Sprintf("%v", result.Output), nil
+			}
+			return string(outputJSON), nil
+		}
+	}
+
+	return "", fmt.Errorf("tool not found: %s", name)
 }
 
 // saveSession saves the agent session.

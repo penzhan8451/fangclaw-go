@@ -13,6 +13,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/configreload"
 	"github.com/penzhan8451/fangclaw-go/internal/cron"
 	"github.com/penzhan8451/fangclaw-go/internal/delivery"
+	"github.com/penzhan8451/fangclaw-go/internal/embedding"
 	"github.com/penzhan8451/fangclaw-go/internal/eventbus"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
@@ -24,31 +25,33 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
+	"github.com/penzhan8451/fangclaw-go/internal/vector"
 )
 
 type Kernel struct {
-	config         types.KernelConfig
-	eventBus       *eventbus.EventBus
-	scheduler      *Scheduler
-	cronScheduler  *cron.CronScheduler
-	modelCatalog   *model_catalog.ModelCatalog
-	db             *memory.DB
-	semantic       *memory.SemanticStore
-	sessions       *memory.SessionStore
-	knowledge      *memory.KnowledgeStore
-	usage          *memory.UsageStore
-	skillLoader    *skills.Loader
-	registry       *channels.Registry
-	agentRegistry  *AgentRegistry
-	handRegistry   *hands.Registry
-	triggerEngine  *triggers.TriggerEngine
-	approvalMgr    *approvals.ApprovalManager
-	deliveryReg    *delivery.DeliveryRegistry
-	pairingManager *pairing.PairingManager
-	workflowEngine *WorkflowEngine
-	agentRuntime   *agent.Runtime
-	mu             sync.RWMutex
-	started        bool
+	config          types.KernelConfig
+	eventBus        *eventbus.EventBus
+	scheduler       *Scheduler
+	cronScheduler   *cron.CronScheduler
+	modelCatalog    *model_catalog.ModelCatalog
+	db              *memory.DB
+	semantic        *memory.SemanticStore
+	sessions        *memory.SessionStore
+	knowledge       *memory.KnowledgeStore
+	usage           *memory.UsageStore
+	skillLoader     *skills.Loader
+	embeddingDriver *embedding.EmbeddingDriver
+	registry        *channels.Registry
+	agentRegistry   *AgentRegistry
+	handRegistry    *hands.Registry
+	triggerEngine   *triggers.TriggerEngine
+	approvalMgr     *approvals.ApprovalManager
+	deliveryReg     *delivery.DeliveryRegistry
+	pairingManager  *pairing.PairingManager
+	workflowEngine  *WorkflowEngine
+	agentRuntime    *agent.Runtime
+	mu              sync.RWMutex
+	started         bool
 }
 
 func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
@@ -105,6 +108,11 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		return nil, fmt.Errorf("failed to create skill loader: %w", err)
 	}
 
+	embeddingDriver := embedding.NewEmbeddingDriver()
+	openAIEmbedder := vector.NewOpenAIEmbedder("", "")
+	embeddingAdapter := embedding.NewVectorEmbedderAdapter(openAIEmbedder)
+	embeddingDriver.Register("openai", embeddingAdapter)
+
 	registry := channels.NewRegistry()
 	agentRegistry := NewAgentRegistry(dataDir)
 	agentRegistry.LoadFromDisk()
@@ -124,31 +132,32 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 
 	modelCatalog := model_catalog.NewModelCatalog()
 	workflowEngine := NewWorkflowEngine()
-	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader)
+	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver)
 
 	kernelConfig.DataDir = dataDir
 
 	k := &Kernel{
-		config:         kernelConfig,
-		eventBus:       eventbus.NewEventBus(),
-		scheduler:      NewScheduler(),
-		cronScheduler:  cronScheduler,
-		modelCatalog:   modelCatalog,
-		db:             db,
-		semantic:       semanticStore,
-		sessions:       sessionStore,
-		knowledge:      knowledgeStore,
-		usage:          usageStore,
-		skillLoader:    skillLoader,
-		registry:       registry,
-		agentRegistry:  agentRegistry,
-		handRegistry:   handRegistry,
-		triggerEngine:  triggerEngine,
-		approvalMgr:    approvalMgr,
-		deliveryReg:    deliveryReg,
-		pairingManager: pairingManager,
-		workflowEngine: workflowEngine,
-		agentRuntime:   agentRuntime,
+		config:          kernelConfig,
+		eventBus:        eventbus.NewEventBus(),
+		scheduler:       NewScheduler(),
+		cronScheduler:   cronScheduler,
+		modelCatalog:    modelCatalog,
+		db:              db,
+		semantic:        semanticStore,
+		sessions:        sessionStore,
+		knowledge:       knowledgeStore,
+		usage:           usageStore,
+		skillLoader:     skillLoader,
+		embeddingDriver: embeddingDriver,
+		registry:        registry,
+		agentRegistry:   agentRegistry,
+		handRegistry:    handRegistry,
+		triggerEngine:   triggerEngine,
+		approvalMgr:     approvalMgr,
+		deliveryReg:     deliveryReg,
+		pairingManager:  pairingManager,
+		workflowEngine:  workflowEngine,
+		agentRuntime:    agentRuntime,
 	}
 
 	// 注册所有内置工具到 AgentRuntime

@@ -450,6 +450,64 @@ func findNode() string {
 	return ""
 }
 
+// LoadAll loads all installed skills from the skills directory.
+func (l *Loader) LoadAll() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	entries, err := os.ReadDir(l.skillsPath)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			skillID := entry.Name()
+			skillDir := filepath.Join(l.skillsPath, skillID)
+			if manifest, err := l.loadManifest(skillDir); err == nil {
+				skill := &types.Skill{
+					ID:          skillID,
+					Manifest:    manifest,
+					InstallPath: skillDir,
+					InstalledAt: time.Now(),
+					Enabled:     true,
+				}
+				l.registry[skillID] = skill
+			}
+		}
+	}
+
+	return nil
+}
+
+// FindToolProvider finds a skill that provides the given tool.
+func (l *Loader) FindToolProvider(toolName string) (*types.Skill, bool) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	for _, skill := range l.registry {
+		if !skill.Enabled {
+			continue
+		}
+		for _, tool := range skill.Manifest.Tools.Provided {
+			if tool.Name == toolName {
+				return skill, true
+			}
+		}
+	}
+
+	return nil, false
+}
+
+// GetSkill gets a skill by ID.
+func (l *Loader) GetSkill(skillID string) (*types.Skill, bool) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	skill, exists := l.registry[skillID]
+	return skill, exists
+}
+
 // ListSkills lists all installed skills.
 func (l *Loader) ListSkills() ([]*types.Skill, error) {
 	// fmt.Println("[DEBUG] ListSkills called, skillsPath:", l.skillsPath)

@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/penzhan8451/fangclaw-go/internal/config"
+	"github.com/penzhan8451/fangclaw-go/internal/embedding"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
@@ -21,6 +22,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
+	"github.com/penzhan8451/fangclaw-go/internal/vector"
 )
 
 func chatCmd() *cobra.Command {
@@ -153,8 +155,14 @@ func runChatLocal(agentID string) error {
 		fmt.Printf("Warning: failed to create skill loader: %v\n", err)
 	}
 
+	// 2.6. 创建 embedding driver
+	embeddingDriver := embedding.NewEmbeddingDriver()
+	openAIEmbedder := vector.NewOpenAIEmbedder("", "")
+	embeddingAdapter := embedding.NewVectorEmbedderAdapter(openAIEmbedder)
+	embeddingDriver.Register("openai", embeddingAdapter)
+
 	// 3. 创建 Agent Runtime
-	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader)
+	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver)
 
 	// 4. 获取 LLM driver
 	driver, err := getLLMDriver()
