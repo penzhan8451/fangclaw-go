@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/google/uuid"
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
@@ -560,12 +562,37 @@ func (r *Router) handleListAgents(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleCreateAgent(w http.ResponseWriter, req *http.Request) {
-	var agent types.Agent
-	if err := json.NewDecoder(req.Body).Decode(&agent); err != nil {
+	var body struct {
+		ManifestTOML string `json:"manifest_toml"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusCreated, agent)
+
+	// SECURITY: Reject oversized manifests to prevent parser memory exhaustion.
+	const MAX_MANIFEST_SIZE = 1024 * 1024 // 1MB
+	if len(body.ManifestTOML) > MAX_MANIFEST_SIZE {
+		respondError(w, http.StatusRequestEntityTooLarge, "Manifest too large (max 1MB)")
+		return
+	}
+
+	var manifest types.AgentManifest
+	if err := toml.Unmarshal([]byte(body.ManifestTOML), &manifest); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid manifest format: "+err.Error())
+		return
+	}
+
+	agentID, agentName, err := r.kernel.SpawnAgent(manifest)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Agent spawn failed: "+err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"agent_id": agentID,
+		"name":     agentName,
+	})
 }
 
 func (r *Router) handleGetAgent(w http.ResponseWriter, req *http.Request) {
@@ -623,19 +650,14 @@ func (r *Router) handleUpdateAgent(w http.ResponseWriter, req *http.Request) {
 
 func (r *Router) handleDeleteAgent(w http.ResponseWriter, req *http.Request) {
 	idStr := req.PathValue("id")
-	id, err := types.ParseAgentID(idStr)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid agent id")
-		return
-	}
-
-	_, err = r.kernel.AgentRegistry().Remove(id)
-	if err != nil {
+	if err := r.kernel.DeleteAgent(idStr); err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusNoContent, nil)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
 }
 
 // Session handlers

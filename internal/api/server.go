@@ -510,7 +510,7 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 			for {
 				_, message, err := conn.ReadMessage()
 				if err != nil {
-					if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 						fmt.Fprintf(os.Stderr, "WebSocket read error: %v\n", err)
 					}
 					// Signal done, but don't close channel (write loop may still use it)

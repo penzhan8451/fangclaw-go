@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
@@ -590,9 +591,120 @@ func (k *Kernel) ListAgents(ctx context.Context) ([]channels.AgentInfo, error) {
 	return infos, nil
 }
 
+// SpawnAgent spawns a new agent from a manifest.
+func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error) {
+	var agentID types.AgentID
+	var agentName, agentSystemPrompt, agentProvider, agentModel, agentAPIKeyEnv string
+	var agentTools, agentSkills []string
+	var agentSkillPromptContext string
+
+	// 第一部分：需要锁的操作
+	func() {
+		k.mu.Lock()
+		defer k.mu.Unlock()
+
+		agentID = types.NewAgentID()
+
+		// 加载配置文件，获取默认模型配置
+		cfg, err := config.Load("")
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+
+		// 如果 manifest 中缺少任何一个配置（provider、model 或 APIKeyEnv），就全部使用 config.toml 中的默认值
+		if manifest.Model.Provider == "" || manifest.Model.Model == "" || manifest.Model.APIKeyEnv == "" {
+			agentProvider = cfg.DefaultModel.Provider
+			agentModel = cfg.DefaultModel.Model
+			agentAPIKeyEnv = cfg.DefaultModel.APIKeyEnv
+		} else {
+			// 否则使用 manifest 中的配置
+			agentProvider = manifest.Model.Provider
+			agentModel = manifest.Model.Model
+			agentAPIKeyEnv = manifest.Model.APIKeyEnv
+		}
+
+		// 更新 manifest 中的 model 配置
+		manifest.Model.Provider = agentProvider
+		manifest.Model.Model = agentModel
+		manifest.Model.APIKeyEnv = agentAPIKeyEnv
+
+		entry := &AgentEntry{
+			ID:         agentID,
+			Name:       manifest.Name,
+			State:      types.AgentStateRunning,
+			Mode:       "auto",
+			Tags:       []string{},
+			Manifest:   manifest,
+			CreatedAt:  time.Now(),
+			LastActive: time.Now(),
+		}
+
+		if err := k.agentRegistry.Register(entry); err != nil {
+			return
+		}
+
+		agentName = manifest.Name
+		agentSystemPrompt = manifest.SystemPrompt
+		agentTools = manifest.Tools
+		agentSkills = manifest.Skills
+		agentSkillPromptContext = manifest.SkillPromptContext
+	}()
+
+	// 第二部分：不需要锁的操作
+	apiKey := os.Getenv(agentAPIKeyEnv)
+	if apiKey == "" {
+		return "", "", fmt.Errorf("API key not set for agent %s: %s", agentName, agentAPIKeyEnv)
+	}
+
+	driver, err := llm.NewDriver(agentProvider, apiKey, agentModel)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create LLM driver for %s: %w", agentProvider, err)
+	}
+
+	k.agentRuntime.RegisterDriver(agentProvider, driver)
+
+	_, err = k.agentRuntime.RegisterAgent(
+		context.Background(),
+		agentID.String(),
+		agentName,
+		agentProvider,
+		agentModel,
+		agentSystemPrompt,
+		agentTools,
+		agentSkills,
+		agentSkillPromptContext,
+	)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to register agent in runtime: %w", err)
+	}
+
+	return agentID.String(), agentName, nil
+}
+
 // SpawnAgentByName spawns an agent by manifest name.
 func (k *Kernel) SpawnAgentByName(ctx context.Context, manifestName string) (string, error) {
 	return "", fmt.Errorf("not implemented yet")
+}
+
+// DeleteAgent deletes an agent from the registry and runtime.
+func (k *Kernel) DeleteAgent(agentIDStr string) error {
+	id, err := types.ParseAgentID(agentIDStr)
+	if err != nil {
+		return err
+	}
+
+	k.mu.Lock()
+	_, err = k.agentRegistry.Remove(id)
+	k.mu.Unlock()
+
+	if err != nil {
+		return err
+	}
+
+	// 同时从AgentRuntime中删除agent
+	k.agentRuntime.DeleteAgent(agentIDStr)
+
+	return nil
 }
 
 // AgentRuntime returns the agent runtime.
