@@ -1,724 +1,465 @@
-// Package mcp provides MCP (Model Context Protocol) integration for OpenFang.
 package mcp
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
-)
 
-// IntegrationCategory represents the category of an integration.
-type IntegrationCategory string
+	"github.com/penzhan8451/fangclaw-go/internal/types"
+)
 
 const (
-	IntegrationCategoryDevTools      IntegrationCategory = "dev_tools"
-	IntegrationCategoryProductivity  IntegrationCategory = "productivity"
-	IntegrationCategoryCommunication IntegrationCategory = "communication"
-	IntegrationCategoryData          IntegrationCategory = "data"
-	IntegrationCategoryCloud         IntegrationCategory = "cloud"
-	IntegrationCategoryAI            IntegrationCategory = "ai"
+	McpProtocolVersion = "2024-11-05"
 )
 
-// McpTransportType represents the type of MCP transport.
-type McpTransportType string
-
-const (
-	McpTransportTypeStdio McpTransportType = "stdio"
-	McpTransportTypeSse   McpTransportType = "sse"
-)
-
-// McpTransport represents the MCP transport configuration.
-type McpTransport struct {
-	Type    McpTransportType `json:"type"`
-	Command string           `json:"command,omitempty"`
-	Args    []string         `json:"args,omitempty"`
-	URL     string           `json:"url,omitempty"`
-}
-
-// RequiredEnvVar represents a required environment variable.
-type RequiredEnvVar struct {
-	Name        string `json:"name"`
-	Label       string `json:"label"`
-	Description string `json:"description,omitempty"`
-	IsSecret    bool   `json:"is_secret"`
-	Default     string `json:"default,omitempty"`
-}
-
-// Integration represents an MCP integration.
-type Integration struct {
-	ID          string              `json:"id"`
-	Name        string              `json:"name"`
-	Description string              `json:"description"`
-	Category    IntegrationCategory `json:"category"`
-	Icon        string              `json:"icon,omitempty"`
-	Transport   McpTransport        `json:"transport"`
-	EnvVars     []RequiredEnvVar    `json:"env_vars,omitempty"`
-	Enabled     bool                `json:"enabled"`
-	CreatedAt   time.Time           `json:"created_at"`
-	UpdatedAt   time.Time           `json:"updated_at"`
-	LastHealth  *time.Time          `json:"last_health,omitempty"`
-	Healthy     bool                `json:"healthy"`
-}
-
-// IntegrationTemplate represents a template for an integration.
 type IntegrationTemplate struct {
-	ID          string              `json:"id"`
-	Name        string              `json:"name"`
-	Description string              `json:"description"`
-	Category    IntegrationCategory `json:"category"`
-	Icon        string              `json:"icon,omitempty"`
-	Transport   McpTransport        `json:"transport"`
-	EnvVars     []RequiredEnvVar    `json:"env_vars,omitempty"`
-	HasOAuth    bool                `json:"has_oauth,omitempty"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Logo        string    `json:"logo"`
+	Config      McpConfig `json:"config"`
 }
 
-// McpServer represents a running MCP server.
-type McpServer struct {
-	mu          sync.RWMutex
-	integration *Integration
-	cmd         *exec.Cmd
-	stdin       *os.File
-	stdout      *os.File
-	stderr      *os.File
-	ctx         context.Context
-	cancel      context.CancelFunc
-	connected   bool
+type McpConfig struct {
+	Env       []string           `json:"env"`
+	Transport types.McpTransport `json:"transport"`
 }
 
-// IntegrationRegistry manages MCP integrations.
+type Integration struct {
+	Template IntegrationTemplate `json:"template"`
+	Config   map[string]string   `json:"config"`
+}
+
 type IntegrationRegistry struct {
-	mu           sync.RWMutex
-	integrations map[string]*Integration
-	templates    map[string]*IntegrationTemplate
+	templates map[string]IntegrationTemplate
+	mu        sync.RWMutex
 }
 
-// NewIntegrationRegistry creates a new integration registry.
 func NewIntegrationRegistry() *IntegrationRegistry {
 	return &IntegrationRegistry{
-		integrations: make(map[string]*Integration),
-		templates:    make(map[string]*IntegrationTemplate),
+		templates: make(map[string]IntegrationTemplate),
 	}
 }
 
-// RegisterTemplate registers an integration template.
-func (r *IntegrationRegistry) RegisterTemplate(template *IntegrationTemplate) {
+func (r *IntegrationRegistry) Register(template IntegrationTemplate) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.templates[template.ID] = template
+	r.templates[template.Name] = template
 }
 
-// ListTemplates lists all available integration templates.
-func (r *IntegrationRegistry) ListTemplates() []*IntegrationTemplate {
+func (r *IntegrationRegistry) Get(name string) (IntegrationTemplate, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	template, ok := r.templates[name]
+	return template, ok
+}
 
-	templates := make([]*IntegrationTemplate, 0, len(r.templates))
+func (r *IntegrationRegistry) List() []IntegrationTemplate {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	templates := make([]IntegrationTemplate, 0, len(r.templates))
 	for _, t := range r.templates {
 		templates = append(templates, t)
 	}
 	return templates
 }
 
-// GetTemplate gets an integration template by ID.
-func (r *IntegrationRegistry) GetTemplate(id string) (*IntegrationTemplate, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	t, ok := r.templates[id]
-	return t, ok
-}
-
-// Install installs an integration from a template.
-func (r *IntegrationRegistry) Install(templateID string, envVars map[string]string) (*Integration, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	template, ok := r.templates[templateID]
+func (r *IntegrationRegistry) CreateIntegration(name string, config map[string]string) (*Integration, error) {
+	template, ok := r.Get(name)
 	if !ok {
-		return nil, fmt.Errorf("template not found: %s", templateID)
+		return nil, fmt.Errorf("integration template %s not found", name)
 	}
-
-	if _, exists := r.integrations[templateID]; exists {
-		return nil, fmt.Errorf("integration already installed: %s", templateID)
-	}
-
-	now := time.Now()
-	integration := &Integration{
-		ID:          template.ID,
-		Name:        template.Name,
-		Description: template.Description,
-		Category:    template.Category,
-		Icon:        template.Icon,
-		Transport:   template.Transport,
-		EnvVars:     template.EnvVars,
-		Enabled:     true,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-		Healthy:     false,
-	}
-
-	r.integrations[integration.ID] = integration
-	return integration, nil
+	return &Integration{
+		Template: template,
+		Config:   config,
+	}, nil
 }
 
-// Uninstall uninstalls an integration.
-func (r *IntegrationRegistry) Uninstall(id string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if _, ok := r.integrations[id]; !ok {
-		return fmt.Errorf("integration not found: %s", id)
-	}
-
-	delete(r.integrations, id)
-	return nil
+type McpTransport interface {
+	Send(ctx context.Context, req types.JsonRpcRequest) (*types.JsonRpcResponse, error)
+	Close() error
 }
 
-// List lists all installed integrations.
-func (r *IntegrationRegistry) List() []*Integration {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	integrations := make([]*Integration, 0, len(r.integrations))
-	for _, i := range r.integrations {
-		integrations = append(integrations, i)
-	}
-	return integrations
+type StdioTransport struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout io.ReadCloser
+	stderr io.ReadCloser
+	mu     sync.Mutex
 }
 
-// Get gets an installed integration by ID.
-func (r *IntegrationRegistry) Get(id string) (*Integration, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	i, ok := r.integrations[id]
-	return i, ok
-}
+func NewStdioTransport(ctx context.Context, command string, args []string, env []string) (*StdioTransport, error) {
+	cmd := exec.CommandContext(ctx, command, args...)
 
-// Enable enables an integration.
-func (r *IntegrationRegistry) Enable(id string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	integration, ok := r.integrations[id]
-	if !ok {
-		return fmt.Errorf("integration not found: %s", id)
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
 	}
-
-	integration.Enabled = true
-	integration.UpdatedAt = time.Now()
-	return nil
-}
-
-// Disable disables an integration.
-func (r *IntegrationRegistry) Disable(id string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	integration, ok := r.integrations[id]
-	if !ok {
-		return fmt.Errorf("integration not found: %s", id)
-	}
-
-	integration.Enabled = false
-	integration.UpdatedAt = time.Now()
-	return nil
-}
-
-// NewMcpServer creates a new MCP server.
-func NewMcpServer(integration *Integration) *McpServer {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &McpServer{
-		integration: integration,
-		ctx:         ctx,
-		cancel:      cancel,
-	}
-}
-
-// Start starts the MCP server.
-func (s *McpServer) Start() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.connected {
-		return fmt.Errorf("server already connected")
-	}
-
-	if s.integration.Transport.Type == McpTransportTypeStdio {
-		return s.startStdio()
-	}
-
-	return fmt.Errorf("unsupported transport type: %s", s.integration.Transport.Type)
-}
-
-// startStdio starts a stdio-based MCP server.
-func (s *McpServer) startStdio() error {
-	cmd := exec.CommandContext(s.ctx, s.integration.Transport.Command, s.integration.Transport.Args...)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to create stdin pipe: %w", err)
 	}
-	s.stdin = stdin.(*os.File)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
-	s.stdout = stdout.(*os.File)
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
-	s.stderr = stderr.(*os.File)
-
-	s.cmd = cmd
 
 	if err := cmd.Start(); err != nil {
-		return err
+		return nil, fmt.Errorf("failed to start command: %w", err)
 	}
 
-	s.connected = true
-	s.integration.Healthy = true
-	now := time.Now()
-	s.integration.LastHealth = &now
+	return &StdioTransport{
+		cmd:    cmd,
+		stdin:  stdin,
+		stdout: stdout,
+		stderr: stderr,
+	}, nil
+}
 
-	go s.wait()
+func (t *StdioTransport) Send(ctx context.Context, req types.JsonRpcRequest) (*types.JsonRpcResponse, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	reqBytes = append(reqBytes, '\n')
+
+	if _, err := t.stdin.Write(reqBytes); err != nil {
+		return nil, fmt.Errorf("failed to write request: %w", err)
+	}
+
+	scanner := bufio.NewScanner(t.stdout)
+
+	responseChan := make(chan *types.JsonRpcResponse, 1)
+	errChan := make(chan error, 1)
+
+	go func() {
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			if len(line) == 0 {
+				continue
+			}
+
+			var resp types.JsonRpcResponse
+			if err := json.Unmarshal(line, &resp); err != nil {
+				continue
+			}
+
+			if resp.ID != nil && *resp.ID == req.ID {
+				responseChan <- &resp
+				return
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			errChan <- fmt.Errorf("scanner error: %w", err)
+		} else {
+			errChan <- io.EOF
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case resp := <-responseChan:
+		return resp, nil
+	case err := <-errChan:
+		return nil, err
+	}
+}
+
+func (t *StdioTransport) Close() error {
+	if t.stdin != nil {
+		t.stdin.Close()
+	}
+	if t.stdout != nil {
+		t.stdout.Close()
+	}
+	if t.stderr != nil {
+		t.stderr.Close()
+	}
+	if t.cmd != nil && t.cmd.Process != nil {
+		t.cmd.Process.Kill()
+		t.cmd.Wait()
+	}
 	return nil
 }
 
-// Stop stops the MCP server.
-func (s *McpServer) Stop() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+type SseTransport struct {
+	client  *http.Client
+	baseURL string
+}
 
-	if !s.connected {
-		return nil
+func NewSseTransport(ctx context.Context, url string) (*SseTransport, error) {
+	return &SseTransport{
+		client:  &http.Client{},
+		baseURL: url,
+	}, nil
+}
+
+func (t *SseTransport) Send(ctx context.Context, req types.JsonRpcRequest) (*types.JsonRpcResponse, error) {
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	s.cancel()
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", t.baseURL, strings.NewReader(string(reqBytes)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
 
-	if s.cmd != nil && s.cmd.Process != nil {
-		s.cmd.Process.Kill()
-		s.cmd.Wait()
+	resp, err := t.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var jsonResp types.JsonRpcResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jsonResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	s.connected = false
-	s.integration.Healthy = false
+	return &jsonResp, nil
+}
+
+func (t *SseTransport) Close() error {
 	return nil
 }
 
-// wait waits for the server to exit.
-func (s *McpServer) wait() {
-	if s.cmd != nil {
-		s.cmd.Wait()
-	}
-
-	s.mu.Lock()
-	s.connected = false
-	s.integration.Healthy = false
-	s.mu.Unlock()
+type McpConnection struct {
+	config        types.McpServerConfig
+	transport     McpTransport
+	tools         []types.ToolDefinition
+	originalNames map[string]string
+	nextID        uint64
+	mu            sync.Mutex
 }
 
-// SendRequest sends a request to the MCP server.
-func (s *McpServer) SendRequest(request interface{}) (interface{}, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func Connect(ctx context.Context, config types.McpServerConfig) (*McpConnection, error) {
+	var transport McpTransport
+	var err error
 
-	if !s.connected {
-		return nil, fmt.Errorf("server not connected")
+	switch config.Transport.Type {
+	case "stdio":
+		transport, err = NewStdioTransport(ctx, config.Transport.Command, config.Transport.Args, config.Env)
+	case "sse":
+		transport, err = NewSseTransport(ctx, config.Transport.URL)
+	default:
+		return nil, fmt.Errorf("unsupported transport type: %s", config.Transport.Type)
 	}
 
-	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := s.stdin.Write(append(requestJSON, '\n')); err != nil {
+	conn := &McpConnection{
+		config:        config,
+		transport:     transport,
+		tools:         make([]types.ToolDefinition, 0),
+		originalNames: make(map[string]string),
+		nextID:        1,
+	}
+
+	timeout := time.Duration(config.TimeoutSecs) * time.Second
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+
+	initCtx, initCancel := context.WithTimeout(ctx, timeout)
+	defer initCancel()
+
+	if err := conn.initialize(initCtx); err != nil {
+		transport.Close()
+		return nil, fmt.Errorf("initialize failed: %w", err)
+	}
+
+	discoverCtx, discoverCancel := context.WithTimeout(ctx, timeout)
+	defer discoverCancel()
+
+	if err := conn.discoverTools(discoverCtx); err != nil {
+		transport.Close()
+		return nil, fmt.Errorf("discover tools failed: %w", err)
+	}
+
+	return conn, nil
+}
+
+func (c *McpConnection) nextRequestID() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	id := c.nextID
+	c.nextID++
+	return id
+}
+
+func (c *McpConnection) initialize(ctx context.Context) error {
+	req := types.JsonRpcRequest{
+		Jsonrpc: "2.0",
+		ID:      c.nextRequestID(),
+		Method:  "initialize",
+		Params: map[string]interface{}{
+			"protocolVersion": McpProtocolVersion,
+			"capabilities": map[string]interface{}{
+				"tools": map[string]interface{}{},
+			},
+			"clientInfo": map[string]interface{}{
+				"name":    "fangclaw-go",
+				"version": "0.1.0",
+			},
+		},
+	}
+
+	resp, err := c.transport.Send(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if resp.Error != nil {
+		return resp.Error
+	}
+
+	return nil
+}
+
+func (c *McpConnection) discoverTools(ctx context.Context) error {
+	req := types.JsonRpcRequest{
+		Jsonrpc: "2.0",
+		ID:      c.nextRequestID(),
+		Method:  "tools/list",
+		Params:  map[string]interface{}{},
+	}
+
+	resp, err := c.transport.Send(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if resp.Error != nil {
+		return resp.Error
+	}
+
+	tools, ok := resp.Result["tools"].([]interface{})
+	if !ok {
+		return fmt.Errorf("invalid tools response")
+	}
+
+	c.tools = make([]types.ToolDefinition, 0, len(tools))
+	c.originalNames = make(map[string]string)
+
+	for _, toolInterface := range tools {
+		toolMap, ok := toolInterface.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		originalName, _ := toolMap["name"].(string)
+		description, _ := toolMap["description"].(string)
+		inputSchema, _ := toolMap["inputSchema"].(map[string]interface{})
+
+		if originalName == "" {
+			continue
+		}
+
+		namespacedName := formatMcpToolName(c.config.Name, originalName)
+		c.originalNames[namespacedName] = originalName
+
+		tool := types.ToolDefinition{
+			Name:        namespacedName,
+			Description: description,
+			Parameters:  inputSchema,
+		}
+
+		c.tools = append(c.tools, tool)
+	}
+
+	return nil
+}
+
+func (c *McpConnection) CallTool(ctx context.Context, toolName string, arguments map[string]interface{}) (*types.McpToolCallResult, error) {
+	originalName, ok := c.originalNames[toolName]
+	if !ok {
+		return nil, fmt.Errorf("unknown MCP tool: %s", toolName)
+	}
+
+	req := types.JsonRpcRequest{
+		Jsonrpc: "2.0",
+		ID:      c.nextRequestID(),
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      originalName,
+			"arguments": arguments,
+		},
+	}
+
+	resp, err := c.transport.Send(ctx, req)
+	if err != nil {
 		return nil, err
 	}
 
-	return nil, fmt.Errorf("response handling not implemented")
-}
-
-// IsConnected returns whether the server is connected.
-func (s *McpServer) IsConnected() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.connected
-}
-
-// LoadBundledTemplates loads the bundled integration templates.
-func LoadBundledTemplates(registry *IntegrationRegistry) {
-	templates := []*IntegrationTemplate{
-		{
-			ID:          "github",
-			Name:        "GitHub",
-			Description: "GitHub integration for repository management, pull requests, and issues",
-			Category:    IntegrationCategoryDevTools,
-			Icon:        "🐙",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-			EnvVars: []RequiredEnvVar{
-				{
-					Name:        "GITHUB_PERSONAL_ACCESS_TOKEN",
-					Label:       "Personal Access Token",
-					Description: "GitHub personal access token with repo scope",
-					IsSecret:    true,
-				},
-			},
-		},
-		{
-			ID:          "gitlab",
-			Name:        "GitLab",
-			Description: "GitLab integration for Git repositories, CI/CD, and project management",
-			Category:    IntegrationCategoryDevTools,
-			Icon:        "🔬",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "bitbucket",
-			Name:        "Bitbucket",
-			Description: "Bitbucket integration for Git and Mercurial repositories",
-			Category:    IntegrationCategoryDevTools,
-			Icon:        "🪣",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "jira",
-			Name:        "Jira",
-			Description: "Jira integration for issue tracking and project management",
-			Category:    IntegrationCategoryDevTools,
-			Icon:        "📋",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "linear",
-			Name:        "Linear",
-			Description: "Linear integration for modern project management",
-			Category:    IntegrationCategoryDevTools,
-			Icon:        "⚡",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "sentry",
-			Name:        "Sentry",
-			Description: "Sentry integration for error tracking and performance monitoring",
-			Category:    IntegrationCategoryDevTools,
-			Icon:        "🔍",
-			HasOAuth:    false,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-			EnvVars: []RequiredEnvVar{
-				{
-					Name:        "SENTRY_AUTH_TOKEN",
-					Label:       "Auth Token",
-					Description: "Sentry authentication token",
-					IsSecret:    true,
-				},
-			},
-		},
-		{
-			ID:          "slack",
-			Name:        "Slack",
-			Description: "Slack integration for messaging and team communication",
-			Category:    IntegrationCategoryCommunication,
-			Icon:        "💬",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-			EnvVars: []RequiredEnvVar{
-				{
-					Name:        "SLACK_BOT_TOKEN",
-					Label:       "Bot Token",
-					Description: "Slack bot token",
-					IsSecret:    true,
-				},
-			},
-		},
-		{
-			ID:          "discord-mcp",
-			Name:        "Discord",
-			Description: "Discord integration for chat and community management",
-			Category:    IntegrationCategoryCommunication,
-			Icon:        "🎮",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "teams-mcp",
-			Name:        "Microsoft Teams",
-			Description: "Microsoft Teams integration for enterprise collaboration",
-			Category:    IntegrationCategoryCommunication,
-			Icon:        "👥",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "google-drive",
-			Name:        "Google Drive",
-			Description: "Google Drive integration for cloud file storage and management",
-			Category:    IntegrationCategoryProductivity,
-			Icon:        "📁",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "google-calendar",
-			Name:        "Google Calendar",
-			Description: "Google Calendar integration for scheduling and event management",
-			Category:    IntegrationCategoryProductivity,
-			Icon:        "📅",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "gmail",
-			Name:        "Gmail",
-			Description: "Gmail integration for email management and automation",
-			Category:    IntegrationCategoryProductivity,
-			Icon:        "📧",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "notion",
-			Name:        "Notion",
-			Description: "Notion integration for knowledge management and documentation",
-			Category:    IntegrationCategoryProductivity,
-			Icon:        "📝",
-			HasOAuth:    false,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-			EnvVars: []RequiredEnvVar{
-				{
-					Name:        "NOTION_API_KEY",
-					Label:       "API Key",
-					Description: "Notion API key",
-					IsSecret:    true,
-				},
-			},
-		},
-		{
-			ID:          "todoist",
-			Name:        "Todoist",
-			Description: "Todoist integration for task management and productivity",
-			Category:    IntegrationCategoryProductivity,
-			Icon:        "✅",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "dropbox",
-			Name:        "Dropbox",
-			Description: "Dropbox integration for cloud file storage and sharing",
-			Category:    IntegrationCategoryProductivity,
-			Icon:        "📦",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "postgresql",
-			Name:        "PostgreSQL",
-			Description: "PostgreSQL integration for relational database access",
-			Category:    IntegrationCategoryData,
-			Icon:        "🐘",
-			HasOAuth:    false,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-			EnvVars: []RequiredEnvVar{
-				{
-					Name:        "POSTGRESQL_CONNECTION_STRING",
-					Label:       "Connection String",
-					Description: "PostgreSQL connection string",
-					IsSecret:    true,
-				},
-			},
-		},
-		{
-			ID:          "sqlite-mcp",
-			Name:        "SQLite",
-			Description: "SQLite integration for local file-based database access",
-			Category:    IntegrationCategoryData,
-			Icon:        "🗃️",
-			HasOAuth:    false,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "mongodb",
-			Name:        "MongoDB",
-			Description: "MongoDB integration for NoSQL document database access",
-			Category:    IntegrationCategoryData,
-			Icon:        "🍃",
-			HasOAuth:    false,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-			EnvVars: []RequiredEnvVar{
-				{
-					Name:        "MONGODB_URI",
-					Label:       "Connection URI",
-					Description: "MongoDB connection URI",
-					IsSecret:    true,
-				},
-			},
-		},
-		{
-			ID:          "redis",
-			Name:        "Redis",
-			Description: "Redis integration for caching and key-value storage",
-			Category:    IntegrationCategoryData,
-			Icon:        "🔴",
-			HasOAuth:    false,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-			EnvVars: []RequiredEnvVar{
-				{
-					Name:        "REDIS_URL",
-					Label:       "Redis URL",
-					Description: "Redis connection URL",
-					IsSecret:    false,
-				},
-			},
-		},
-		{
-			ID:          "elasticsearch",
-			Name:        "Elasticsearch",
-			Description: "Elasticsearch integration for search and analytics",
-			Category:    IntegrationCategoryData,
-			Icon:        "🔎",
-			HasOAuth:    false,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "aws",
-			Name:        "AWS",
-			Description: "Amazon Web Services integration for cloud infrastructure",
-			Category:    IntegrationCategoryCloud,
-			Icon:        "☁️",
-			HasOAuth:    false,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-			EnvVars: []RequiredEnvVar{
-				{
-					Name:        "AWS_ACCESS_KEY_ID",
-					Label:       "Access Key ID",
-					Description: "AWS access key ID",
-					IsSecret:    false,
-				},
-				{
-					Name:        "AWS_SECRET_ACCESS_KEY",
-					Label:       "Secret Access Key",
-					Description: "AWS secret access key",
-					IsSecret:    true,
-				},
-			},
-		},
-		{
-			ID:          "azure-mcp",
-			Name:        "Microsoft Azure",
-			Description: "Microsoft Azure integration for cloud services",
-			Category:    IntegrationCategoryCloud,
-			Icon:        "🔷",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "gcp-mcp",
-			Name:        "Google Cloud Platform",
-			Description: "Google Cloud Platform integration for cloud services",
-			Category:    IntegrationCategoryCloud,
-			Icon:        "🔶",
-			HasOAuth:    true,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-		},
-		{
-			ID:          "brave-search",
-			Name:        "Brave Search",
-			Description: "Brave Search integration for private web search",
-			Category:    IntegrationCategoryAI,
-			Icon:        "🦊",
-			HasOAuth:    false,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-			EnvVars: []RequiredEnvVar{
-				{
-					Name:        "BRAVE_API_KEY",
-					Label:       "API Key",
-					Description: "Brave Search API key",
-					IsSecret:    true,
-				},
-			},
-		},
-		{
-			ID:          "exa-search",
-			Name:        "Exa Search",
-			Description: "Exa (formerly Metaphor) integration for AI-powered web search",
-			Category:    IntegrationCategoryAI,
-			Icon:        "🔍",
-			HasOAuth:    false,
-			Transport: McpTransport{
-				Type: McpTransportTypeStdio,
-			},
-			EnvVars: []RequiredEnvVar{
-				{
-					Name:        "EXA_API_KEY",
-					Label:       "API Key",
-					Description: "Exa Search API key",
-					IsSecret:    true,
-				},
-			},
-		},
+	if resp.Error != nil {
+		return nil, resp.Error
 	}
 
-	for _, t := range templates {
-		registry.RegisterTemplate(t)
+	resultBytes, err := json.Marshal(resp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
 	}
+
+	var result types.McpToolCallResult
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal result: %w", err)
+	}
+
+	return &result, nil
+}
+
+func (c *McpConnection) Tools() []types.ToolDefinition {
+	return c.tools
+}
+
+func (c *McpConnection) Close() error {
+	return c.transport.Close()
+}
+
+func formatMcpToolName(serverName, toolName string) string {
+	normalizedTool := strings.Map(func(r rune) rune {
+		if r == '-' || r == '.' {
+			return '_'
+		}
+		return r
+	}, toolName)
+
+	return fmt.Sprintf("mcp_%s_%s", serverName, normalizedTool)
+}
+
+func IsMcpTool(toolName string) bool {
+	return strings.HasPrefix(toolName, "mcp_")
+}
+
+func ExtractMcpServer(toolName string) (string, bool) {
+	if !IsMcpTool(toolName) {
+		return "", false
+	}
+	parts := strings.SplitN(toolName, "_", 3)
+	if len(parts) < 3 {
+		return "", false
+	}
+	return parts[1], true
 }

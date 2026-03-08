@@ -166,7 +166,7 @@ func runChatLocal(agentID string) error {
 	modelCatalog := model_catalog.NewModelCatalog()
 
 	// 3. 创建 Agent Runtime
-	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog)
+	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, nil)
 
 	// 4. 获取 LLM driver
 	driver, err := getLLMDriver()
@@ -192,12 +192,15 @@ func runChatLocal(agentID string) error {
 	var toolNames []string
 	var modelName string
 	var skillPromptContext string
+	currentDate := time.Now().Format("Monday, January 2, 2006")
+
 	if hand, _ := hands.GetBundledHand(agentID); hand != nil {
 		systemPrompt = getHandSystemPrompt(agentID)
+		systemPrompt = fmt.Sprintf("%s\n\nCurrent date: %s", systemPrompt, currentDate)
 		skillPromptContext = hand.SkillContent
 	} else {
 		// 默认的系统提示词
-		systemPrompt = "You are a helpful assistant."
+		systemPrompt = fmt.Sprintf("You are a helpful assistant.\n\nCurrent date: %s", currentDate)
 	}
 
 	// 获取实际的 model 名称
@@ -278,7 +281,8 @@ func runChatLocal(agentID string) error {
 		if err != nil {
 			fmt.Printf("Error: %v\n\n", err)
 		} else {
-			fmt.Printf("[%s] %s\n\n", agentID, result.Response)
+			// 非流式调用需要显示完整响应
+			fmt.Printf("\n[%s] %s\n\n", agentID, result.Response)
 			fmt.Printf("(Tokens used: %d input, %d output, %d total)\n",
 				result.TotalUsage.PromptTokens,
 				result.TotalUsage.CompletionTokens,

@@ -17,6 +17,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
+	"github.com/pkoukk/tiktoken-go"
 )
 
 const (
@@ -110,10 +111,17 @@ type Runtime struct {
 	skills          *skills.Loader
 	embeddingDriver *embedding.EmbeddingDriver
 	modelCatalog    *model_catalog.ModelCatalog
+	getMcpTools     func() []types.ToolDefinition
+	callMcpTool     func(ctx context.Context, toolName string, args map[string]interface{}) (string, error)
 }
 
-func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader, embeddingDriver *embedding.EmbeddingDriver, modelCatalog *model_catalog.ModelCatalog) *Runtime {
-	return &Runtime{
+type McpCallbacks struct {
+	GetMcpTools func() []types.ToolDefinition
+	CallMcpTool func(ctx context.Context, toolName string, args map[string]interface{}) (string, error)
+}
+
+func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader, embeddingDriver *embedding.EmbeddingDriver, modelCatalog *model_catalog.ModelCatalog, mcpCallbacks *McpCallbacks) *Runtime {
+	r := &Runtime{
 		drivers:         make(map[string]llm.Driver),
 		tools:           NewToolRegistry(),
 		agents:          make(map[string]*AgentContext),
@@ -125,6 +133,11 @@ func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, k
 		embeddingDriver: embeddingDriver,
 		modelCatalog:    modelCatalog,
 	}
+	if mcpCallbacks != nil {
+		r.getMcpTools = mcpCallbacks.GetMcpTools
+		r.callMcpTool = mcpCallbacks.CallMcpTool
+	}
+	return r
 }
 
 func (r *Runtime) RegisterDriver(provider string, driver llm.Driver) {
@@ -299,11 +312,15 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			TopP:        agentCtx.Config.TopP,
 		}
 
-		if onPhase != nil {
-			onPhase(PhaseStreaming)
-		}
+		// 使用非流式调用（获得精确的 token 统计）
+		resp, err := r.callLLMWithRetry(ctx, driver, req)
 
-		resp, err := r.callLLMStreamWithRetry(ctx, driver, req, streamCb)
+		// 如果想切换回流式调用，请注释上面一行，取消注释下面几行：
+		// if onPhase != nil {
+		// 	onPhase(PhaseStreaming)
+		// }
+		// resp, err := r.callLLMStreamWithRetry(ctx, driver, req, streamCb)
+
 		if err != nil {
 			return nil, fmt.Errorf("LLM call failed after retries: %w", err)
 		}
@@ -517,11 +534,29 @@ func (r *Runtime) callLLMStreamWithRetry(ctx context.Context, driver llm.Driver,
 			return r.callLLMWithRetry(ctx, driver, req)
 		}
 
-		fmt.Println("Streaming call - ChatStream")
+		// fmt.Println("Streaming call - ChatStream")
 		eventChan, err := driver.ChatStream(ctx, req)
 		if err == nil {
 			var fullResponse strings.Builder
 
+			tke, err := tiktoken.EncodingForModel("gpt-4o")
+			if err != nil {
+				log.Printf("Warning: failed to get tiktoken encoding, falling back to estimate: %v", err)
+			}
+
+			var inputTokenEstimate int
+			if tke != nil {
+				for _, msg := range req.Messages {
+					tokens := tke.Encode(msg.Content, nil, nil)
+					inputTokenEstimate += len(tokens)
+				}
+			} else {
+				for _, msg := range req.Messages {
+					inputTokenEstimate += len(msg.Content) / 4
+				}
+			}
+
+			var outputTokenEstimate int
 			for event := range eventChan {
 				if streamCb != nil {
 					streamCb(event)
@@ -531,13 +566,23 @@ func (r *Runtime) callLLMStreamWithRetry(ctx context.Context, driver llm.Driver,
 				case llm.StreamEventTextDelta:
 					if event.Text != "" {
 						fullResponse.WriteString(event.Text)
+						if tke != nil {
+							tokens := tke.Encode(event.Text, nil, nil)
+							outputTokenEstimate += len(tokens)
+						} else {
+							outputTokenEstimate += len(event.Text) / 4
+						}
 					}
 				}
 			}
 
 			resp := &llm.Response{
 				Content: fullResponse.String(),
-				Usage:   llm.Usage{},
+				Usage: llm.Usage{
+					InputTokens:  inputTokenEstimate,
+					OutputTokens: outputTokenEstimate,
+					TotalTokens:  inputTokenEstimate + outputTokenEstimate,
+				},
 			}
 			return resp, nil
 		}
@@ -682,6 +727,18 @@ func (r *Runtime) getAvailableTools(toolNames []string, skillIDs []string) []too
 		}
 	}
 
+	// Add MCP tools if callback is available
+	if r.getMcpTools != nil && r.callMcpTool != nil {
+		mcpTools := r.getMcpTools()
+		for _, toolDef := range mcpTools {
+			mcpTool := &mcpToolWrapper{
+				callMcpTool: r.callMcpTool,
+				toolDef:     toolDef,
+			}
+			available = append(available, mcpTool)
+		}
+	}
+
 	return available
 }
 
@@ -690,6 +747,12 @@ type skillToolWrapper struct {
 	skill   *types.Skill
 	toolDef types.SkillToolDefinition
 	loader  *skills.Loader
+}
+
+// mcpToolWrapper wraps an MCP tool to implement tools.Tool interface.
+type mcpToolWrapper struct {
+	callMcpTool func(ctx context.Context, toolName string, args map[string]interface{}) (string, error)
+	toolDef     types.ToolDefinition
 }
 
 func (t *skillToolWrapper) Name() string {
@@ -738,8 +801,31 @@ func (t *skillToolWrapper) Schema() map[string]interface{} {
 	}
 }
 
+func (t *mcpToolWrapper) Name() string {
+	return t.toolDef.Name
+}
+
+func (t *mcpToolWrapper) Description() string {
+	return t.toolDef.Description
+}
+
+func (t *mcpToolWrapper) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
+	return t.callMcpTool(ctx, t.toolDef.Name, args)
+}
+
+func (t *mcpToolWrapper) Schema() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "function",
+		"function": map[string]interface{}{
+			"name":        t.toolDef.Name,
+			"description": t.toolDef.Description,
+			"parameters":  t.toolDef.Parameters,
+		},
+	}
+}
+
 // executeTool executes a tool.
-// It first tries built-in tools, then falls back to skill tools.
+// It first tries built-in tools, then skill tools, then MCP tools.
 func (r *Runtime) executeTool(ctx context.Context, name string, args map[string]interface{}) (string, error) {
 	// First, try to find a built-in tool
 	if tool, ok := r.tools.Get(name); ok {
@@ -777,6 +863,17 @@ func (r *Runtime) executeTool(ctx context.Context, name string, args map[string]
 				return fmt.Sprintf("%v", result.Output), nil
 			}
 			return string(outputJSON), nil
+		}
+	}
+
+	// If no skill tool found, try MCP tool
+	if r.callMcpTool != nil {
+		// Check if this looks like an MCP tool name (starts with mcp_)
+		if strings.HasPrefix(name, "mcp_") {
+			// Create a timeout context
+			toolCtx, cancel := context.WithTimeout(ctx, TOOL_TIMEOUT_SECS*time.Second)
+			defer cancel()
+			return r.callMcpTool(toolCtx, name, args)
 		}
 	}
 

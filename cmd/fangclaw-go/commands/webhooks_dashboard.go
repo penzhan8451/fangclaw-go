@@ -1,8 +1,15 @@
 package commands
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 
+	"github.com/penzhan8451/fangclaw-go/internal/kernel"
+	"github.com/penzhan8451/fangclaw-go/internal/mcp"
+	"github.com/penzhan8451/fangclaw-go/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -101,13 +108,119 @@ func runTui(cmd *cobra.Command, args []string) error {
 func mcpCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "mcp",
-		Short: "Start MCP (Model Context Protocol) server over stdio",
+		Short: "Start the fangclaw-go MCP server",
+		Long:  "Start the MCP (Model Context Protocol) server that exposes fangclaw-go agents as tools.",
 		RunE:  runMcp,
 	}
 }
 
 func runMcp(cmd *cobra.Command, args []string) error {
-	fmt.Println("Starting MCP server...")
-	fmt.Println("(MCP server not implemented in v1)")
+	if isDaemonRunning() {
+		return runMcpWithDaemon()
+	}
+	return runMcpInProcess()
+}
+
+func runMcpWithDaemon() error {
+	backend := NewDaemonMcpBackend("http://127.0.0.1:4200")
+	server := mcp.NewMcpServer(backend)
+	mcp.RunStdioServer(server)
 	return nil
+}
+
+func runMcpInProcess() error {
+	cfg := types.DefaultConfig()
+
+	k, err := kernel.NewKernel(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create kernel: %w", err)
+	}
+
+	if err := k.Start(context.Background()); err != nil {
+		return fmt.Errorf("failed to start kernel: %w", err)
+	}
+	defer k.Stop(context.Background())
+
+	backend := mcp.NewKernelMcpBackend(k)
+	server := mcp.NewMcpServer(backend)
+	mcp.RunStdioServer(server)
+
+	return nil
+}
+
+type DaemonMcpBackend struct {
+	baseURL string
+	client  *http.Client
+}
+
+func NewDaemonMcpBackend(baseURL string) *DaemonMcpBackend {
+	return &DaemonMcpBackend{
+		baseURL: baseURL,
+		client:  &http.Client{},
+	}
+}
+
+func (b *DaemonMcpBackend) ListAgents() ([]*mcp.AgentInfo, error) {
+	resp, err := b.client.Get(fmt.Sprintf("%s/api/agents", b.baseURL))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list agents: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to list agents: status %d", resp.StatusCode)
+	}
+
+	var agents []struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description,omitempty"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&agents); err != nil {
+		return nil, fmt.Errorf("failed to parse agents: %w", err)
+	}
+
+	result := make([]*mcp.AgentInfo, 0, len(agents))
+	for _, a := range agents {
+		result = append(result, &mcp.AgentInfo{
+			ID:          a.ID,
+			Name:        a.Name,
+			Description: a.Description,
+		})
+	}
+	return result, nil
+}
+
+func (b *DaemonMcpBackend) SendMessage(agentID, message string) (string, error) {
+	reqBody := map[string]string{
+		"message": message,
+	}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	resp, err := b.client.Post(
+		fmt.Sprintf("%s/api/agents/%s/message", b.baseURL, agentID),
+		"application/json",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to send message: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Response string `json:"response"`
+		Error    string `json:"error,omitempty"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result.Error != "" {
+		return "", fmt.Errorf("%s", result.Error)
+	}
+
+	return result.Response, nil
 }

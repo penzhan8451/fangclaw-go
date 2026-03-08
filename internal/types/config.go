@@ -7,15 +7,16 @@ import (
 
 // KernelConfig represents the kernel configuration.
 type KernelConfig struct {
-	DataDir         string           `toml:"data_dir" json:"data_dir"`
-	LogLevel        string           `toml:"log_level" json:"log_level"`
-	API             APIConfig        `toml:"api" json:"api"`
-	Models          ModelsConfig     `toml:"models" json:"models"`
-	Memory          MemoryConfig     `toml:"memory" json:"memory"`
-	Security        SecurityConfig   `toml:"security" json:"security"`
-	Skills          SkillsConfig     `toml:"skills" json:"skills"`
-	Extensions      ExtensionsConfig `toml:"extensions" json:"extensions"`
-	Include         []string         `toml:"include,omitempty" json:"include,omitempty"`
+	DataDir    string            `toml:"data_dir" json:"data_dir"`
+	LogLevel   string            `toml:"log_level" json:"log_level"`
+	API        APIConfig         `toml:"api" json:"api"`
+	Models     ModelsConfig      `toml:"models" json:"models"`
+	Memory     MemoryConfig      `toml:"memory" json:"memory"`
+	Security   SecurityConfig    `toml:"security" json:"security"`
+	Skills     SkillsConfig      `toml:"skills" json:"skills"`
+	Extensions ExtensionsConfig  `toml:"extensions" json:"extensions"`
+	McpServers []McpServerConfig `toml:"mcp_servers,omitempty" json:"mcp_servers,omitempty"`
+	Include    []string          `toml:"include,omitempty" json:"include,omitempty"`
 }
 
 // APIConfig represents API server configuration.
@@ -31,19 +32,19 @@ type APIConfig struct {
 
 // ModelsConfig represents LLM model configuration.
 type ModelsConfig struct {
-	DefaultProvider string                `toml:"default_provider" json:"default_provider"`
-	DefaultModel    string                `toml:"default_model" json:"default_model"`
-	Providers       map[string]Provider   `toml:"providers" json:"providers"`
-	Models          map[string]Model      `toml:"models" json:"models"`
-	Routing         ModelRoutingConfig    `toml:"routing" json:"routing"`
+	DefaultProvider string              `toml:"default_provider" json:"default_provider"`
+	DefaultModel    string              `toml:"default_model" json:"default_model"`
+	Providers       map[string]Provider `toml:"providers" json:"providers"`
+	Models          map[string]Model    `toml:"models" json:"models"`
+	Routing         ModelRoutingConfig  `toml:"routing" json:"routing"`
 }
 
 // ModelRoutingConfig represents model routing configuration.
 type ModelRoutingConfig struct {
-	SimpleModel     string `toml:"simple_model" json:"simple_model"`
-	MediumModel     string `toml:"medium_model" json:"medium_model"`
-	ComplexModel    string `toml:"complex_model" json:"complex_model"`
-	SimpleThreshold uint32 `toml:"simple_threshold" json:"simple_threshold"`
+	SimpleModel      string `toml:"simple_model" json:"simple_model"`
+	MediumModel      string `toml:"medium_model" json:"medium_model"`
+	ComplexModel     string `toml:"complex_model" json:"complex_model"`
+	SimpleThreshold  uint32 `toml:"simple_threshold" json:"simple_threshold"`
 	ComplexThreshold uint32 `toml:"complex_threshold" json:"complex_threshold"`
 }
 
@@ -66,10 +67,10 @@ type SecurityConfig struct {
 
 // SkillsConfig represents skills configuration.
 type SkillsConfig struct {
-	Path              string   `toml:"path" json:"path"`
-	EnableRemoteSkills bool    `toml:"enable_remote_skills" json:"enable_remote_skills"`
-	ClawHubURL        string   `toml:"clawhub_url" json:"clawhub_url"`
-	AllowedRuntimes   []string `toml:"allowed_runtimes" json:"allowed_runtimes"`
+	Path               string   `toml:"path" json:"path"`
+	EnableRemoteSkills bool     `toml:"enable_remote_skills" json:"enable_remote_skills"`
+	ClawHubURL         string   `toml:"clawhub_url" json:"clawhub_url"`
+	AllowedRuntimes    []string `toml:"allowed_runtimes" json:"allowed_runtimes"`
 }
 
 // ExtensionsConfig represents extensions configuration.
@@ -81,11 +82,11 @@ type ExtensionsConfig struct {
 
 // AutonomousConfig represents autonomous agent configuration.
 type AutonomousConfig struct {
-	QuietHours          *string       `toml:"quiet_hours,omitempty" json:"quiet_hours,omitempty"`
-	MaxIterations       uint32        `toml:"max_iterations" json:"max_iterations"`
-	MaxRestarts         uint32        `toml:"max_restarts" json:"max_restarts"`
-	HeartbeatInterval   time.Duration `toml:"heartbeat_interval" json:"heartbeat_interval"`
-	HeartbeatChannel    *string       `toml:"heartbeat_channel,omitempty" json:"heartbeat_channel,omitempty"`
+	QuietHours        *string       `toml:"quiet_hours,omitempty" json:"quiet_hours,omitempty"`
+	MaxIterations     uint32        `toml:"max_iterations" json:"max_iterations"`
+	MaxRestarts       uint32        `toml:"max_restarts" json:"max_restarts"`
+	HeartbeatInterval time.Duration `toml:"heartbeat_interval" json:"heartbeat_interval"`
+	HeartbeatChannel  *string       `toml:"heartbeat_channel,omitempty" json:"heartbeat_channel,omitempty"`
 }
 
 // DefaultConfig returns the default kernel configuration.
@@ -104,10 +105,10 @@ func DefaultConfig() KernelConfig {
 			DefaultProvider: "openai",
 			DefaultModel:    "gpt-4o",
 			Routing: ModelRoutingConfig{
-				SimpleModel:     "gpt-4o-mini",
-				MediumModel:     "gpt-4o",
-				ComplexModel:    "gpt-4o",
-				SimpleThreshold: 100,
+				SimpleModel:      "gpt-4o-mini",
+				MediumModel:      "gpt-4o",
+				ComplexModel:     "gpt-4o",
+				SimpleThreshold:  100,
 				ComplexThreshold: 500,
 			},
 		},
@@ -123,14 +124,15 @@ func DefaultConfig() KernelConfig {
 			AuditLogPath:    "~/.fangclaw/audit.log",
 		},
 		Skills: SkillsConfig{
-			Path:              "~/.fangclaw/skills",
+			Path:               "~/.fangclaw/skills",
 			EnableRemoteSkills: true,
-			ClawHubURL:        "https://clawhub.io",
-			AllowedRuntimes:   []string{"python", "node", "wasm", "builtin", "prompt"},
+			ClawHubURL:         "https://clawhub.io",
+			AllowedRuntimes:    []string{"python", "node", "wasm", "builtin", "prompt"},
 		},
 		Extensions: ExtensionsConfig{
 			Path:             "~/.fangclaw/extensions",
 			EnableExtensions: true,
 		},
+		McpServers: []McpServerConfig{},
 	}
 }

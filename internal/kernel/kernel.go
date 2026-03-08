@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/embedding"
 	"github.com/penzhan8451/fangclaw-go/internal/eventbus"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
+	"github.com/penzhan8451/fangclaw-go/internal/mcp"
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
 	"github.com/penzhan8451/fangclaw-go/internal/pairing"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
@@ -51,6 +53,8 @@ type Kernel struct {
 	pairingManager  *pairing.PairingManager
 	workflowEngine  *WorkflowEngine
 	agentRuntime    *agent.Runtime
+	mcpConnections  sync.Map
+	mcpTools        sync.Map
 	mu              sync.RWMutex
 	started         bool
 }
@@ -133,10 +137,6 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 
 	modelCatalog := model_catalog.NewModelCatalog()
 	workflowEngine := NewWorkflowEngine()
-	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog)
-
-	kernelConfig.DataDir = dataDir
-
 	k := &Kernel{
 		config:          kernelConfig,
 		eventBus:        eventbus.NewEventBus(),
@@ -158,8 +158,18 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		deliveryReg:     deliveryReg,
 		pairingManager:  pairingManager,
 		workflowEngine:  workflowEngine,
-		agentRuntime:    agentRuntime,
 	}
+
+	mcpCallbacks := &agent.McpCallbacks{
+		GetMcpTools: k.GetMcpTools,
+		CallMcpTool: k.CallMcpTool,
+	}
+
+	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, mcpCallbacks)
+
+	kernelConfig.DataDir = dataDir
+	k.config = kernelConfig
+	k.agentRuntime = agentRuntime
 
 	// 注册所有内置工具到 AgentRuntime
 	tools.RegisterAllTools(agentRuntime)
@@ -257,6 +267,9 @@ func (k *Kernel) Start(ctx context.Context) error {
 	event := eventbus.NewEvent(eventbus.EventTypeSystem, "kernel", eventbus.EventTargetSystem)
 	k.eventBus.Publish(event)
 
+	// Connect to MCP servers in background
+	go k.ConnectMcpServers(context.Background())
+
 	return nil
 }
 
@@ -271,6 +284,10 @@ func (k *Kernel) Stop(ctx context.Context) error {
 	k.cronScheduler.Stop()
 	k.scheduler.Shutdown()
 	_ = k.registry.DisconnectAll()
+
+	// Close MCP connections
+	k.CloseMcpConnections()
+
 	k.semantic.Close()
 	k.sessions.Close()
 	k.db.Close()
@@ -592,6 +609,20 @@ func (k *Kernel) ListAgents(ctx context.Context) ([]channels.AgentInfo, error) {
 	return infos, nil
 }
 
+// ListAgentEntries lists all agent entries with full information.
+func (k *Kernel) ListAgentEntries() []*mcp.AgentEntry {
+	entries := k.agentRegistry.List()
+	result := make([]*mcp.AgentEntry, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, &mcp.AgentEntry{
+			ID:       entry.ID.String(),
+			Name:     entry.Name,
+			Manifest: entry.Manifest,
+		})
+	}
+	return result
+}
+
 // SpawnAgent spawns a new agent from a manifest.
 func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error) {
 	var agentID types.AgentID
@@ -711,4 +742,110 @@ func (k *Kernel) DeleteAgent(agentIDStr string) error {
 // AgentRuntime returns the agent runtime.
 func (k *Kernel) AgentRuntime() *agent.Runtime {
 	return k.agentRuntime
+}
+
+// ConnectMcpServers connects to all configured MCP servers.
+func (k *Kernel) ConnectMcpServers(ctx context.Context) {
+	for _, serverConfig := range k.config.McpServers {
+		conn, err := mcp.Connect(ctx, serverConfig)
+		if err != nil {
+			fmt.Printf("Warning: Failed to connect to MCP server %s: %v\n", serverConfig.Name, err)
+			continue
+		}
+
+		k.mcpConnections.Store(serverConfig.Name, conn)
+
+		tools := conn.Tools()
+		k.mcpTools.Store(serverConfig.Name, tools)
+
+		fmt.Printf("Connected to MCP server %s, found %d tools\n", serverConfig.Name, len(tools))
+	}
+}
+
+// GetMcpTools returns all MCP tools from connected servers.
+func (k *Kernel) GetMcpTools() []types.ToolDefinition {
+	var allTools []types.ToolDefinition
+
+	k.mcpTools.Range(func(_, value interface{}) bool {
+		if tools, ok := value.([]types.ToolDefinition); ok {
+			allTools = append(allTools, tools...)
+		}
+		return true
+	})
+
+	return allTools
+}
+
+// GetMcpToolsForServer returns MCP tools from a specific server.
+func (k *Kernel) GetMcpToolsForServer(serverName string) []types.ToolDefinition {
+	if value, ok := k.mcpTools.Load(serverName); ok {
+		if tools, ok := value.([]types.ToolDefinition); ok {
+			return tools
+		}
+	}
+	return nil
+}
+
+// CallMcpTool calls an MCP tool.
+func (k *Kernel) CallMcpTool(ctx context.Context, toolName string, arguments map[string]interface{}) (string, error) {
+	serverName, ok := mcp.ExtractMcpServer(toolName)
+	if !ok {
+		return "", fmt.Errorf("not an MCP tool: %s", toolName)
+	}
+
+	value, ok := k.mcpConnections.Load(serverName)
+	if !ok {
+		return "", fmt.Errorf("MCP server not connected: %s", serverName)
+	}
+
+	conn, ok := value.(*mcp.McpConnection)
+	if !ok {
+		return "", fmt.Errorf("invalid MCP connection")
+	}
+
+	result, err := conn.CallTool(ctx, toolName, arguments)
+	if err != nil {
+		return "", err
+	}
+
+	var output strings.Builder
+	for _, content := range result.Content {
+		if content.Type == "text" {
+			output.WriteString(content.Text)
+			output.WriteString("\n")
+		}
+	}
+
+	return output.String(), nil
+}
+
+// CloseMcpConnections closes all MCP connections.
+func (k *Kernel) CloseMcpConnections() {
+	k.mcpConnections.Range(func(key, value interface{}) bool {
+		if conn, ok := value.(*mcp.McpConnection); ok {
+			conn.Close()
+		}
+		k.mcpConnections.Delete(key)
+		return true
+	})
+}
+
+type McpServerInfo struct {
+	Name      string `json:"name"`
+	Connected bool   `json:"connected"`
+}
+
+// GetMcpServers returns all MCP servers.
+func (k *Kernel) GetMcpServers() []McpServerInfo {
+	var servers []McpServerInfo
+	k.mcpConnections.Range(func(key, value interface{}) bool {
+		if name, ok := key.(string); ok {
+			servers = append(servers, McpServerInfo{
+				Name:      name,
+				Connected: true,
+			})
+		}
+		return true
+	})
+	return servers
 }

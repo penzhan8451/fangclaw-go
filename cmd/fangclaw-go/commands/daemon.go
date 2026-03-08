@@ -98,18 +98,37 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to boot kernel: %w", err)
 	}
 
-	// Auto-register all configured channels
+	// Auto-register all configured channels (from env vars)
 	if err := channels.AutoRegisterAll(k.Registry()); err != nil {
 		fmt.Printf("Warning: Failed to auto-register some channels: %v\n", err)
+	}
+
+	// Also load channels from config.toml
+	cfg, err := config.Load("")
+	if err == nil {
+		fmt.Println("Loading channels from config file...")
+		started, err := channels.LoadConfiguredChannels(k.Registry(), cfg)
+		if err != nil {
+			fmt.Printf("Warning: Failed to load channels from config: %v\n", err)
+		} else if len(started) > 0 {
+			fmt.Printf("Started channels from config: %v\n", started)
+		}
+	} else {
+		fmt.Printf("Warning: Failed to load config for channels: %v\n", err)
 	}
 
 	// 创建并启动Channel Bridge Manager
 	router := channels.NewAgentRouter()
 
 	// 从配置文件中读取default agent
-	cfg, err := config.Load("")
-	if err != nil {
-		fmt.Printf("Warning: Failed to load config, using defaults: %v\n", err)
+	// 注意：cfg 已经在上面加载过了
+	if cfg == nil {
+		cfg, err = config.Load("")
+		if err != nil {
+			fmt.Printf("Warning: Failed to load config, using defaults: %v\n", err)
+		} else {
+			fmt.Printf("Config loaded. Default agent from config: '%s'\n", cfg.DefaultAgent)
+		}
 	} else {
 		fmt.Printf("Config loaded. Default agent from config: '%s'\n", cfg.DefaultAgent)
 	}

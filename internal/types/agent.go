@@ -53,6 +53,7 @@ type AgentManifest struct {
 	Model              ModelConfig       `toml:"model" json:"model,omitempty"`
 	Tools              []string          `toml:"tools" json:"tools,omitempty"`   // Buildin Tools,
 	Skills             []string          `toml:"skills" json:"skills,omitempty"` // skills in ～/homedir/skills/{e.g. check,approval}/skill.md
+	McpServers         []string          `toml:"mcp_servers" json:"mcp_servers,omitempty"` // MCP servers whitelist
 	Metadata           map[string]string `toml:"metadata" json:"metadata,omitempty"`
 }
 

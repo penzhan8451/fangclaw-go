@@ -3,9 +3,11 @@ package channels
 
 import (
 	"context"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
@@ -158,6 +160,7 @@ type TelegramChannelConfig struct {
 // SlackChannelConfig represents the configuration for Slack channel.
 type SlackChannelConfig struct {
 	BotToken string `json:"bot_token,omitempty"`
+	AppToken string `json:"app_token,omitempty"`
 }
 
 // DiscordChannelConfig represents the configuration for Discord channel.
@@ -300,4 +303,159 @@ func AutoRegisterAll(registry *Registry) error {
 		}
 	}
 	return nil
+}
+
+// LoadConfiguredChannels loads all configured channels from the given config and registers them.
+func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, error) {
+	var started []string
+
+	// Check each channel type
+	channelTypes := []struct {
+		name string
+		typ  ChannelType
+	}{
+		{"telegram", ChannelTypeTelegram},
+		{"discord", ChannelTypeDiscord},
+		{"slack", ChannelTypeSlack},
+		{"whatsapp", ChannelTypeWhatsApp},
+		{"qq", ChannelTypeQQ},
+		{"dingtalk", ChannelTypeDingTalk},
+		{"feishu", ChannelTypeFeishu},
+	}
+
+	for _, ct := range channelTypes {
+		// Check if this channel has an adapter factory
+		_, hasFactory := registry.GetFactory(ct.typ)
+		if !hasFactory {
+			continue
+		}
+
+		// Check if this channel already exists (from env vars), if yes, skip
+		existingChannels := registry.ListChannels()
+		alreadyExists := false
+		for _, ch := range existingChannels {
+			if ch.Type == ct.typ {
+				alreadyExists = true
+				break
+			}
+		}
+		if alreadyExists {
+			continue
+		}
+
+		// Check if channel is configured in config.toml
+		isConfigured := false
+		switch ct.name {
+		case "telegram":
+			isConfigured = cfg.Channels.Telegram != nil && (cfg.Channels.Telegram.BotToken != "" || cfg.Channels.Telegram.BotTokenEnv != "")
+		case "discord":
+			isConfigured = cfg.Channels.Discord != nil && (cfg.Channels.Discord.BotToken != "" || cfg.Channels.Discord.BotTokenEnv != "")
+		case "slack":
+			isConfigured = cfg.Channels.Slack != nil && ((cfg.Channels.Slack.BotToken != "" || cfg.Channels.Slack.BotTokenEnv != "") && (cfg.Channels.Slack.AppToken != "" || cfg.Channels.Slack.AppTokenEnv != ""))
+		case "whatsapp":
+			isConfigured = cfg.Channels.WhatsApp != nil && ((cfg.Channels.WhatsApp.AccessToken != "" || cfg.Channels.WhatsApp.AccessTokenEnv != "") || cfg.Channels.WhatsApp.PhoneNumberID != "")
+		case "qq":
+			isConfigured = cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" && (cfg.Channels.QQ.AppSecret != "" || cfg.Channels.QQ.AppSecretEnv != "")
+		case "dingtalk":
+			isConfigured = cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.ClientID != "" && (cfg.Channels.DingTalk.ClientSecret != "" || cfg.Channels.DingTalk.ClientSecretEnv != "")
+		case "feishu":
+			isConfigured = cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && (cfg.Channels.Feishu.AppSecret != "" || cfg.Channels.Feishu.AppSecretEnv != "")
+		}
+
+		// Only proceed if channel is configured in config.toml
+		if !isConfigured {
+			continue
+		}
+
+		// Create and register new channel
+		newChannel := &Channel{
+			Name:  ct.name + " Channel",
+			Type:  ct.typ,
+			State: ChannelStateIdle,
+		}
+
+		// Set channel-specific config
+		switch ct.name {
+		case "telegram":
+			botToken := cfg.Channels.Telegram.BotToken
+			if botToken == "" && cfg.Channels.Telegram.BotTokenEnv != "" {
+				botToken = os.Getenv(cfg.Channels.Telegram.BotTokenEnv)
+			}
+			newChannel.Config.Telegram = &TelegramChannelConfig{
+				BotToken: botToken,
+			}
+		case "discord":
+			botToken := cfg.Channels.Discord.BotToken
+			if botToken == "" && cfg.Channels.Discord.BotTokenEnv != "" {
+				botToken = os.Getenv(cfg.Channels.Discord.BotTokenEnv)
+			}
+			newChannel.Config.Discord = &DiscordChannelConfig{
+				BotToken: botToken,
+			}
+		case "slack":
+			botToken := cfg.Channels.Slack.BotToken
+			if botToken == "" && cfg.Channels.Slack.BotTokenEnv != "" {
+				botToken = os.Getenv(cfg.Channels.Slack.BotTokenEnv)
+			}
+			appToken := cfg.Channels.Slack.AppToken
+			if appToken == "" && cfg.Channels.Slack.AppTokenEnv != "" {
+				appToken = os.Getenv(cfg.Channels.Slack.AppTokenEnv)
+			}
+			newChannel.Config.Slack = &SlackChannelConfig{
+				BotToken: botToken,
+				AppToken: appToken,
+			}
+		case "whatsapp":
+			accessToken := cfg.Channels.WhatsApp.AccessToken
+			if accessToken == "" && cfg.Channels.WhatsApp.AccessTokenEnv != "" {
+				accessToken = os.Getenv(cfg.Channels.WhatsApp.AccessTokenEnv)
+			}
+			newChannel.Config.WhatsApp = &WhatsAppChannelConfig{
+				AccessToken: accessToken,
+				PhoneID:     cfg.Channels.WhatsApp.PhoneNumberID,
+			}
+		case "qq":
+			appSecret := cfg.Channels.QQ.AppSecret
+			if appSecret == "" && cfg.Channels.QQ.AppSecretEnv != "" {
+				appSecret = os.Getenv(cfg.Channels.QQ.AppSecretEnv)
+			}
+			newChannel.Config.QQ = &QQChannelConfig{
+				AppID:     cfg.Channels.QQ.AppID,
+				AppSecret: appSecret,
+			}
+		case "dingtalk":
+			clientID := cfg.Channels.DingTalk.ClientID
+			if clientID == "" && cfg.Channels.DingTalk.ClientIDEnv != "" {
+				clientID = os.Getenv(cfg.Channels.DingTalk.ClientIDEnv)
+			}
+			clientSecret := cfg.Channels.DingTalk.ClientSecret
+			if clientSecret == "" && cfg.Channels.DingTalk.ClientSecretEnv != "" {
+				clientSecret = os.Getenv(cfg.Channels.DingTalk.ClientSecretEnv)
+			}
+			newChannel.Config.DingTalk = &DingTalkChannelConfig{
+				ClientID:     clientID,
+				ClientSecret: clientSecret,
+			}
+		case "feishu":
+			appSecret := cfg.Channels.Feishu.AppSecret
+			if appSecret == "" && cfg.Channels.Feishu.AppSecretEnv != "" {
+				appSecret = os.Getenv(cfg.Channels.Feishu.AppSecretEnv)
+			}
+			newChannel.Config.Feishu = &FeishuChannelConfig{
+				AppID:     cfg.Channels.Feishu.AppID,
+				AppSecret: appSecret,
+			}
+		}
+
+		if err := registry.RegisterChannel(newChannel); err == nil {
+			// Try to start the adapter
+			if adapter, ok := registry.GetAdapter(newChannel.ID); ok {
+				if err := adapter.Start(); err == nil {
+					started = append(started, ct.name)
+				}
+			}
+		}
+	}
+
+	return started, nil
 }

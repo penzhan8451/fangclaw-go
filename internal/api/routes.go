@@ -81,7 +81,6 @@ var CHANNEL_REGISTRY = []ChannelMeta{
 			{Key: "bot_token_env", Label: "Bot Token", FieldType: FieldTypeSecret, EnvVar: strPtr("TELEGRAM_BOT_TOKEN"), Required: true, Placeholder: "123456:ABC-DEF...", Advanced: false},
 			{Key: "allowed_users", Label: "Allowed User IDs", FieldType: FieldTypeList, EnvVar: nil, Required: false, Placeholder: "12345, 67890", Advanced: true},
 			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
-			{Key: "poll_interval_secs", Label: "Poll Interval (sec)", FieldType: FieldTypeNumber, EnvVar: nil, Required: false, Placeholder: "1", Advanced: true},
 		},
 		SetupSteps:     []string{"Open @BotFather on Telegram", "Send /newbot and follow the prompts", "Paste the token below"},
 		ConfigTemplate: "[channels.telegram]\nbot_token_env = \"TELEGRAM_BOT_TOKEN\"",
@@ -101,7 +100,6 @@ var CHANNEL_REGISTRY = []ChannelMeta{
 			{Key: "allowed_guilds", Label: "Allowed Guild IDs", FieldType: FieldTypeList, EnvVar: nil, Required: false, Placeholder: "123456789, 987654321", Advanced: true},
 			{Key: "allowed_users", Label: "Allowed User IDs", FieldType: FieldTypeList, EnvVar: nil, Required: false, Placeholder: "123456789, 987654321", Advanced: true},
 			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
-			{Key: "intents", Label: "Intents Bitmask", FieldType: FieldTypeNumber, EnvVar: nil, Required: false, Placeholder: "37376", Advanced: true},
 		},
 		SetupSteps:     []string{"Go to discord.com/developers/applications", "Create a bot and copy the token", "Paste it below"},
 		ConfigTemplate: "[channels.discord]\nbot_token_env = \"DISCORD_BOT_TOKEN\"",
@@ -139,7 +137,6 @@ var CHANNEL_REGISTRY = []ChannelMeta{
 			{Key: "access_token_env", Label: "Access Token", FieldType: FieldTypeSecret, EnvVar: strPtr("WHATSAPP_ACCESS_TOKEN"), Required: false, Placeholder: "EAAx...", Advanced: true},
 			{Key: "phone_number_id", Label: "Phone Number ID", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "1234567890", Advanced: true},
 			{Key: "verify_token_env", Label: "Verify Token", FieldType: FieldTypeSecret, EnvVar: strPtr("WHATSAPP_VERIFY_TOKEN"), Required: false, Placeholder: "my-verify-token", Advanced: true},
-			{Key: "webhook_port", Label: "Webhook Port", FieldType: FieldTypeNumber, EnvVar: nil, Required: false, Placeholder: "8443", Advanced: true},
 			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
 		},
 		SetupSteps:     []string{"Open WhatsApp on your phone", "Go to Linked Devices", "Tap Link a Device and scan the QR code"},
@@ -171,16 +168,15 @@ var CHANNEL_REGISTRY = []ChannelMeta{
 		Category:    "enterprise",
 		Difficulty:  "Easy",
 		SetupTime:   "~3 min",
-		QuickSetup:  "Paste your webhook token and signing secret",
+		QuickSetup:  "Paste your Client ID and Client Secret",
 		SetupType:   "form",
 		Fields: []ChannelField{
-			{Key: "access_token_env", Label: "Access Token", FieldType: FieldTypeSecret, EnvVar: strPtr("DINGTALK_ACCESS_TOKEN"), Required: true, Placeholder: "abc123...", Advanced: false},
-			{Key: "secret_env", Label: "Signing Secret", FieldType: FieldTypeSecret, EnvVar: strPtr("DINGTALK_SECRET"), Required: true, Placeholder: "SEC...", Advanced: false},
-			{Key: "webhook_port", Label: "Webhook Port", FieldType: FieldTypeNumber, EnvVar: nil, Required: false, Placeholder: "8457", Advanced: true},
+			{Key: "client_id", Label: "Client ID", FieldType: FieldTypeText, EnvVar: strPtr("DINGTALK_CLIENT_ID"), Required: true, Placeholder: "dingtalk123abc", Advanced: false},
+			{Key: "client_secret_env", Label: "Client Secret", FieldType: FieldTypeSecret, EnvVar: strPtr("DINGTALK_CLIENT_SECRET"), Required: true, Placeholder: "abc123...", Advanced: false},
 			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
 		},
-		SetupSteps:     []string{"Create a robot in your DingTalk group", "Copy the token and signing secret", "Paste them below"},
-		ConfigTemplate: "[channels.dingtalk]\naccess_token_env = \"DINGTALK_ACCESS_TOKEN\"\nsecret_env = \"DINGTALK_SECRET\"",
+		SetupSteps:     []string{"Create an app at open.dingtalk.com", "Copy Client ID and Secret", "Paste them below"},
+		ConfigTemplate: "[channels.dingtalk]\nclient_id = \"\"\nclient_secret_env = \"DINGTALK_CLIENT_SECRET\"",
 	},
 	{
 		Name:        "feishu",
@@ -195,7 +191,6 @@ var CHANNEL_REGISTRY = []ChannelMeta{
 		Fields: []ChannelField{
 			{Key: "app_id", Label: "App ID", FieldType: FieldTypeText, EnvVar: strPtr("FEISHU_APP_ID"), Required: true, Placeholder: "cli_abc123", Advanced: false},
 			{Key: "app_secret_env", Label: "App Secret", FieldType: FieldTypeSecret, EnvVar: strPtr("FEISHU_APP_SECRET"), Required: true, Placeholder: "abc123...", Advanced: false},
-			{Key: "webhook_port", Label: "Webhook Port", FieldType: FieldTypeNumber, EnvVar: nil, Required: false, Placeholder: "8453", Advanced: true},
 			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
 		},
 		SetupSteps:     []string{"Create an app at open.feishu.cn", "Copy App ID and Secret", "Paste them below"},
@@ -460,6 +455,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/providers/{name}/test", r.handleTestProvider)
 	mux.HandleFunc("PUT /api/providers/{name}/url", r.handleSetProviderURL)
 	mux.HandleFunc("GET /api/mcp/servers", r.handleMcpServers)
+	mux.HandleFunc("POST /api/mcp/servers/:id/reconnect", r.handleMcpServerReconnect)
 
 	// Agent session endpoints
 	mux.HandleFunc("GET /api/agents/{id}/session", r.handleGetAgentSession)
@@ -1197,39 +1193,32 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 
 		// Handle env vars (secrets)
 		if field.EnvVar != nil && field.FieldType == FieldTypeSecret {
-			// For Feishu, directly save the secret in config (no secrets.env dependency)
-			if name == "feishu" && field.Key == "app_secret_env" {
+			// Directly save the secret in config (no secrets.env dependency)
+			switch field.Key {
+			case "bot_token_env":
+				channelConfig.BotToken = valueStr
+			case "app_token_env":
+				channelConfig.AppToken = valueStr
+			case "access_token_env":
+				channelConfig.AccessToken = valueStr
+			case "app_secret_env":
 				channelConfig.AppSecret = valueStr
-				// Also set in current process for backward compatibility
-				os.Setenv(*field.EnvVar, valueStr)
-			} else {
-				// Try to write secret to file (non-fatal if fails)
-				if err := config.WriteSecretEnv(*field.EnvVar, valueStr); err != nil {
-					fmt.Printf("Warning: failed to write secret to file: %v\n", err)
-				}
-				// Always set in current process
-				os.Setenv(*field.EnvVar, valueStr)
-				// Store env var name in config
-				switch field.Key {
-				case "bot_token_env":
-					channelConfig.BotTokenEnv = *field.EnvVar
-				case "app_token_env":
-					channelConfig.AppTokenEnv = *field.EnvVar
-				case "access_token_env":
-					channelConfig.AccessTokenEnv = *field.EnvVar
-				case "app_secret_env":
-					channelConfig.AppSecretEnv = *field.EnvVar
-				case "secret_env":
-					channelConfig.SecretEnv = *field.EnvVar
-				case "verify_token_env":
-					channelConfig.VerifyTokenEnv = *field.EnvVar
-				}
+			case "secret_env":
+				channelConfig.Secret = valueStr
+			case "verify_token_env":
+				channelConfig.VerifyToken = valueStr
+			case "client_secret_env":
+				channelConfig.ClientSecret = valueStr
 			}
+			// Also set in current process for backward compatibility
+			os.Setenv(*field.EnvVar, valueStr)
 		} else {
 			// Handle regular fields
 			switch field.Key {
 			case "app_id":
 				channelConfig.AppID = valueStr
+			case "client_id":
+				channelConfig.ClientID = valueStr
 			case "bot_token_env":
 				channelConfig.BotTokenEnv = valueStr
 			case "app_token_env":
@@ -1242,6 +1231,8 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 				channelConfig.SecretEnv = valueStr
 			case "verify_token_env":
 				channelConfig.VerifyTokenEnv = valueStr
+			case "client_secret_env":
+				channelConfig.ClientSecretEnv = valueStr
 			case "allowed_users":
 				channelConfig.AllowedUsers = valueStr
 			case "allowed_guilds":
@@ -1252,18 +1243,6 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 				channelConfig.DefaultAgent = valueStr
 			case "phone_number_id":
 				channelConfig.PhoneNumberID = valueStr
-			case "poll_interval_secs":
-				if i, err := strconv.Atoi(valueStr); err == nil {
-					channelConfig.PollIntervalSecs = i
-				}
-			case "intents":
-				if i, err := strconv.Atoi(valueStr); err == nil {
-					channelConfig.Intents = i
-				}
-			case "webhook_port":
-				if i, err := strconv.Atoi(valueStr); err == nil {
-					channelConfig.WebhookPort = i
-				}
 			}
 		}
 	}
@@ -1747,8 +1726,15 @@ func (r *Router) handleAuditVerify(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleMcpServers(w http.ResponseWriter, req *http.Request) {
+	servers := r.kernel.GetMcpServers()
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"servers": []interface{}{},
+		"servers": servers,
+	})
+}
+
+func (r *Router) handleMcpServerReconnect(w http.ResponseWriter, req *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
 	})
 }
 
