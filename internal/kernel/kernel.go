@@ -318,6 +318,7 @@ func (k *Kernel) SkillLoader() *skills.Loader {
 	return k.skillLoader
 }
 
+// channel registry
 func (k *Kernel) Registry() *channels.Registry {
 	return k.registry
 }
