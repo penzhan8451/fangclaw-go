@@ -122,7 +122,7 @@ func runChatLocal(agentID string) error {
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		return fmt.Errorf("failed to create db directory: %w", err)
 	}
-	dbPath := filepath.Join(dbDir, "fangclaw-go.db")
+	dbPath := filepath.Join(dbDir, "fangclaw.db")
 	db, err := memory.NewDB(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to create database: %w", err)
@@ -154,6 +154,16 @@ func runChatLocal(agentID string) error {
 	skillLoader, err := skills.NewLoader(skillsPath)
 	if err != nil {
 		fmt.Printf("Warning: failed to create skill loader: %v\n", err)
+	}
+
+	// 加载所有已安装的技能
+	var allSkillIDs []string
+	if skillLoader != nil {
+		if skills, err := skillLoader.ListSkills(); err == nil {
+			for _, skill := range skills {
+				allSkillIDs = append(allSkillIDs, skill.ID)
+			}
+		}
 	}
 
 	// 2.6. 创建 embedding driver
@@ -199,8 +209,12 @@ func runChatLocal(agentID string) error {
 		systemPrompt = fmt.Sprintf("%s\n\nCurrent date: %s", systemPrompt, currentDate)
 		skillPromptContext = hand.SkillContent
 	} else {
-		// 默认的系统提示词
-		systemPrompt = fmt.Sprintf("You are a helpful assistant.\n\nCurrent date: %s", currentDate)
+		// 默认的系统提示词，明确告诉可以使用工具
+		systemPrompt = fmt.Sprintf(`You are a helpful assistant. You have access to the following tools that you can use to help the user:
+
+When appropriate, use the available tools to accomplish tasks. For example, if a tool is available to say hello, use it when greeting someone.
+
+Current date: %s`, currentDate)
 	}
 
 	// 获取实际的 model 名称
@@ -226,7 +240,7 @@ func runChatLocal(agentID string) error {
 		modelName,
 		systemPrompt,
 		toolNames,
-		[]string{},
+		allSkillIDs,
 		skillPromptContext,
 	)
 

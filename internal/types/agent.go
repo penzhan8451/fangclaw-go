@@ -51,8 +51,8 @@ type AgentManifest struct {
 	SystemPrompt       string            `toml:"system_prompt" json:"system_prompt,omitempty"`               // agent definition，base system prompt, e.g. bundled hand/hand.json
 	SkillPromptContext string            `toml:"skill_prompt_context" json:"skill_prompt_context,omitempty"` // agent Skill prompt context is added to the system prompt
 	Model              ModelConfig       `toml:"model" json:"model,omitempty"`
-	Tools              []string          `toml:"tools" json:"tools,omitempty"`   // Buildin Tools,
-	Skills             []string          `toml:"skills" json:"skills,omitempty"` // skills in ～/homedir/skills/{e.g. check,approval}/skill.md
+	Tools              []string          `toml:"tools" json:"tools,omitempty"`             // Buildin Tools,
+	Skills             []string          `toml:"skills" json:"skills,omitempty"`           // skills in ～/homedir/skills/{e.g. check,approval}/skill.md
 	McpServers         []string          `toml:"mcp_servers" json:"mcp_servers,omitempty"` // MCP servers whitelist
 	Metadata           map[string]string `toml:"metadata" json:"metadata,omitempty"`
 }
@@ -101,12 +101,13 @@ type HealthStatus struct {
 
 // StatusResponse represents the daemon status.
 type StatusResponse struct {
-	Status     string `json:"status"`
-	Version    string `json:"version"`
-	ListenAddr string `json:"listen_addr"`
-	AgentCount int    `json:"agent_count"`
-	ModelCount int    `json:"model_count"`
-	Uptime     string `json:"uptime"`
+	Status        string `json:"status"`
+	Version       string `json:"version"`
+	ListenAddr    string `json:"listen_addr"`
+	AgentCount    int    `json:"agent_count"`
+	ModelCount    int    `json:"model_count"`
+	Uptime        string `json:"uptime"`
+	UptimeSeconds int    `json:"uptime_seconds"`
 }
 
 // ReplyDirective controls how the agent loop responds.

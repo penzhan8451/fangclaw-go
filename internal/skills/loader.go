@@ -45,29 +45,22 @@ func NewLoader(skillsPath string) (*Loader, error) {
 
 // LoadSkill loads a skill from a directory.
 func (l *Loader) LoadSkill(skillID string) (*types.Skill, error) {
-	// fmt.Println("[DEBUG] LoadSkill called for:", skillID)
 	l.mu.RLock()
 	if skill, exists := l.registry[skillID]; exists {
 		l.mu.RUnlock()
-		// fmt.Println("[DEBUG] LoadSkill found in registry:", skillID)
 		return skill, nil
 	}
 	l.mu.RUnlock()
 
 	skillDir := filepath.Join(l.skillsPath, skillID)
-	// fmt.Println("[DEBUG] LoadSkill skillDir:", skillDir)
 	if _, err := os.Stat(skillDir); os.IsNotExist(err) {
-		// fmt.Println("[DEBUG] LoadSkill skill not found:", skillID)
 		return nil, fmt.Errorf("skill not found: %s", skillID)
 	}
 
-	// fmt.Println("[DEBUG] LoadSkill loading manifest...")
 	manifest, err := l.loadManifest(skillDir)
 	if err != nil {
-		// fmt.Println("[DEBUG] LoadSkill failed to load manifest:", err)
 		return nil, fmt.Errorf("failed to load manifest: %w", err)
 	}
-	// fmt.Println("[DEBUG] LoadSkill manifest loaded successfully")
 
 	skill := &types.Skill{
 		ID:          skillID,
@@ -81,24 +74,18 @@ func (l *Loader) LoadSkill(skillID string) (*types.Skill, error) {
 	l.registry[skillID] = skill
 	l.mu.Unlock()
 
-	// fmt.Println("[DEBUG] LoadSkill complete for:", skillID)
 	return skill, nil
 }
 
 // loadManifest loads and parses the skill manifest.
 func (l *Loader) loadManifest(skillDir string) (types.SkillManifest, error) {
-	// fmt.Println("[DEBUG] loadManifest called, skillDir:", skillDir)
 	manifestPath := filepath.Join(skillDir, "skill.toml")
-	// fmt.Println("[DEBUG] loadManifest checking skill.toml...")
 	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
 		manifestPath = filepath.Join(skillDir, "manifest.json")
-		// fmt.Println("[DEBUG] loadManifest checking manifest.json...")
 		if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
 			manifestPath = filepath.Join(skillDir, "SKILL.md")
-			// fmt.Println("[DEBUG] loadManifest checking SKILL.md...")
 		}
 	}
-	// fmt.Println("[DEBUG] loadManifest using path:", manifestPath)
 
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -126,9 +113,7 @@ func (l *Loader) loadManifest(skillDir string) (types.SkillManifest, error) {
 
 // parseSKILLMD parses a SKILL.md file with YAML frontmatter.
 func parseSKILLMD(data []byte) (types.SkillManifest, error) {
-	// fmt.Println("[DEBUG] parseSKILLMD called")
 	content := string(data)
-	// fmt.Println("[DEBUG] parseSKILLMD content length:", len(content))
 
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 
@@ -165,43 +150,37 @@ func parseSKILLMD(data []byte) (types.SkillManifest, error) {
 	// fmt.Println("[DEBUG] parseSKILLMD body length:", len(body))
 
 	if frontmatter == "" {
-		// fmt.Println("[DEBUG] parseSKILLMD invalid format, missing frontmatter")
 		return types.SkillManifest{}, fmt.Errorf("invalid SKILL.md format: missing frontmatter")
 	}
 
-	// fmt.Println("[DEBUG] parseSKILLMD frontmatter:", frontmatter[:min(200, len(frontmatter))])
-
 	type FrontMatter struct {
-		Name        string   `yaml:"name"`
-		Description string   `yaml:"description"`
-		Version     string   `yaml:"version"`
-		Author      string   `yaml:"author"`
-		Tags        []string `yaml:"tags,omitempty"`
+		Name         string                 `yaml:"name"`
+		Description  string                 `yaml:"description"`
+		Version      string                 `yaml:"version"`
+		Author       string                 `yaml:"author"`
+		Tags         []string               `yaml:"tags,omitempty"`
+		Runtime      map[string]interface{} `yaml:"runtime,omitempty"`
+		Tools        map[string]interface{} `yaml:"tools,omitempty"`
+		Requirements map[string]interface{} `yaml:"requirements,omitempty"`
 	}
 
 	var fm FrontMatter
-	// fmt.Println("[DEBUG] parseSKILLMD unmarshaling frontmatter...")
 	if err := yaml.Unmarshal([]byte(frontmatter), &fm); err != nil {
-		// fmt.Println("[DEBUG] parseSKILLMD failed to parse frontmatter:", err)
 		return types.SkillManifest{}, fmt.Errorf("failed to parse frontmatter: %w", err)
 	}
-	// fmt.Println("[DEBUG] parseSKILLMD frontmatter parsed, name:", fm.Name)
 
 	if fm.Version == "" {
 		fm.Version = "1.0.0"
 	}
 
 	manifest := types.SkillManifest{
-		Version:     fm.Version,
-		Name:        fm.Name,
-		Description: fm.Description,
-		Author:      fm.Author,
-		Runtime: types.SkillRuntime{
-			RuntimeType: types.SkillRuntimePrompt,
-		},
-		Tools: types.SkillTools{
-			Provided: []types.SkillToolDefinition{},
-		},
+		Version:       fm.Version,
+		Name:          fm.Name,
+		Description:   fm.Description,
+		Author:        fm.Author,
+		Runtime:       types.SkillRuntime{RuntimeType: types.SkillRuntimePrompt},
+		Tools:         types.SkillTools{Provided: []types.SkillToolDefinition{}},
+		Requirements:  types.SkillRequirements{},
 		Metadata:      make(map[string]string),
 		PromptContext: strings.TrimSpace(body),
 	}
@@ -210,7 +189,62 @@ func parseSKILLMD(data []byte) (types.SkillManifest, error) {
 		manifest.Metadata["tags"] = strings.Join(fm.Tags, ",")
 	}
 
-	// fmt.Println("[DEBUG] parseSKILLMD complete, prompt context length:", len(manifest.PromptContext))
+	if fm.Runtime != nil {
+		if rt, ok := fm.Runtime["runtime_type"].(string); ok {
+			manifest.Runtime.RuntimeType = types.SkillRuntimeType(rt)
+		}
+		if entry, ok := fm.Runtime["entry"].(string); ok {
+			manifest.Runtime.Entry = entry
+		}
+		if version, ok := fm.Runtime["version"].(string); ok {
+			manifest.Runtime.Version = version
+		}
+	}
+
+	if fm.Tools != nil {
+		if provided, ok := fm.Tools["provided"].([]interface{}); ok {
+			for _, p := range provided {
+				if toolMap, ok := p.(map[string]interface{}); ok {
+					tool := types.SkillToolDefinition{}
+					if name, ok := toolMap["name"].(string); ok {
+						tool.Name = name
+					}
+					if desc, ok := toolMap["description"].(string); ok {
+						tool.Description = desc
+					}
+					if params, ok := toolMap["parameters"].(map[string]interface{}); ok {
+						tool.Parameters = params
+					}
+					manifest.Tools.Provided = append(manifest.Tools.Provided, tool)
+				}
+			}
+		}
+	}
+
+	if fm.Requirements != nil {
+		if python, ok := fm.Requirements["python"].([]interface{}); ok {
+			for _, p := range python {
+				if s, ok := p.(string); ok {
+					manifest.Requirements.Python = append(manifest.Requirements.Python, s)
+				}
+			}
+		}
+		if node, ok := fm.Requirements["node"].([]interface{}); ok {
+			for _, n := range node {
+				if s, ok := n.(string); ok {
+					manifest.Requirements.Node = append(manifest.Requirements.Node, s)
+				}
+			}
+		}
+		if system, ok := fm.Requirements["system"].([]interface{}); ok {
+			for _, s := range system {
+				if str, ok := s.(string); ok {
+					manifest.Requirements.System = append(manifest.Requirements.System, str)
+				}
+			}
+		}
+	}
+
 	return manifest, nil
 }
 
@@ -264,6 +298,7 @@ func (l *Loader) ExecuteTool(skillID, toolName string, input interface{}) (*type
 // executePython executes a Python skill script.
 func (l *Loader) executePython(skill *types.Skill, toolName string, input interface{}) (*types.SkillToolResult, error) {
 	scriptPath := filepath.Join(skill.InstallPath, skill.Manifest.Runtime.Entry)
+
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("Python script not found: %s", scriptPath)
 	}

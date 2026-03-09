@@ -163,12 +163,13 @@ type HealthResponse struct {
 
 // StatusResponse represents the daemon status.
 type StatusResponse struct {
-	Status     string `json:"status"`
-	Version    string `json:"version"`
-	ListenAddr string `json:"listen_addr"`
-	AgentCount int    `json:"agent_count"`
-	ModelCount int    `json:"model_count"`
-	Uptime     string `json:"uptime"`
+	Status         string `json:"status"`
+	Version        string `json:"version"`
+	ListenAddr     string `json:"listen_addr"`
+	AgentCount     int    `json:"agent_count"`
+	ModelCount     int    `json:"model_count"`
+	Uptime         string `json:"uptime"`
+	UptimeSeconds  int    `json:"uptime_seconds"`
 }
 
 // ErrorResponse represents an error response.

@@ -82,21 +82,16 @@ function overviewPage() {
 
     async loadUsage() {
       try {
-        var data = await FangClawGoAPI.get('/api/usage');
-        var agents = data.agents || [];
-        var totalTokens = 0;
-        var totalTools = 0;
-        var totalCost = 0;
-        agents.forEach(function(a) {
-          totalTokens += (a.total_tokens || 0);
-          totalTools += (a.tool_calls || 0);
-          totalCost += (a.cost_usd || 0);
-        });
+        // var data = await FangClawGoAPI.get('/api/usage');
+        var data = await FangClawGoAPI.get('/api/usage/summary');
+        var totalTokens = (data.total_input_tokens || 0) + (data.total_output_tokens || 0);
+        var totalTools = data.total_tool_calls || 0;
+        var totalCost = data.total_cost_usd || 0;
         this.usageSummary = {
           total_tokens: totalTokens,
           total_tools: totalTools,
           total_cost: totalCost,
-          agent_count: agents.length
+          agent_count: (Alpine.store('app').agents || []).length
         };
       } catch(e) {
         this.usageSummary = { total_tokens: 0, total_tools: 0, total_cost: 0, agent_count: 0 };

@@ -57,6 +57,7 @@ type Kernel struct {
 	mcpTools        sync.Map
 	mu              sync.RWMutex
 	started         bool
+	startTime       time.Time
 }
 
 func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
@@ -158,6 +159,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		deliveryReg:     deliveryReg,
 		pairingManager:  pairingManager,
 		workflowEngine:  workflowEngine,
+		startTime:       time.Now(),
 	}
 
 	mcpCallbacks := &agent.McpCallbacks{
@@ -329,6 +331,10 @@ func (k *Kernel) KnowledgeStore() *memory.KnowledgeStore {
 
 func (k *Kernel) UsageStore() *memory.UsageStore {
 	return k.usage
+}
+
+func (k *Kernel) GetUptime() time.Duration {
+	return time.Since(k.startTime)
 }
 
 func (k *Kernel) SkillLoader() *skills.Loader {

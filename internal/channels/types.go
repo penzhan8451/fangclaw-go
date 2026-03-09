@@ -347,19 +347,65 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 		isConfigured := false
 		switch ct.name {
 		case "telegram":
-			isConfigured = cfg.Channels.Telegram != nil && (cfg.Channels.Telegram.BotToken != "" || cfg.Channels.Telegram.BotTokenEnv != "")
+			if cfg.Channels.Telegram != nil {
+				botToken := cfg.Channels.Telegram.BotToken
+				if botToken == "" && cfg.Channels.Telegram.BotTokenEnv != "" {
+					botToken = os.Getenv(cfg.Channels.Telegram.BotTokenEnv)
+				}
+				isConfigured = botToken != ""
+			}
 		case "discord":
-			isConfigured = cfg.Channels.Discord != nil && (cfg.Channels.Discord.BotToken != "" || cfg.Channels.Discord.BotTokenEnv != "")
+			if cfg.Channels.Discord != nil {
+				botToken := cfg.Channels.Discord.BotToken
+				if botToken == "" && cfg.Channels.Discord.BotTokenEnv != "" {
+					botToken = os.Getenv(cfg.Channels.Discord.BotTokenEnv)
+				}
+				isConfigured = botToken != ""
+			}
 		case "slack":
-			isConfigured = cfg.Channels.Slack != nil && ((cfg.Channels.Slack.BotToken != "" || cfg.Channels.Slack.BotTokenEnv != "") && (cfg.Channels.Slack.AppToken != "" || cfg.Channels.Slack.AppTokenEnv != ""))
+			if cfg.Channels.Slack != nil {
+				botToken := cfg.Channels.Slack.BotToken
+				if botToken == "" && cfg.Channels.Slack.BotTokenEnv != "" {
+					botToken = os.Getenv(cfg.Channels.Slack.BotTokenEnv)
+				}
+				appToken := cfg.Channels.Slack.AppToken
+				if appToken == "" && cfg.Channels.Slack.AppTokenEnv != "" {
+					appToken = os.Getenv(cfg.Channels.Slack.AppTokenEnv)
+				}
+				isConfigured = botToken != "" && appToken != ""
+			}
 		case "whatsapp":
-			isConfigured = cfg.Channels.WhatsApp != nil && ((cfg.Channels.WhatsApp.AccessToken != "" || cfg.Channels.WhatsApp.AccessTokenEnv != "") || cfg.Channels.WhatsApp.PhoneNumberID != "")
+			if cfg.Channels.WhatsApp != nil {
+				accessToken := cfg.Channels.WhatsApp.AccessToken
+				if accessToken == "" && cfg.Channels.WhatsApp.AccessTokenEnv != "" {
+					accessToken = os.Getenv(cfg.Channels.WhatsApp.AccessTokenEnv)
+				}
+				isConfigured = (accessToken != "" || cfg.Channels.WhatsApp.PhoneNumberID != "")
+			}
 		case "qq":
-			isConfigured = cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" && (cfg.Channels.QQ.AppSecret != "" || cfg.Channels.QQ.AppSecretEnv != "")
+			if cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" {
+				appSecret := cfg.Channels.QQ.AppSecret
+				if appSecret == "" && cfg.Channels.QQ.AppSecretEnv != "" {
+					appSecret = os.Getenv(cfg.Channels.QQ.AppSecretEnv)
+				}
+				isConfigured = appSecret != ""
+			}
 		case "dingtalk":
-			isConfigured = cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.ClientID != "" && (cfg.Channels.DingTalk.ClientSecret != "" || cfg.Channels.DingTalk.ClientSecretEnv != "")
+			if cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.ClientID != "" {
+				clientSecret := cfg.Channels.DingTalk.ClientSecret
+				if clientSecret == "" && cfg.Channels.DingTalk.ClientSecretEnv != "" {
+					clientSecret = os.Getenv(cfg.Channels.DingTalk.ClientSecretEnv)
+				}
+				isConfigured = clientSecret != ""
+			}
 		case "feishu":
-			isConfigured = cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && (cfg.Channels.Feishu.AppSecret != "" || cfg.Channels.Feishu.AppSecretEnv != "")
+			if cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" {
+				appSecret := cfg.Channels.Feishu.AppSecret
+				if appSecret == "" && cfg.Channels.Feishu.AppSecretEnv != "" {
+					appSecret = os.Getenv(cfg.Channels.Feishu.AppSecretEnv)
+				}
+				isConfigured = appSecret != ""
+			}
 		}
 
 		// Only proceed if channel is configured in config.toml

@@ -520,13 +520,28 @@ func (r *Router) handleHealth(w http.ResponseWriter, req *http.Request) {
 
 // handleStatus handles status requests.
 func (r *Router) handleStatus(w http.ResponseWriter, req *http.Request) {
+	uptime := r.kernel.GetUptime()
+	var uptimeStr string
+	secs := int(uptime.Seconds())
+	days := secs / 86400
+	hours := (secs % 86400) / 3600
+	mins := (secs % 3600) / 60
+	if days > 0 {
+		uptimeStr = fmt.Sprintf("%dd %dh", days, hours)
+	} else if hours > 0 {
+		uptimeStr = fmt.Sprintf("%dh %dm", hours, mins)
+	} else {
+		uptimeStr = fmt.Sprintf("%dm", mins)
+	}
+
 	respondJSON(w, http.StatusOK, types.StatusResponse{
-		Status:     "running",
-		Version:    "0.1.0",
-		ListenAddr: ":4200",
-		AgentCount: r.kernel.AgentRegistry().Count(),
-		ModelCount: 1,
-		Uptime:     "0s",
+		Status:        "running",
+		Version:       "0.1.0",
+		ListenAddr:    ":4200",
+		AgentCount:    r.kernel.AgentRegistry().Count(),
+		ModelCount:    1,
+		Uptime:        uptimeStr,
+		UptimeSeconds: secs,
 	})
 }
 
@@ -992,6 +1007,20 @@ func (r *Router) handleListChannels(w http.ResponseWriter, req *http.Request) {
 			} else {
 				hasToken = false
 			}
+		} else if meta.Name == "qq" {
+			cfg, err := config.Load("")
+			if err == nil && cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" && (cfg.Channels.QQ.AppSecret != "" || cfg.Channels.QQ.AppSecretEnv != "") {
+				hasToken = true
+			} else {
+				hasToken = false
+			}
+		} else if meta.Name == "whatsapp" {
+			cfg, err := config.Load("")
+			if err == nil && cfg.Channels.WhatsApp != nil && cfg.Channels.WhatsApp.AccessTokenEnv != "" && cfg.Channels.WhatsApp.PhoneNumberID != "" {
+				hasToken = true
+			} else {
+				hasToken = false
+			}
 		} else {
 			for _, f := range meta.Fields {
 				if f.Required && f.EnvVar != nil {
@@ -1013,6 +1042,24 @@ func (r *Router) handleListChannels(w http.ResponseWriter, req *http.Request) {
 					hasValue = cfg.Channels.Feishu.AppID != ""
 				} else if f.Key == "app_secret_env" && cfg.Channels.Feishu != nil {
 					hasValue = cfg.Channels.Feishu.AppSecret != "" || cfg.Channels.Feishu.AppSecretEnv != ""
+				} else if f.EnvVar != nil {
+					val := os.Getenv(*f.EnvVar)
+					hasValue = val != ""
+				}
+			} else if meta.Name == "qq" {
+				if f.Key == "app_id" && cfg.Channels.QQ != nil {
+					hasValue = cfg.Channels.QQ.AppID != ""
+				} else if f.Key == "app_secret_env" && cfg.Channels.QQ != nil {
+					hasValue = cfg.Channels.QQ.AppSecret != "" || cfg.Channels.QQ.AppSecretEnv != ""
+				} else if f.EnvVar != nil {
+					val := os.Getenv(*f.EnvVar)
+					hasValue = val != ""
+				}
+			} else if meta.Name == "whatsapp" {
+				if f.Key == "access_token_env" && cfg.Channels.WhatsApp != nil {
+					hasValue = cfg.Channels.WhatsApp.AccessTokenEnv != ""
+				} else if f.Key == "phone_number_id" && cfg.Channels.WhatsApp != nil {
+					hasValue = cfg.Channels.WhatsApp.PhoneNumberID != ""
 				} else if f.EnvVar != nil {
 					val := os.Getenv(*f.EnvVar)
 					hasValue = val != ""
@@ -1078,9 +1125,9 @@ func isChannelConfigured(channelName string) bool {
 	case "slack":
 		return cfg.Channels.Slack != nil && cfg.Channels.Slack.BotTokenEnv != "" && cfg.Channels.Slack.AppTokenEnv != ""
 	case "whatsapp":
-		return cfg.Channels.WhatsApp != nil && (cfg.Channels.WhatsApp.AccessTokenEnv != "" || cfg.Channels.WhatsApp.PhoneNumberID != "")
+		return cfg.Channels.WhatsApp != nil && cfg.Channels.WhatsApp.AccessTokenEnv != "" && cfg.Channels.WhatsApp.PhoneNumberID != ""
 	case "qq":
-		return cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" && cfg.Channels.QQ.AppSecretEnv != ""
+		return cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" && (cfg.Channels.QQ.AppSecret != "" || cfg.Channels.QQ.AppSecretEnv != "")
 	case "dingtalk":
 		return cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.AccessTokenEnv != "" && cfg.Channels.DingTalk.SecretEnv != ""
 	case "feishu":

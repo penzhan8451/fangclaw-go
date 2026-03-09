@@ -251,11 +251,17 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 	// Helper function to calculate cost based on model and token usage
 	calculateCost := func(modelName string, usage types.TokenUsage) float64 {
 		if r.modelCatalog == nil {
-			return 0
+			// Use default cost if no model catalog
+			inputCost := (float64(usage.PromptTokens) / 1000000.0) * 1.0
+			outputCost := (float64(usage.CompletionTokens) / 1000000.0) * 2.0
+			return inputCost + outputCost
 		}
 		model := r.modelCatalog.FindModel(modelName)
 		if model == nil {
-			return 0
+			// Use default cost if model not found
+			inputCost := (float64(usage.PromptTokens) / 1000000.0) * 1.0
+			outputCost := (float64(usage.CompletionTokens) / 1000000.0) * 2.0
+			return inputCost + outputCost
 		}
 		inputCost := (float64(usage.PromptTokens) / 1000000.0) * model.InputCostPerM
 		outputCost := (float64(usage.CompletionTokens) / 1000000.0) * model.OutputCostPerM
@@ -455,6 +461,9 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			if onPhase != nil {
 				onPhase(PhaseDone)
 			}
+
+			// Record usage
+			recordUsage(totalUsage, uint32(iteration+1))
 
 			return &AgentLoopResult{
 				Response:   finalResponse,
