@@ -150,6 +150,11 @@ The wizard will guide you through:
 3. Selecting default model
 4. Setting data directory
 
+Then, start the daemon:
+
+```bash
+./fangclaw-go start
+```
 
 ### Next Steps After Starting
 
