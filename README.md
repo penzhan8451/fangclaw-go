@@ -262,6 +262,286 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ```
 ---
 
+## Skills System
+
+FangClaw-go supports external skills that can extend agent capabilities. Skills can be loaded from directories and provide tools that agents can use.
+
+### Skill Directory Structure
+
+Skills are stored in `~/.fangclaw-go/skills/` directory by default. Each skill should be in its own subdirectory:
+
+```
+~/.fangclaw-go/skills/
+├── my-skill/
+│   ├── manifest.json    # Skill manifest (JSON format)
+│   ├── skill.toml       # OR Skill manifest (TOML format - coming soon)
+│   ├── SKILL.md         # OR Skill manifest with YAML frontmatter
+│   ├── main.py          # Python skill entry point
+│   └── main.js          # Node.js skill entry point
+```
+
+### Skill Manifest Formats
+
+FangClaw-go supports three manifest formats:
+
+#### 1. **manifest.json (JSON Format)**
+
+```json
+{
+  "version": "1.0.0",
+  "name": "My Skill",
+  "description": "A sample skill that provides useful tools",
+  "author": "Your Name",
+  "runtime": {
+    "runtime_type": "python",
+    "entry": "main.py",
+    "version": "3.8+"
+  },
+  "tools": {
+    "provided": [
+      {
+        "name": "my_tool",
+        "description": "A useful tool provided by this skill",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "param1": {
+              "type": "string",
+              "description": "First parameter"
+            }
+          },
+          "required": ["param1"]
+        }
+      }
+    ]
+  },
+  "requirements": {
+    "python": ["requests", "beautifulsoup4"],
+    "node": [],
+    "system": []
+  }
+}
+```
+
+#### 2. **SKILL.md (Markdown with YAML Frontmatter)**
+
+```markdown
+---
+name: My Skill
+description: A sample skill that provides useful tools
+version: 1.0.0
+author: Your Name
+tags: ["utility", "tools"]
+runtime:
+  runtime_type: python
+  entry: main.py
+  version: 3.8+
+tools:
+  provided:
+    - name: my_tool
+      description: A useful tool provided by this skill
+      parameters:
+        type: object
+        properties:
+          param1:
+            type: string
+            description: First parameter
+        required:
+          - param1
+requirements:
+  python:
+    - requests
+    - beautifulsoup4
+  node: []
+  system: []
+---
+
+# My Skill
+
+This is a skill that provides useful tools. The content here becomes the prompt context for the agent.
+
+## How to use
+
+Agents can use the `my_tool` function to perform actions.
+```
+
+### Supported Runtime Types
+
+- **`prompt`** (Default) - Prompt-only skill, adds context to agent's system prompt
+- **`python`** - Python skill, executes Python scripts
+- **`node`** - Node.js skill, executes Node.js scripts
+- **`wasm`** - WebAssembly skill (coming soon)
+- **`builtin`** - Built-in skills handled by the kernel
+
+### Installing and Loading Skills
+
+#### Install a Skill from Directory
+
+```bash
+./fangclaw-go skill install /path/to/skill-directory my-skill
+```
+
+#### List Installed Skills
+
+```bash
+./fangclaw-go skill list
+```
+
+#### Loading Skills
+
+**Built-in Hands** are automatically loaded when the daemon starts. These are the predefined capability packages (like Researcher, Lead, Collector, etc.).
+
+**External Skills** are loaded on-demand when an Agent uses them. When an Agent specifies skills in its configuration, those skills are automatically loaded from `~/.fangclaw-go/skills/{skillID}/` directory when the Agent first runs.
+
+##### Example: Using an External GitHub Skill
+
+1. **Create the GitHub Skill Directory:**
+
+```bash
+mkdir -p ~/.fangclaw-go/skills/github/
+```
+
+2. **Create `~/.fangclaw-go/skills/github/skill.md`:**
+
+```markdown
+---
+name: GitHub
+version: 1.0.0
+description: Interact with GitHub repositories, issues, and PRs
+prompt_context: |
+  You are a GitHub assistant. You can help users with GitHub-related tasks.
+
+  Available tools:
+  - github_search: Search GitHub repositories
+  - github_issues: List and manage issues
+  - github_prs: List and manage pull requests
+
+  Always be concise and helpful.
+---
+# GitHub Skill
+
+This skill provides GitHub integration capabilities.
+```
+
+3. **Configure an Agent to Use the GitHub Skill:**
+
+Create `github-agent.toml:
+
+```toml
+name = "GitHub Assistant"
+description = "An agent that helps with GitHub tasks"
+
+system_prompt = "You are a helpful GitHub assistant."
+
+[model]
+provider = "openai"
+model = "gpt-4"
+api_key_env = "OPENAI_API_KEY"
+
+skills = ["github"]  # Specify the skill to use!
+```
+
+4. **Create the Agent:**
+
+```bash
+# Or create via CLI or dashboard
+```
+
+When the Agent runs, it will automatically load the `github` skill from `~/.fangclaw-go/skills/github/` and add its prompt context to the Agent's system prompt.
+
+---
+
+## Channel Configuration
+
+FangClaw-go supports multiple communication channels including QQ, Feishu (Lark), and DingTalk. Channels can be configured via environment variables or through the dashboard.
+
+### QQ Channel Configuration
+
+#### Getting QQ Credentials
+
+1. Go to [QQ Open Platform](https://app.open.qq.com/)
+2. Create a new bot application
+3. Get your App ID and App Secret from the application dashboard
+
+#### Via Environment Variables
+
+Set these environment variables before starting the daemon:
+
+```bash
+export QQ_APP_ID="your_qq_app_id"
+export QQ_APP_SECRET="your_qq_app_secret"
+```
+
+#### Configuration in Config File (Optional)
+
+You can also configure in `~/.fangclaw-go/config.toml`:
+
+```toml
+[channels]
+  [channels.qq]
+    app_id = "102876188"
+    app_secret = "QQ_APP_SECRET"
+    allow_from = ["user_id_1", "user_id_2"]  # Optional: restrict to specific users
+```
+
+### Feishu (Lark) Channel Configuration
+
+#### Getting Feishu Credentials
+
+1. Go to [Feishu Open Platform](https://open.feishu.cn/)
+2. Create a custom app
+3. Get App ID and App Secret from "Credentials & Basic Info"
+4. Enable necessary permissions (im:message, im:resource)
+
+#### Via Environment Variables
+
+```bash
+export FEISHU_APP_ID="your_feishu_app_id"
+export FEISHU_APP_SECRET="your_feishu_app_secret"
+```
+
+#### Via Config File (Optional)
+
+```toml
+[channels]
+  [channels.feishu]
+    app_id = "your_feishu_app_id"
+    app_secret = "your_feishu_app_secret"
+```
+
+### DingTalk Channel Configuration
+
+#### Getting DingTalk Credentials
+
+1. Go to [DingTalk Open Platform](https://open.dingtalk.com/)
+2. Create a H5 micro-app or robot
+3. Get App Key and App Secret
+
+#### Via Environment Variables
+
+```bash
+export DINGTALK_APP_KEY="your_dingtalk_app_key"
+export DINGTALK_APP_SECRET="your_dingtalk_app_secret"
+```
+
+#### Configuration in Config File (Optional)
+
+```toml
+[channels]
+  [channels.dingtalk]
+    app_key = "your_dingtalk_app_key"
+    app_secret = "your_dingtalk_app_secret"
+```
+
+### Dashboard Configuration （Optional）
+
+You can also configure channels through the web dashboard:
+
+1. Start the daemon: `./fangclaw-go start`
+2. Open the dashboard: http://127.0.0.1:4200/
+3. Navigate to "Channels" section
+4. Add and configure your channels through the UI
+
 ## About FangClaw-go
 
 FangClaw-go is a Go language reimplementation based on the [OpenFang](https://github.com/RightNow-AI/openfang) project, which is a feature-complete Agent Operating System built in Rust, with 137K+ lines of code, 14 crates, and 1,767+ tests.
