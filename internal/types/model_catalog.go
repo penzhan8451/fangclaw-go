@@ -56,6 +56,7 @@ const (
 
 type ModelCatalogEntry struct {
 	ID                string    `json:"id"`
+	ModelName         string    `json:"model_name"`
 	DisplayName       string    `json:"display_name"`
 	Provider          string    `json:"provider"`
 	Tier              ModelTier `json:"tier"`
@@ -115,6 +116,7 @@ func BuiltinModels() []ModelCatalogEntry {
 	return []ModelCatalogEntry{
 		{
 			ID:                "anthropic:claude-3-5-sonnet-20241022",
+			ModelName:         "claude-3-5-sonnet-20241022",
 			DisplayName:       "Claude 3.5 Sonnet",
 			Provider:          "anthropic",
 			Tier:              ModelTierSmart,
@@ -129,6 +131,7 @@ func BuiltinModels() []ModelCatalogEntry {
 		},
 		{
 			ID:                "anthropic:claude-3-opus-20240229",
+			ModelName:         "claude-3-opus-20240229",
 			DisplayName:       "Claude 3 Opus",
 			Provider:          "anthropic",
 			Tier:              ModelTierFrontier,
@@ -143,6 +146,7 @@ func BuiltinModels() []ModelCatalogEntry {
 		},
 		{
 			ID:                "openai:gpt-4o",
+			ModelName:         "gpt-4o",
 			DisplayName:       "GPT-4o",
 			Provider:          "openai",
 			Tier:              ModelTierSmart,
@@ -157,6 +161,7 @@ func BuiltinModels() []ModelCatalogEntry {
 		},
 		{
 			ID:                "openai:gpt-4o-mini",
+			ModelName:         "gpt-4o-mini",
 			DisplayName:       "GPT-4o Mini",
 			Provider:          "openai",
 			Tier:              ModelTierBalanced,
@@ -171,6 +176,7 @@ func BuiltinModels() []ModelCatalogEntry {
 		},
 		{
 			ID:                "openai:gpt-4-turbo",
+			ModelName:         "gpt-4-turbo",
 			DisplayName:       "GPT-4 Turbo",
 			Provider:          "openai",
 			Tier:              ModelTierSmart,
@@ -185,6 +191,7 @@ func BuiltinModels() []ModelCatalogEntry {
 		},
 		{
 			ID:                "openai:gpt-3.5-turbo",
+			ModelName:         "gpt-3.5-turbo",
 			DisplayName:       "GPT-3.5 Turbo",
 			Provider:          "openai",
 			Tier:              ModelTierFast,
@@ -199,6 +206,7 @@ func BuiltinModels() []ModelCatalogEntry {
 		},
 		{
 			ID:                "gemini:gemini-2.0-flash",
+			ModelName:         "gemini-2.0-flash",
 			DisplayName:       "Gemini 2.0 Flash",
 			Provider:          "gemini",
 			Tier:              ModelTierBalanced,
@@ -213,6 +221,7 @@ func BuiltinModels() []ModelCatalogEntry {
 		},
 		{
 			ID:                "gemini:gemini-1.5-pro",
+			ModelName:         "gemini-1.5-pro",
 			DisplayName:       "Gemini 1.5 Pro",
 			Provider:          "gemini",
 			Tier:              ModelTierSmart,
@@ -227,6 +236,7 @@ func BuiltinModels() []ModelCatalogEntry {
 		},
 		{
 			ID:                "deepseek:deepseek-chat",
+			ModelName:         "deepseek-chat",
 			DisplayName:       "DeepSeek Chat",
 			Provider:          "deepseek",
 			Tier:              ModelTierSmart,
@@ -241,6 +251,7 @@ func BuiltinModels() []ModelCatalogEntry {
 		},
 		{
 			ID:                "openrouter:anthropic/claude-3-5-sonnet",
+			ModelName:         "anthropic/claude-3-5-sonnet",
 			DisplayName:       "Claude 3.5 Sonnet (OpenRouter)",
 			Provider:          "openrouter",
 			Tier:              ModelTierSmart,
@@ -270,6 +281,13 @@ func BuiltinAliases() map[string]string {
 		"gemini-1.5-pro":   "gemini:gemini-1.5-pro",
 		"deepseek-chat":    "deepseek:deepseek-chat",
 	}
+}
+
+// ModelCatalogFile represents the structure for model catalog JSON file.
+type ModelCatalogFile struct {
+	Version   string              `json:"version"`
+	Providers []ProviderInfo      `json:"providers"`
+	Models    []ModelCatalogEntry `json:"models"`
 }
 
 func BuiltinProviders() []ProviderInfo {

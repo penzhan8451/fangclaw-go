@@ -54,7 +54,7 @@ func (m *BridgeManager) handleCommand(_ Adapter /*Reserved*/, msg *Message, cmd 
 			return "Usage: /agent <name> or /agent default"
 		}
 		if args[0] == "default" {
-			// 重置为系统默认，清除用户自定义设置
+			// Reset to system default, clear user custom settings
 			m.router.SetUserDefault(msg.Sender, "")
 			return "Reset to default agent"
 		}
@@ -85,14 +85,14 @@ func isCommand(text string) (string, []string, bool) {
 	cmd := parts[0]
 	var args []string
 
-	// 对于 /agent 命令
+	// For /agent command
 	if cmd == "agent" && len(parts) > 1 {
-		// 检查第二个词是不是 "default"
+		// Check if the second word is "default"
 		if parts[1] == "default" {
-			// 如果是 "default"，单独作为一个参数
+			// If it's "default", use as a single argument
 			args = []string{"default"}
 		} else {
-			// 否则，将剩余部分合并为一个完整的agent名称
+			// Otherwise, combine the rest into a complete agent name
 			args = []string{strings.Join(parts[1:], " ")}
 		}
 	} else {

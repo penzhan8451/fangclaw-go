@@ -13186,22 +13186,22 @@ function handsPage() {
     },
 
     async deactivateFromAvailable(hand) {
-      // 首先加载active实例
+      // First load active instances
       await this.loadActive();
       
-      // 查找对应的实例
+      // Find corresponding instance
       var instance = this.instances.find(function(i) { return i.hand_id === hand.id; });
       if (instance) {
-        // 找到实例，停用它
+        // Found instance, deactivate it
         var self = this;
         var handName = instance.agent_name || instance.hand_id;
         FangClawGoToast.confirm('Deactivate Hand', 'Deactivate hand "' + handName + '"? This will kill its agent.', async function() {
           try {
             await FangClawGoAPI.delete('/api/hands/instances/' + instance.instance_id);
             self.instances = self.instances.filter(function(i) { return i.instance_id !== instance.instance_id; });
-            // 更新本地hand状态
+            // Update local hand status
             hand.status = 'inactive';
-            // 重新加载数据
+            // Reload data
             await self.loadData();
             FangClawGoToast.success('Hand deactivated.');
           } catch(e) {
@@ -13209,7 +13209,7 @@ function handsPage() {
           }
         });
       } else {
-        // 没找到实例，可能是状态不同步，重新加载数据
+        // Instance not found, possibly out of sync, reload data
         await this.loadData();
         this.showToast('Hand is not active.');
       }

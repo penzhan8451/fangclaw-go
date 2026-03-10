@@ -1,4 +1,3 @@
-// Package cron provides cron scheduling functionality for OpenFang.
 package cron
 
 import (
@@ -6,374 +5,439 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
+	"github.com/rs/zerolog/log"
+
+	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
-
-// CronJob represents a scheduled cron job.
-type CronJob struct {
-	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Schedule    string                 `json:"schedule"`
-	AgentID     string                 `json:"agent_id,omitempty"`
-	HandID      string                 `json:"hand_id,omitempty"`
-	Payload     map[string]interface{} `json:"payload,omitempty"`
-	Enabled     bool                   `json:"enabled"`
-	CreatedAt   time.Time              `json:"created_at"`
-	UpdatedAt   time.Time              `json:"updated_at"`
-	LastRun     *time.Time             `json:"last_run,omitempty"`
-	NextRun     *time.Time             `json:"next_run,omitempty"`
-}
-
-// CronJobStatus represents the status of a cron job execution.
-type CronJobStatus string
 
 const (
-	CronJobStatusPending CronJobStatus = "pending"
-	CronJobStatusRunning CronJobStatus = "running"
-	CronJobStatusSuccess CronJobStatus = "success"
-	CronJobStatusFailed  CronJobStatus = "failed"
+	MAX_CONSECUTIVE_ERRORS = 5
 )
 
-// CronJobExecution represents a single execution of a cron job.
-type CronJobExecution struct {
-	ID        string        `json:"id"`
-	JobID     string        `json:"job_id"`
-	Status    CronJobStatus `json:"status"`
-	StartedAt time.Time     `json:"started_at"`
-	EndedAt   *time.Time    `json:"ended_at,omitempty"`
-	Error     string        `json:"error,omitempty"`
-	Output    string        `json:"output,omitempty"`
+type JobMeta struct {
+	Job               types.CronJob `json:"job"`
+	OneShot           bool          `json:"one_shot"`
+	LastStatus        *string       `json:"last_status,omitempty"`
+	ConsecutiveErrors uint32        `json:"consecutive_errors"`
 }
 
-// JobHandler is a function that handles cron job execution.
-type JobHandler func(job *CronJob) error
-
-// CronScheduler manages cron jobs.
-type CronScheduler struct {
-	mu         sync.RWMutex
-	jobs       map[string]*CronJob
-	executions map[string]*CronJobExecution
-	cron       *cron.Cron
-	entries    map[string]cron.EntryID
-	handler    JobHandler
-	persistDir string
-	running    bool
-}
-
-// NewCronScheduler creates a new cron scheduler.
-func NewCronScheduler(persistDir string, handler JobHandler) *CronScheduler {
-	return &CronScheduler{
-		jobs:       make(map[string]*CronJob),
-		executions: make(map[string]*CronJobExecution),
-		cron:       cron.New(),
-		entries:    make(map[string]cron.EntryID),
-		handler:    handler,
-		persistDir: persistDir,
+func NewJobMeta(job types.CronJob, oneShot bool) JobMeta {
+	return JobMeta{
+		Job:               job,
+		OneShot:           oneShot,
+		LastStatus:        nil,
+		ConsecutiveErrors: 0,
 	}
 }
 
-// Start starts the cron scheduler.
-func (cs *CronScheduler) Start() error {
+type CronScheduler struct {
+	mu           sync.RWMutex
+	jobs         map[types.CronJobID]JobMeta
+	persistPath  string
+	maxTotalJobs *atomic.Uint32
+	watcher      struct {
+		mu       sync.Mutex
+		stopChan chan struct{}
+		running  bool
+	}
+}
+
+func NewCronScheduler(homeDir string, maxTotalJobs uint32) *CronScheduler {
+	scheduler := &CronScheduler{
+		jobs:         make(map[types.CronJobID]JobMeta),
+		persistPath:  filepath.Join(homeDir, "cron_jobs.json"),
+		maxTotalJobs: &atomic.Uint32{},
+	}
+	scheduler.maxTotalJobs.Store(maxTotalJobs)
+	return scheduler
+}
+
+func (cs *CronScheduler) SetMaxTotalJobs(newMax uint32) {
+	cs.maxTotalJobs.Store(newMax)
+}
+
+func (cs *CronScheduler) Load() (int, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	if cs.running {
-		return nil
+	if _, err := os.Stat(cs.persistPath); os.IsNotExist(err) {
+		return 0, nil
 	}
 
-	if err := cs.load(); err != nil {
-		return err
+	data, err := os.ReadFile(cs.persistPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read cron jobs: %w", err)
 	}
 
-	for _, job := range cs.jobs {
-		if job.Enabled {
-			cs.scheduleJob(job)
+	var metas []JobMeta
+	if err := json.Unmarshal(data, &metas); err != nil {
+		return 0, fmt.Errorf("failed to parse cron jobs: %w", err)
+	}
+
+	newJobs := make(map[types.CronJobID]JobMeta)
+	count := len(metas)
+	for _, meta := range metas {
+		newJobs[meta.Job.ID] = meta
+	}
+
+	cs.jobs = newJobs
+
+	log.Info().Int("count", count).Msg("Loaded cron jobs from disk")
+	return count, nil
+}
+
+func (cs *CronScheduler) Persist() error {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	metas := make([]JobMeta, 0, len(cs.jobs))
+	for _, meta := range cs.jobs {
+		metas = append(metas, meta)
+	}
+
+	data, err := json.MarshalIndent(metas, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to serialize cron jobs: %w", err)
+	}
+
+	tmpPath := cs.persistPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write cron jobs temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, cs.persistPath); err != nil {
+		return fmt.Errorf("failed to rename cron jobs file: %w", err)
+	}
+
+	log.Debug().Int("count", len(metas)).Msg("Persisted cron jobs")
+	return nil
+}
+
+func (cs *CronScheduler) AddJob(job types.CronJob, oneShot bool) (types.CronJobID, error) {
+	cs.mu.Lock()
+
+	maxJobs := cs.maxTotalJobs.Load()
+	if uint32(len(cs.jobs)) >= maxJobs {
+		cs.mu.Unlock()
+		return "", fmt.Errorf("global cron job limit reached (%d)", maxJobs)
+	}
+
+	agentCount := 0
+	for _, meta := range cs.jobs {
+		if meta.Job.AgentID == job.AgentID {
+			agentCount++
 		}
 	}
 
-	cs.cron.Start()
-	cs.running = true
-	return nil
+	if err := job.Validate(agentCount); err != nil {
+		cs.mu.Unlock()
+		return "", err
+	}
+
+	nextRun := ComputeNextRun(&job.Schedule)
+	job.NextRun = &nextRun
+
+	id := job.ID
+	cs.jobs[id] = NewJobMeta(job, oneShot)
+
+	cs.mu.Unlock()
+
+	if err := cs.Persist(); err != nil {
+		log.Warn().Err(err).Msg("Failed to persist after adding job")
+	}
+
+	return id, nil
 }
 
-// Stop stops the cron scheduler.
-func (cs *CronScheduler) Stop() {
+func (cs *CronScheduler) RemoveJob(id types.CronJobID) (types.CronJob, error) {
 	cs.mu.Lock()
-	defer cs.mu.Unlock()
 
-	if !cs.running {
-		return
-	}
-
-	cs.cron.Stop()
-	cs.running = false
-}
-
-// AddJob adds a new cron job.
-func (cs *CronScheduler) AddJob(job *CronJob) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
-	if job.ID == "" {
-		job.ID = uuid.New().String()
-	}
-	job.CreatedAt = time.Now()
-	job.UpdatedAt = time.Now()
-	job.Enabled = true
-
-	cs.jobs[job.ID] = job
-
-	if cs.running && job.Enabled {
-		cs.scheduleJob(job)
-	}
-
-	if err := cs.save(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// GetJob gets a cron job by ID.
-func (cs *CronScheduler) GetJob(id string) (*CronJob, bool) {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
-
-	job, ok := cs.jobs[id]
-	return job, ok
-}
-
-// ListJobs lists all cron jobs.
-func (cs *CronScheduler) ListJobs() []*CronJob {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
-
-	jobs := make([]*CronJob, 0, len(cs.jobs))
-	for _, job := range cs.jobs {
-		jobs = append(jobs, job)
-	}
-	return jobs
-}
-
-// UpdateJob updates a cron job.
-func (cs *CronScheduler) UpdateJob(job *CronJob) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
-	existing, ok := cs.jobs[job.ID]
-	if !ok {
-		return fmt.Errorf("job not found")
-	}
-
-	if entryID, ok := cs.entries[job.ID]; ok {
-		cs.cron.Remove(entryID)
-		delete(cs.entries, job.ID)
-	}
-
-	job.CreatedAt = existing.CreatedAt
-	job.UpdatedAt = time.Now()
-	cs.jobs[job.ID] = job
-
-	if cs.running && job.Enabled {
-		cs.scheduleJob(job)
-	}
-
-	if err := cs.save(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// DeleteJob deletes a cron job.
-func (cs *CronScheduler) DeleteJob(id string) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
-	if entryID, ok := cs.entries[id]; ok {
-		cs.cron.Remove(entryID)
-		delete(cs.entries, id)
+	meta, exists := cs.jobs[id]
+	if !exists {
+		cs.mu.Unlock()
+		return types.CronJob{}, fmt.Errorf("cron job %s not found", id)
 	}
 
 	delete(cs.jobs, id)
 
-	if err := cs.save(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// EnableJob enables a cron job.
-func (cs *CronScheduler) EnableJob(id string) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
-	job, ok := cs.jobs[id]
-	if !ok {
-		return fmt.Errorf("job not found")
-	}
-
-	job.Enabled = true
-	job.UpdatedAt = time.Now()
-
-	if cs.running {
-		cs.scheduleJob(job)
-	}
-
-	if err := cs.save(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// DisableJob disables a cron job.
-func (cs *CronScheduler) DisableJob(id string) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
-	job, ok := cs.jobs[id]
-	if !ok {
-		return fmt.Errorf("job not found")
-	}
-
-	job.Enabled = false
-	job.UpdatedAt = time.Now()
-
-	if entryID, ok := cs.entries[id]; ok {
-		cs.cron.Remove(entryID)
-		delete(cs.entries, id)
-	}
-
-	if err := cs.save(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// RunJob runs a cron job immediately.
-func (cs *CronScheduler) RunJob(id string) error {
-	cs.mu.RLock()
-	job, ok := cs.jobs[id]
-	if !ok {
-		cs.mu.RUnlock()
-		return fmt.Errorf("job not found")
-	}
-	cs.mu.RUnlock()
-
-	execution := &CronJobExecution{
-		ID:        uuid.New().String(),
-		JobID:     job.ID,
-		Status:    CronJobStatusRunning,
-		StartedAt: time.Now(),
-	}
-
-	cs.mu.Lock()
-	cs.executions[execution.ID] = execution
 	cs.mu.Unlock()
 
-	now := time.Now()
-	job.LastRun = &now
-	cs.updateNextRun(job)
-
-	if cs.handler != nil {
-		err := cs.handler(job)
-		endedAt := time.Now()
-		execution.EndedAt = &endedAt
-		job.UpdatedAt = time.Now()
-
-		if err != nil {
-			execution.Status = CronJobStatusFailed
-			execution.Error = err.Error()
-		} else {
-			execution.Status = CronJobStatusSuccess
-		}
+	if err := cs.Persist(); err != nil {
+		log.Warn().Err(err).Msg("Failed to persist after removing job")
 	}
 
-	if err := cs.save(); err != nil {
-		return err
+	return meta.Job, nil
+}
+
+func (cs *CronScheduler) SetEnabled(id types.CronJobID, enabled bool) error {
+	cs.mu.Lock()
+
+	meta, exists := cs.jobs[id]
+	if !exists {
+		cs.mu.Unlock()
+		return fmt.Errorf("cron job %s not found", id)
+	}
+
+	meta.Job.Enabled = enabled
+	if enabled {
+		meta.ConsecutiveErrors = 0
+		nextRun := ComputeNextRun(&meta.Job.Schedule)
+		meta.Job.NextRun = &nextRun
+	}
+
+	cs.jobs[id] = meta
+
+	cs.mu.Unlock()
+
+	if err := cs.Persist(); err != nil {
+		log.Warn().Err(err).Msg("Failed to persist after setting enabled")
 	}
 
 	return nil
 }
 
-// ListExecutions lists all cron job executions.
-func (cs *CronScheduler) ListExecutions() []*CronJobExecution {
+func (cs *CronScheduler) GetJob(id types.CronJobID) *types.CronJob {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	executions := make([]*CronJobExecution, 0, len(cs.executions))
-	for _, execution := range cs.executions {
-		executions = append(executions, execution)
-	}
-	return executions
-}
-
-// scheduleJob schedules a cron job.
-func (cs *CronScheduler) scheduleJob(job *CronJob) {
-	entryID, err := cs.cron.AddFunc(job.Schedule, func() {
-		cs.RunJob(job.ID)
-	})
-
-	if err == nil {
-		cs.entries[job.ID] = entryID
-		cs.updateNextRun(job)
-	}
-}
-
-// updateNextRun updates the next run time for a job.
-func (cs *CronScheduler) updateNextRun(job *CronJob) {
-	if entryID, ok := cs.entries[job.ID]; ok {
-		entry := cs.cron.Entry(entryID)
-		next := entry.Next
-		job.NextRun = &next
-	}
-}
-
-// save saves the cron jobs to disk.
-func (cs *CronScheduler) save() error {
-	if cs.persistDir == "" {
+	meta, exists := cs.jobs[id]
+	if !exists {
 		return nil
 	}
-
-	if err := os.MkdirAll(cs.persistDir, 0755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(cs.jobs, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(filepath.Join(cs.persistDir, "cron_jobs.json"), data, 0644)
+	job := meta.Job
+	return &job
 }
 
-// load loads the cron jobs from disk.
-func (cs *CronScheduler) load() error {
-	if cs.persistDir == "" {
+func (cs *CronScheduler) GetMeta(id types.CronJobID) *JobMeta {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	meta, exists := cs.jobs[id]
+	if !exists {
 		return nil
 	}
+	result := meta
+	return &result
+}
 
-	data, err := os.ReadFile(filepath.Join(cs.persistDir, "cron_jobs.json"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
+func (cs *CronScheduler) ListJobs(agentID types.AgentID) []types.CronJob {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	var jobs []types.CronJob
+	for _, meta := range cs.jobs {
+		if meta.Job.AgentID == agentID {
+			jobs = append(jobs, meta.Job)
 		}
-		return err
+	}
+	return jobs
+}
+
+func (cs *CronScheduler) ListAllJobs() []types.CronJob {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	var jobs []types.CronJob
+	for _, meta := range cs.jobs {
+		jobs = append(jobs, meta.Job)
+	}
+	return jobs
+}
+
+func (cs *CronScheduler) TotalJobs() int {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	return len(cs.jobs)
+}
+
+func (cs *CronScheduler) DueJobs() []types.CronJob {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	now := time.Now().UTC()
+	var due []types.CronJob
+
+	for id, meta := range cs.jobs {
+		if meta.Job.Enabled && meta.Job.NextRun != nil && !meta.Job.NextRun.After(now) {
+			due = append(due, meta.Job)
+			nextRun := ComputeNextRunAfter(&meta.Job.Schedule, now)
+			meta.Job.NextRun = &nextRun
+			cs.jobs[id] = meta
+		}
 	}
 
-	var jobs map[string]*CronJob
-	if err := json.Unmarshal(data, &jobs); err != nil {
-		return err
+	return due
+}
+
+func (cs *CronScheduler) RecordSuccess(id types.CronJobID) {
+	cs.mu.Lock()
+
+	meta, exists := cs.jobs[id]
+	if !exists {
+		cs.mu.Unlock()
+		return
 	}
 
-	cs.jobs = jobs
-	return nil
+	now := time.Now().UTC()
+	meta.Job.LastRun = &now
+	status := "ok"
+	meta.LastStatus = &status
+	meta.ConsecutiveErrors = 0
+
+	var shouldPersist bool
+	if meta.OneShot {
+		delete(cs.jobs, id)
+		shouldPersist = true
+	} else {
+		cs.jobs[id] = meta
+		shouldPersist = true
+	}
+
+	cs.mu.Unlock()
+
+	if shouldPersist {
+		if err := cs.Persist(); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist after recording success")
+		}
+	}
+}
+
+func (cs *CronScheduler) RecordFailure(id types.CronJobID, errorMsg string) {
+	cs.mu.Lock()
+
+	meta, exists := cs.jobs[id]
+	if !exists {
+		cs.mu.Unlock()
+		return
+	}
+
+	now := time.Now().UTC()
+	meta.Job.LastRun = &now
+
+	truncated := errorMsg
+	if len(truncated) > 256 {
+		truncated = truncated[:256]
+	}
+	status := fmt.Sprintf("error: %s", truncated)
+	meta.LastStatus = &status
+	meta.ConsecutiveErrors++
+
+	if meta.ConsecutiveErrors >= MAX_CONSECUTIVE_ERRORS {
+		log.Warn().Str("job_id", id.String()).Uint32("errors", meta.ConsecutiveErrors).Msg("Auto-disabling cron job after repeated failures")
+		meta.Job.Enabled = false
+	} else {
+		nextRun := ComputeNextRunAfter(&meta.Job.Schedule, now)
+		meta.Job.NextRun = &nextRun
+	}
+
+	cs.jobs[id] = meta
+
+	cs.mu.Unlock()
+
+	if err := cs.Persist(); err != nil {
+		log.Warn().Err(err).Msg("Failed to persist after recording failure")
+	}
+}
+
+func ComputeNextRun(schedule *types.CronSchedule) time.Time {
+	return ComputeNextRunAfter(schedule, time.Now().UTC())
+}
+
+func ComputeNextRunAfter(schedule *types.CronSchedule, after time.Time) time.Time {
+	switch schedule.Kind {
+	case types.CronScheduleKindAt:
+		if schedule.At != nil {
+			return *schedule.At
+		}
+		return after.Add(1 * time.Hour)
+
+	case types.CronScheduleKindEvery:
+		if schedule.EverySecs != nil {
+			return after.Add(time.Duration(*schedule.EverySecs) * time.Second)
+		}
+		return after.Add(1 * time.Hour)
+
+	case types.CronScheduleKindCron:
+		if schedule.Expr == nil {
+			return after.Add(1 * time.Hour)
+		}
+
+		trimmed := strings.TrimSpace(*schedule.Expr)
+		base := after.Add(1 * time.Second)
+
+		sched, err := cron.ParseStandard(trimmed)
+		if err != nil {
+			log.Warn().Str("expr", *schedule.Expr).Err(err).Msg("Failed to parse cron expression")
+			return after.Add(1 * time.Hour)
+		}
+
+		next := sched.Next(base)
+		if next.IsZero() {
+			return after.Add(1 * time.Hour)
+		}
+		return next
+
+	default:
+		return after.Add(1 * time.Hour)
+	}
+}
+
+func (cs *CronScheduler) StartHotReload() {
+	cs.watcher.mu.Lock()
+	if cs.watcher.running {
+		cs.watcher.mu.Unlock()
+		return
+	}
+
+	cs.watcher.stopChan = make(chan struct{})
+	cs.watcher.running = true
+	cs.watcher.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		var lastModTime time.Time
+		for {
+			select {
+			case <-ticker.C:
+				info, err := os.Stat(cs.persistPath)
+				if err == nil {
+					modTime := info.ModTime()
+					if modTime.After(lastModTime) {
+						lastModTime = modTime
+						log.Debug().Msg("Cron jobs file modified, reloading...")
+						if _, err := cs.Load(); err != nil {
+							log.Warn().Err(err).Msg("Failed to reload cron jobs")
+						}
+					}
+				}
+			case <-cs.watcher.stopChan:
+				return
+			}
+		}
+	}()
+
+	log.Debug().Msg("Cron hot reload started")
+}
+
+func (cs *CronScheduler) StopHotReload() {
+	cs.watcher.mu.Lock()
+	defer cs.watcher.mu.Unlock()
+
+	if !cs.watcher.running {
+		return
+	}
+
+	close(cs.watcher.stopChan)
+	cs.watcher.running = false
+
+	log.Debug().Msg("Cron hot reload stopped")
 }

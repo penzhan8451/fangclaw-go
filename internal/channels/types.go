@@ -176,16 +176,16 @@ type FeishuChannelConfig struct {
 
 // DingTalkChannelConfig represents the configuration for DingTalk channel.
 type DingTalkChannelConfig struct {
-	// 旧配置（保持向后兼容）
+	// Old config (maintained for backward compatibility)
 	AppKey    string `json:"app_key,omitempty"`
 	AppSecret string `json:"app_secret,omitempty"`
 	AgentID   string `json:"agent_id,omitempty"`
 
-	// 新配置（Stream SDK 方式）
-	ClientID     string   `json:"client_id,omitempty"`     // 钉钉应用 Client ID
-	ClientSecret string   `json:"client_secret,omitempty"` // 钉钉应用 Client Secret
-	GroupTrigger string   `json:"group_trigger,omitempty"` // 群组触发词（可选）
-	AllowFrom    []string `json:"allow_from,omitempty"`    // 用户白名单（可选）
+	// New config (Stream SDK mode)
+	ClientID     string   `json:"client_id,omitempty"`     // DingTalk App Client ID
+	ClientSecret string   `json:"client_secret,omitempty"` // DingTalk App Client Secret
+	GroupTrigger string   `json:"group_trigger,omitempty"` // Group trigger words (optional)
+	AllowFrom    []string `json:"allow_from,omitempty"`    // User whitelist (optional)
 }
 
 // WhatsAppChannelConfig represents the configuration for WhatsApp channel.

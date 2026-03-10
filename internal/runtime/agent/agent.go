@@ -318,10 +318,10 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			TopP:        agentCtx.Config.TopP,
 		}
 
-		// 使用非流式调用（获得精确的 token 统计）
+		// Use non-streaming call (to get accurate token stats)
 		resp, err := r.callLLMWithRetry(ctx, driver, req)
 
-		// 如果想切换回流式调用，请注释上面一行，取消注释下面几行：
+		// If you want to switch back to streaming call, comment the line above and uncomment the lines below:
 		// if onPhase != nil {
 		// 	onPhase(PhaseStreaming)
 		// }

@@ -1,22 +1,64 @@
 package model_catalog
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
 type ModelCatalog struct {
-	mu        sync.RWMutex
-	models    []types.ModelCatalogEntry
-	aliases   map[string]string
-	providers []types.ProviderInfo
-	custom    []types.ModelCatalogEntry
+	mu           sync.RWMutex
+	models       []types.ModelCatalogEntry
+	aliases      map[string]string
+	providers    []types.ProviderInfo
+	custom       []types.ModelCatalogEntry
+	configPath   string
+	lastModified time.Time
 }
 
-func NewModelCatalog() *ModelCatalog {
+// NewModelCatalog creates a new ModelCatalog, loading from config file if available.
+func NewModelCatalog(configPath string) *ModelCatalog {
+	catalog := &ModelCatalog{
+		configPath: configPath,
+		custom:     []types.ModelCatalogEntry{},
+	}
+
+	catalog.loadOrInitialize()
+	return catalog
+}
+
+// loadOrInitialize loads the catalog from config file, or initializes with defaults.
+func (c *ModelCatalog) loadOrInitialize() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.configPath != "" {
+		if _, err := os.Stat(c.configPath); err == nil {
+			if err := c.loadFromFileUnsafe(); err == nil {
+				fmt.Printf("Loaded model catalog from %s\n", c.configPath)
+				return
+			}
+			fmt.Printf("Failed to load model catalog from %s, using defaults: %v\n", c.configPath, err)
+		}
+
+		if err := c.saveToFileUnsafe(); err == nil {
+			fmt.Printf("Created default model catalog at %s\n", c.configPath)
+		} else {
+			fmt.Printf("Failed to save default model catalog: %v\n", err)
+		}
+	}
+
+	c.loadDefaultsUnsafe()
+}
+
+// loadDefaultsUnsafe loads the built-in defaults (not thread-safe).
+func (c *ModelCatalog) loadDefaultsUnsafe() {
 	models := types.BuiltinModels()
 	aliases := types.BuiltinAliases()
 	providers := types.BuiltinProviders()
@@ -31,15 +73,102 @@ func NewModelCatalog() *ModelCatalog {
 		providers[i].ModelCount = count
 	}
 
-	return &ModelCatalog{
-		models:    models,
-		aliases:   aliases,
-		providers: providers,
-		custom:    []types.ModelCatalogEntry{},
+	c.models = models
+	c.aliases = aliases
+	c.providers = providers
+}
+
+// loadFromFileUnsafe loads the catalog from the config file (not thread-safe).
+func (c *ModelCatalog) loadFromFileUnsafe() error {
+	data, err := os.ReadFile(c.configPath)
+	if err != nil {
+		return err
 	}
+
+	var file types.ModelCatalogFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		return err
+	}
+
+	aliases := make(map[string]string)
+	for _, model := range file.Models {
+		for _, alias := range model.Aliases {
+			aliases[strings.ToLower(alias)] = model.ID
+		}
+	}
+
+	for i := range file.Providers {
+		count := 0
+		for _, m := range file.Models {
+			if m.Provider == file.Providers[i].ID {
+				count++
+			}
+		}
+		file.Providers[i].ModelCount = count
+	}
+
+	c.models = file.Models
+	c.aliases = aliases
+	c.providers = file.Providers
+
+	if info, err := os.Stat(c.configPath); err == nil {
+		c.lastModified = info.ModTime()
+	}
+
+	return nil
+}
+
+// saveToFileUnsafe saves the catalog to the config file (not thread-safe).
+func (c *ModelCatalog) saveToFileUnsafe() error {
+	if c.configPath == "" {
+		return fmt.Errorf("no config path specified")
+	}
+
+	if err := os.MkdirAll(filepath.Dir(c.configPath), 0755); err != nil {
+		return err
+	}
+
+	models := types.BuiltinModels()
+	providers := types.BuiltinProviders()
+
+	file := types.ModelCatalogFile{
+		Version:   "1.0",
+		Providers: providers,
+		Models:    models,
+	}
+
+	data, err := json.MarshalIndent(file, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(c.configPath, data, 0644)
+}
+
+// Reload reloads the catalog from the config file if it has changed.
+func (c *ModelCatalog) Reload() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.configPath == "" {
+		return nil
+	}
+
+	info, err := os.Stat(c.configPath)
+	if err != nil {
+		return err
+	}
+
+	if info.ModTime().After(c.lastModified) {
+		fmt.Printf("Reloading model catalog from %s (file changed)\n", c.configPath)
+		return c.loadFromFileUnsafe()
+	}
+
+	return nil
 }
 
 func (c *ModelCatalog) DetectAuth() {
+	_ = c.Reload()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -67,6 +196,7 @@ func (c *ModelCatalog) DetectAuth() {
 }
 
 func (c *ModelCatalog) ListModels() []types.ModelCatalogEntry {
+	_ = c.Reload()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -77,6 +207,7 @@ func (c *ModelCatalog) ListModels() []types.ModelCatalogEntry {
 }
 
 func (c *ModelCatalog) FindModel(idOrAlias string) *types.ModelCatalogEntry {
+	_ = c.Reload()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -106,12 +237,14 @@ func (c *ModelCatalog) FindModel(idOrAlias string) *types.ModelCatalogEntry {
 }
 
 func (c *ModelCatalog) ResolveAlias(alias string) string {
+	_ = c.Reload()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.aliases[strings.ToLower(alias)]
 }
 
 func (c *ModelCatalog) ListAliases() map[string]string {
+	_ = c.Reload()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -123,6 +256,7 @@ func (c *ModelCatalog) ListAliases() map[string]string {
 }
 
 func (c *ModelCatalog) ListProviders() []types.ProviderInfo {
+	_ = c.Reload()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -132,6 +266,7 @@ func (c *ModelCatalog) ListProviders() []types.ProviderInfo {
 }
 
 func (c *ModelCatalog) GetProvider(id string) *types.ProviderInfo {
+	_ = c.Reload()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -144,6 +279,7 @@ func (c *ModelCatalog) GetProvider(id string) *types.ProviderInfo {
 }
 
 func (c *ModelCatalog) AvailableModels() []types.ModelCatalogEntry {
+	_ = c.Reload()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 

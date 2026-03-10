@@ -113,7 +113,7 @@ func runChatLocal(agentID string) error {
 	fmt.Println("Starting interactive chat (local mode with AgentLoop)...")
 	fmt.Printf("Chatting with agent: %s\n\n", agentID)
 
-	// 1. 创建数据库
+	// 1. Create database
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
@@ -133,7 +133,7 @@ func runChatLocal(agentID string) error {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	// 2. 创建 memory store
+	// 2. Create memory store
 	semanticStore, err := memory.NewSemanticStore(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to create semantic store: %w", err)
@@ -149,14 +149,14 @@ func runChatLocal(agentID string) error {
 	knowledgeStore := memory.NewKnowledgeStore(db)
 	usageStore := memory.NewUsageStore(db)
 
-	// 2.5. 创建 skills loader
+	// 2.5. Create skills loader
 	skillsPath := filepath.Join(dbDir, "skills")
 	skillLoader, err := skills.NewLoader(skillsPath)
 	if err != nil {
 		fmt.Printf("Warning: failed to create skill loader: %v\n", err)
 	}
 
-	// 加载所有已安装的技能
+	// Load all installed skills
 	var allSkillIDs []string
 	if skillLoader != nil {
 		if skills, err := skillLoader.ListSkills(); err == nil {
@@ -166,19 +166,20 @@ func runChatLocal(agentID string) error {
 		}
 	}
 
-	// 2.6. 创建 embedding driver
+	// 2.6. Create embedding driver
 	embeddingDriver := embedding.NewEmbeddingDriver()
 	openAIEmbedder := vector.NewOpenAIEmbedder("", "")
 	embeddingAdapter := embedding.NewVectorEmbedderAdapter(openAIEmbedder)
 	embeddingDriver.Register("openai", embeddingAdapter)
 
-	// 2.7. 创建 model catalog
-	modelCatalog := model_catalog.NewModelCatalog()
+	// 2.7. Create model catalog
+	modelCatalogPath := filepath.Join(dbDir, "model_catalog.json")
+	modelCatalog := model_catalog.NewModelCatalog(modelCatalogPath)
 
-	// 3. 创建 Agent Runtime
+	// 3. Create Agent Runtime
 	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, nil)
 
-	// 4. 获取 LLM driver
+	// 4. Get LLM driver
 	driver, err := getLLMDriver()
 	if err != nil {
 		fmt.Printf("Warning: %v\n", err)
@@ -186,7 +187,7 @@ func runChatLocal(agentID string) error {
 		return runChatEcho(agentID)
 	}
 
-	// 5. 注册 LLM driver 和工具
+	// 5. Register LLM driver and tools
 	cfg, err := config.Load("")
 	var providerName string
 	if err == nil && cfg.DefaultModel.Provider != "" {
@@ -197,7 +198,7 @@ func runChatLocal(agentID string) error {
 	runtime.RegisterDriver(providerName, driver)
 	tools.RegisterAllTools(runtime)
 
-	// 6. 创建 AgentContext
+	// 6. Create AgentContext
 	var systemPrompt string
 	var toolNames []string
 	var modelName string
@@ -209,7 +210,7 @@ func runChatLocal(agentID string) error {
 		systemPrompt = fmt.Sprintf("%s\n\nCurrent date: %s", systemPrompt, currentDate)
 		skillPromptContext = hand.SkillContent
 	} else {
-		// 默认的系统提示词，明确告诉可以使用工具
+		// Default system prompt, explicitly stating that tools can be used
 		systemPrompt = fmt.Sprintf(`You are a helpful assistant. You have access to the following tools that you can use to help the user:
 
 When appropriate, use the available tools to accomplish tasks. For example, if a tool is available to say hello, use it when greeting someone.
@@ -217,11 +218,11 @@ When appropriate, use the available tools to accomplish tasks. For example, if a
 Current date: %s`, currentDate)
 	}
 
-	// 获取实际的 model 名称
+	// Get actual model name
 	if cfg, err := config.Load(""); err == nil && cfg.DefaultModel.Model != "" {
 		modelName = cfg.DefaultModel.Model
 	} else {
-		// 默认值
+		// Default values
 		if providerName == "openai" {
 			modelName = "gpt-4o"
 		} else if providerName == "anthropic" {
@@ -260,7 +261,7 @@ Current date: %s`, currentDate)
 			break
 		}
 
-		// 添加用户消息
+		// Add user message
 		userMsg := types.Message{
 			ID:        fmt.Sprintf("msg_%d", time.Now().Unix()),
 			Role:      "user",
@@ -269,7 +270,7 @@ Current date: %s`, currentDate)
 		}
 		agentCtx.AddMessage(userMsg)
 
-		// 运行 AgentLoop
+		// Run AgentLoop
 		ctx := context.Background()
 		onPhase := func(phase agent.LoopPhase) {
 			switch phase {
@@ -295,7 +296,7 @@ Current date: %s`, currentDate)
 		if err != nil {
 			fmt.Printf("Error: %v\n\n", err)
 		} else {
-			// 非流式调用需要显示完整响应
+			// Non-streaming calls need to display full response
 			fmt.Printf("\n[%s] %s\n\n", agentID, result.Response)
 			fmt.Printf("(Tokens used: %d input, %d output, %d total)\n",
 				result.TotalUsage.PromptTokens,

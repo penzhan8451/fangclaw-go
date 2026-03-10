@@ -19,7 +19,6 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
 	"github.com/penzhan8451/fangclaw-go/internal/clawhub"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
-	"github.com/penzhan8451/fangclaw-go/internal/cron"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
@@ -1902,7 +1901,7 @@ func (r *Router) handleListHands(w http.ResponseWriter, req *http.Request) {
 	handDefs := r.kernel.HandRegistry().ListDefinitions()
 	instances := r.kernel.HandRegistry().ListInstances()
 
-	// 读取本地保存的hand状态
+	// Read locally saved hand status
 	handsStatus := loadHandsStatus()
 	handStatusMap := make(map[string]string)
 	for _, h := range handsStatus {
@@ -1921,7 +1920,7 @@ func (r *Router) handleListHands(w http.ResponseWriter, req *http.Request) {
 			dashboardMetrics = len(hand.Dashboard.Metrics)
 		}
 
-		// 获取hand的状态
+		// Get hand status
 		status := "inactive"
 		if s, ok := handStatusMap[hand.ID]; ok {
 			status = s
@@ -2391,18 +2390,27 @@ func (r *Router) handleDeleteCustomModel(w http.ResponseWriter, req *http.Reques
 }
 
 func (r *Router) handleListCronJobs(w http.ResponseWriter, req *http.Request) {
-	agentID := req.URL.Query().Get("agent_id")
-	var jobs []*cron.CronJob
+	agentIDStr := req.URL.Query().Get("agent_id")
+	var jobs []types.CronJob
 
-	if agentID != "" {
-		allJobs := r.kernel.CronScheduler().ListJobs()
+	allJobs := r.kernel.CronScheduler().ListAllJobs()
+	if agentIDStr != "" {
+		agentID, err := types.ParseAgentID(agentIDStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid agent ID")
+			return
+		}
 		for _, job := range allJobs {
 			if job.AgentID == agentID {
 				jobs = append(jobs, job)
 			}
 		}
 	} else {
-		jobs = r.kernel.CronScheduler().ListJobs()
+		jobs = allJobs
+	}
+
+	if jobs == nil {
+		jobs = []types.CronJob{}
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -2412,24 +2420,54 @@ func (r *Router) handleListCronJobs(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleCreateCronJob(w http.ResponseWriter, req *http.Request) {
-	var job cron.CronJob
-	if err := json.NewDecoder(req.Body).Decode(&job); err != nil {
+	var reqBody struct {
+		AgentID  string             `json:"agent_id"`
+		Name     string             `json:"name"`
+		Enabled  bool               `json:"enabled"`
+		Schedule types.CronSchedule `json:"schedule"`
+		Action   types.CronAction   `json:"action"`
+		Delivery types.CronDelivery `json:"delivery"`
+		OneShot  bool               `json:"one_shot"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	if err := r.kernel.CronScheduler().AddJob(&job); err != nil {
+	agentID, err := types.ParseAgentID(reqBody.AgentID)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid agent ID")
+		return
+	}
+
+	job := types.NewCronJob(
+		agentID,
+		reqBody.Name,
+		reqBody.Enabled,
+		reqBody.Schedule,
+		reqBody.Action,
+		reqBody.Delivery,
+	)
+
+	id, err := r.kernel.CronScheduler().AddJob(job, reqBody.OneShot)
+	if err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"result": job,
+		"job_id": id.String(),
 	})
 }
 
 func (r *Router) handleEnableCronJob(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
+	idStr := req.PathValue("id")
+	id, err := types.ParseCronJobID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid job ID")
+		return
+	}
 
 	var reqBody struct {
 		Enabled bool `json:"enabled"`
@@ -2440,28 +2478,26 @@ func (r *Router) handleEnableCronJob(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var err error
-	if reqBody.Enabled {
-		err = r.kernel.CronScheduler().EnableJob(id)
-	} else {
-		err = r.kernel.CronScheduler().DisableJob(id)
-	}
-
-	if err != nil {
+	if err := r.kernel.CronScheduler().SetEnabled(id, reqBody.Enabled); err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"id":      id,
+		"id":      idStr,
 		"enabled": reqBody.Enabled,
 	})
 }
 
 func (r *Router) handleDeleteCronJob(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
+	idStr := req.PathValue("id")
+	id, err := types.ParseCronJobID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid job ID")
+		return
+	}
 
-	if err := r.kernel.CronScheduler().DeleteJob(id); err != nil {
+	if _, err := r.kernel.CronScheduler().RemoveJob(id); err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -2472,15 +2508,25 @@ func (r *Router) handleDeleteCronJob(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleCronJobStatus(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
+	idStr := req.PathValue("id")
+	id, err := types.ParseCronJobID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid job ID")
+		return
+	}
 
-	job, ok := r.kernel.CronScheduler().GetJob(id)
-	if !ok {
+	meta := r.kernel.CronScheduler().GetMeta(id)
+	if meta == nil {
 		respondError(w, http.StatusNotFound, "Job not found")
 		return
 	}
 
-	respondJSON(w, http.StatusOK, job)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"job":                meta.Job,
+		"one_shot":           meta.OneShot,
+		"last_status":        meta.LastStatus,
+		"consecutive_errors": meta.ConsecutiveErrors,
+	})
 }
 
 func (r *Router) handleClawhubSearch(w http.ResponseWriter, req *http.Request) {

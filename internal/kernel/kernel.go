@@ -29,6 +29,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 	"github.com/penzhan8451/fangclaw-go/internal/vector"
+	"github.com/rs/zerolog/log"
 )
 
 type Kernel struct {
@@ -58,6 +59,7 @@ type Kernel struct {
 	mu              sync.RWMutex
 	started         bool
 	startTime       time.Time
+	stopping        chan struct{}
 }
 
 func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
@@ -133,10 +135,11 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 	}
 	pairingManager := pairing.NewPairingManager(pairingConfig)
 
-	cronPersistDir := filepath.Join(dataDir, "cron")
-	cronScheduler := cron.NewCronScheduler(cronPersistDir, nil)
+	cronPersistDir := dataDir
+	cronScheduler := cron.NewCronScheduler(cronPersistDir, 100)
 
-	modelCatalog := model_catalog.NewModelCatalog()
+	modelCatalogPath := filepath.Join(dataDir, "model_catalog.json")
+	modelCatalog := model_catalog.NewModelCatalog(modelCatalogPath)
 	workflowEngine := NewWorkflowEngine()
 	k := &Kernel{
 		config:          kernelConfig,
@@ -160,6 +163,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		pairingManager:  pairingManager,
 		workflowEngine:  workflowEngine,
 		startTime:       time.Now(),
+		stopping:        make(chan struct{}),
 	}
 
 	mcpCallbacks := &agent.McpCallbacks{
@@ -173,52 +177,52 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 	k.config = kernelConfig
 	k.agentRuntime = agentRuntime
 
-	// 注册所有内置工具到 AgentRuntime
+	// Register all built-in tools to AgentRuntime
 	tools.RegisterAllTools(agentRuntime)
 
-	// 从磁盘加载的 agents 也需要注册到 AgentRuntime 中
+	// Agents loaded from disk also need to be registered in AgentRuntime
 	agents := agentRegistry.List()
 	if len(agents) > 0 {
-		// 加载配置文件
+		// Load config file
 		cfg, err := config.Load("")
 		if err != nil {
 			cfg = config.DefaultConfig()
 		}
 
 		for _, agentEntry := range agents {
-			// 声明变量
+			// Declare variables
 			var agentProvider, agentModel, agentAPIKeyEnv string
 
-			// 如果 agent entry 中缺少任何一个配置（provider、model 或 APIKeyEnv），就全部使用 config.toml 中的默认值
+			// If any config is missing in agent entry (provider, model, or APIKeyEnv), use defaults from config.toml
 			if agentEntry.Manifest.Model.Provider == "" || agentEntry.Manifest.Model.Model == "" || agentEntry.Manifest.Model.APIKeyEnv == "" {
 				agentProvider = cfg.DefaultModel.Provider
 				agentModel = cfg.DefaultModel.Model
 				agentAPIKeyEnv = cfg.DefaultModel.APIKeyEnv
 			} else {
-				// 否则使用 agent entry 中的配置
+				// Otherwise use config from agent entry
 				agentProvider = agentEntry.Manifest.Model.Provider
 				agentModel = agentEntry.Manifest.Model.Model
 				agentAPIKeyEnv = agentEntry.Manifest.Model.APIKeyEnv
 			}
 
-			// 获取 API key
+			// Get API key
 			apiKey := os.Getenv(agentAPIKeyEnv)
 			if apiKey == "" {
 				fmt.Printf("Warning: API key not set for agent %s: %s, skipping registration to runtime\n", agentEntry.Name, agentAPIKeyEnv)
 				continue
 			}
 
-			// 创建 LLM driver
+			// Create LLM driver
 			driver, err := llm.NewDriver(agentProvider, apiKey, agentModel)
 			if err != nil {
 				fmt.Printf("Warning: Failed to create LLM driver for agent %s: %v, skipping registration to runtime\n", agentEntry.Name, err)
 				continue
 			}
 
-			// 注册 driver 到 AgentRuntime
+			// Register driver to AgentRuntime
 			agentRuntime.RegisterDriver(agentProvider, driver)
 
-			// 注册 agent 到 AgentRuntime
+			// Register agent to AgentRuntime
 			_, err = agentRuntime.RegisterAgent(
 				context.Background(),
 				agentEntry.ID.String(),
@@ -237,7 +241,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 			}
 		}
 
-		// 从 agents 恢复 hand instances
+		// Restore hand instances from agents
 		fmt.Printf("Restoring hand instances from %d agents...\n", len(agents))
 		var agentEntriesForHands []hands.AgentEntry
 		for _, agent := range agents {
@@ -258,8 +262,8 @@ func (k *Kernel) Start(ctx context.Context) error {
 		return fmt.Errorf("kernel already started")
 	}
 
-	if err := k.cronScheduler.Start(); err != nil {
-		return fmt.Errorf("failed to start cron scheduler: %w", err)
+	if _, err := k.cronScheduler.Load(); err != nil {
+		log.Warn().Err(err).Msg("Failed to load cron jobs")
 	}
 
 	k.modelCatalog.DetectAuth()
@@ -272,6 +276,77 @@ func (k *Kernel) Start(ctx context.Context) error {
 	// Connect to MCP servers in background
 	go k.ConnectMcpServers(context.Background())
 
+	// Start cron tick loop
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+
+		persistCounter := 0
+
+		// Skip first tick
+		<-ticker.C
+
+		for {
+			select {
+			case <-ticker.C:
+				select {
+				case <-k.stopping:
+					return
+				default:
+				}
+
+				due := k.cronScheduler.DueJobs()
+				for _, job := range due {
+					jobID := job.ID
+					jobName := job.Name
+
+					log.Debug().Str("job", jobName).Msg("Cron: firing job")
+
+					switch job.Action.Kind {
+					case types.CronActionKindSystemEvent:
+						if job.Action.Text != nil {
+							log.Debug().Str("job", jobName).Msg("Cron: firing system event")
+							payload := map[string]interface{}{
+								"type":   fmt.Sprintf("cron.%s", jobName),
+								"text":   *job.Action.Text,
+								"job_id": jobID.String(),
+							}
+							event := eventbus.NewEvent(
+								eventbus.EventTypeSystem,
+								"cron",
+								eventbus.EventTargetBroadcast,
+							).WithPayload(payload)
+							k.eventBus.Publish(event)
+							k.cronScheduler.RecordSuccess(jobID)
+						}
+					case types.CronActionKindAgentTurn:
+						log.Debug().Str("job", jobName).Str("agent", job.AgentID.String()).Msg("Cron: firing agent turn")
+						// TODO: Implement AgentTurn action handling
+						log.Warn().Str("job", jobName).Msg("Cron: AgentTurn action not yet implemented")
+						k.cronScheduler.RecordFailure(jobID, "AgentTurn action not yet implemented")
+					}
+				}
+
+				// Persist every ~5 minutes (20 ticks * 15s)
+				persistCounter++
+				if persistCounter >= 20 {
+					persistCounter = 0
+					if err := k.cronScheduler.Persist(); err != nil {
+						log.Warn().Err(err).Msg("Cron persist failed")
+					}
+				}
+			case <-k.stopping:
+				return
+			}
+		}
+	}()
+
+	if k.cronScheduler.TotalJobs() > 0 {
+		log.Info().Int("count", k.cronScheduler.TotalJobs()).Msg("Cron scheduler active")
+	}
+
+	k.cronScheduler.StartHotReload()
+
 	return nil
 }
 
@@ -283,7 +358,17 @@ func (k *Kernel) Stop(ctx context.Context) error {
 		return nil
 	}
 
-	k.cronScheduler.Stop()
+	// Stop hot reload first
+	k.cronScheduler.StopHotReload()
+
+	// Signal stopping
+	close(k.stopping)
+
+	// Persist cron jobs on shutdown
+	if err := k.cronScheduler.Persist(); err != nil {
+		log.Warn().Err(err).Msg("Failed to persist cron jobs on shutdown")
+	}
+
 	k.scheduler.Shutdown()
 	_ = k.registry.DisconnectAll()
 
@@ -426,22 +511,22 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 
 	agentID := types.NewAgentID()
 
-	// 加载配置文件，获取默认模型配置
+	// Load config file to get default model configuration
 	cfg, err := config.Load("")
 	if err != nil {
 		cfg = config.DefaultConfig()
 	}
 
-	// 声明变量
+	// Declare variables
 	var agentProvider, agentModel, agentAPIKeyEnv string
 
-	// 如果 hand 定义中缺少任何一个配置（provider、model 或 APIKeyEnv），就全部使用 config.toml 中的默认值
+	// If any config is missing in hand definition (provider, model, or APIKeyEnv), use defaults from config.toml
 	if def.Agent.Provider == "" || def.Agent.Model == "" || def.Agent.APIKeyEnv == "" {
 		agentProvider = cfg.DefaultModel.Provider
 		agentModel = cfg.DefaultModel.Model
 		agentAPIKeyEnv = cfg.DefaultModel.APIKeyEnv
 	} else {
-		// 否则使用 hand 定义中的配置
+		// Otherwise use config from hand definition
 		agentProvider = def.Agent.Provider
 		agentModel = def.Agent.Model
 		agentAPIKeyEnv = def.Agent.APIKeyEnv
@@ -546,7 +631,7 @@ func (k *Kernel) DeactivateHand(instanceID string) error {
 				return err
 			}
 		}
-		// 同时从AgentRuntime中删除agent
+		// Also delete agent from AgentRuntime
 		k.agentRuntime.DeleteAgent(instance.AgentID)
 	}
 
@@ -636,32 +721,32 @@ func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error
 	var agentTools, agentSkills []string
 	var agentSkillPromptContext string
 
-	// 第一部分：需要锁的操作
+	// Part 1: Operations that require a lock
 	func() {
 		k.mu.Lock()
 		defer k.mu.Unlock()
 
 		agentID = types.NewAgentID()
 
-		// 加载配置文件，获取默认模型配置
+		// Load config file to get default model configuration
 		cfg, err := config.Load("")
 		if err != nil {
 			cfg = config.DefaultConfig()
 		}
 
-		// 如果 manifest 中缺少任何一个配置（provider、model 或 APIKeyEnv），就全部使用 config.toml 中的默认值
+		// If any config is missing in manifest (provider, model, or APIKeyEnv), use defaults from config.toml
 		if manifest.Model.Provider == "" || manifest.Model.Model == "" || manifest.Model.APIKeyEnv == "" {
 			agentProvider = cfg.DefaultModel.Provider
 			agentModel = cfg.DefaultModel.Model
 			agentAPIKeyEnv = cfg.DefaultModel.APIKeyEnv
 		} else {
-			// 否则使用 manifest 中的配置
+			// Otherwise use config from manifest
 			agentProvider = manifest.Model.Provider
 			agentModel = manifest.Model.Model
 			agentAPIKeyEnv = manifest.Model.APIKeyEnv
 		}
 
-		// 更新 manifest 中的 model 配置
+		// Update model config in manifest
 		manifest.Model.Provider = agentProvider
 		manifest.Model.Model = agentModel
 		manifest.Model.APIKeyEnv = agentAPIKeyEnv
@@ -688,7 +773,7 @@ func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error
 		agentSkillPromptContext = manifest.SkillPromptContext
 	}()
 
-	// 第二部分：不需要锁的操作
+	// Part 2: Operations that don't require a lock
 	apiKey := os.Getenv(agentAPIKeyEnv)
 	if apiKey == "" {
 		return "", "", fmt.Errorf("API key not set for agent %s: %s", agentName, agentAPIKeyEnv)
@@ -739,7 +824,7 @@ func (k *Kernel) DeleteAgent(agentIDStr string) error {
 		return err
 	}
 
-	// 同时从AgentRuntime中删除agent
+	// Also delete agent from AgentRuntime
 	k.agentRuntime.DeleteAgent(agentIDStr)
 
 	return nil

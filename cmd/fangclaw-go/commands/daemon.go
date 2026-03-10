@@ -117,11 +117,11 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Warning: Failed to load config for channels: %v\n", err)
 	}
 
-	// 创建并启动Channel Bridge Manager
+	// Create and start Channel Bridge Manager
 	router := channels.NewAgentRouter()
 
-	// 从配置文件中读取default agent
-	// 注意：cfg 已经在上面加载过了
+	// Read default agent from config file
+	// Note: cfg has already been loaded above
 	if cfg == nil {
 		cfg, err = config.Load("")
 		if err != nil {
@@ -133,7 +133,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Config loaded. Default agent from config: '%s'\n", cfg.DefaultAgent)
 	}
 
-	// 从agent registry中查找并设置default agent
+	// Find and set default agent from agent registry
 	agents := k.AgentRegistry().List()
 	fmt.Printf("Agents in registry at startup: %d agents found\n", len(agents))
 	for i, agent := range agents {
@@ -142,8 +142,8 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 
 	var defaultAgentID string
 	if cfg.DefaultAgent != "" {
-		// 优先使用配置文件中指定的agent
-		// 方式1: 通过agent name查找
+		// Priority given to the agent specified in the config file
+		// Method 1: Find by agent name
 		for _, agent := range agents {
 			if agent.Name == cfg.DefaultAgent {
 				defaultAgentID = agent.ID.String()
@@ -151,7 +151,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 				break
 			}
 		}
-		// 方式2: 如果通过name没找到，尝试通过hand ID查找（检查tags中是否有"hand:xxx"）
+		// Method 2: If not found by name, try to find by hand ID (check if tags have "hand:xxx")
 		if defaultAgentID == "" {
 			for _, agent := range agents {
 				for _, tag := range agent.Tags {
@@ -172,7 +172,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	}
 
 	if defaultAgentID == "" && len(agents) > 0 {
-		// 如果配置文件中没有指定或者找不到，使用第一个agent作为default
+		// If not specified in config or not found, use the first agent as default
 		defaultAgentID = agents[0].ID.String()
 		fmt.Printf("Set default agent to: %s (ID: %s)\n", agents[0].Name, defaultAgentID)
 	} else if defaultAgentID == "" {
@@ -185,7 +185,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 
 	bridgeManager := channels.NewBridgeManager(k, router)
 
-	// 注册所有adapters到bridge manager
+	// Register all adapters to bridge manager
 	adapters := k.Registry().ListAdapters()
 	for id, adapter := range adapters {
 		if err := bridgeManager.RegisterAdapter(id, adapter); err != nil {
@@ -193,13 +193,13 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 启动bridge manager
+	// Start bridge manager
 	if err := bridgeManager.Start(); err != nil {
 		return fmt.Errorf("failed to start bridge manager: %w", err)
 	}
 	defer bridgeManager.Stop()
 
-	// 处理信号
+	// Handle signals
 	go func() {
 		<-sigChan
 		fmt.Println("\nShutting down...")
