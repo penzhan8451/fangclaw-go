@@ -30,7 +30,7 @@ The entire system compiles to a single binary. One install, one command, your ag
 git clone https://github.com/your-username/fangclaw-go.git
 cd fangclaw-go
 go build -o fangclaw-go ./cmd/fangclaw-go
-./fangclaw-go setup
+./fangclaw-go init
 ./fangclaw-go start
 ```
 
@@ -41,7 +41,7 @@ go build -o fangclaw-go ./cmd/fangclaw-go
 ### Core Features
 
 - 🤖 **Smart Agent Management** - Complete Agent lifecycle management
-- 💬 **Multi-Channel Communication** - Supports Telegram, Discord, Slack, DingTalk, Feishu, QQ, WhatsApp, and more
+- 💬 **Multi-Channel Communication** - Supports DingTalk, Feishu, QQ
 - 🎯 **Workflow Orchestration** - Flexible workflow definition and execution
 - 🔧 **Skill System** - Extensible skill loading and execution
 - 📊 **Event Bus** - Complete publish/subscribe event system
@@ -219,7 +219,6 @@ Open your browser to:
 ```bash
 ./fangclaw-go logs
 ```
-
 ---
 
 ## Configuration
@@ -236,7 +235,7 @@ api_listen = "127.0.0.1:4200"
 [default_model]
 provider = "openrouter"
 model = "openai/gpt-4o"
-api_key_env = "OPENROUTER_API_KEY"
+api_key_env = "OPENROUTER_API_KEY" # or "OPENAI_API_KEY" or "ANTHROPIC_API_KEY"
 
 # Memory Settings
 [memory]
@@ -260,14 +259,19 @@ level = "info"
 > # or
 > ANTHROPIC_API_KEY=sk-ant-...
 > ```
-
+or, in the console:
+```bash
+export OPENROUTER_API_KEY=sk-...
+# or
+export OPENAI_API_KEY=sk-...
+# or
+export ANTHROPIC_API_KEY=sk-ant-...
+```
 ---
 
 ## About FangClaw-go
 
-FangClaw-go is a Go language reimplementation based on the [OpenFang](https://github.com/RightNow-AI/openfang) project. OpenFang is a feature-complete Agent Operating System built in Rust, with 137K+ lines of code, 14 crates, and 1,767+ tests.
-
-We thank all contributors to the OpenFang project!
+FangClaw-go is a Go language reimplementation based on the [OpenFang](https://github.com/RightNow-AI/openfang) project, which is a feature-complete Agent Operating System built in Rust, with 137K+ lines of code, 14 crates, and 1,767+ tests.
 
 ---
 
