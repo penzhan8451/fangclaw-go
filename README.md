@@ -25,15 +25,6 @@ FangClaw-go is a **Go language implementation of the OpenFang project**, (https:
 Traditional agent frameworks wait for you to type something. FangClaw-go runs **autonomous agents that work for you** — on schedules, 24/7, building knowledge graphs, monitoring targets, generating leads, managing your social media, and reporting results to your dashboard.
 
 The entire system compiles to a single binary. One install, one command, your agents are live.
-
-```bash
-git clone https://github.com/your-username/fangclaw-go.git
-cd fangclaw-go
-go build -o fangclaw-go ./cmd/fangclaw-go
-./fangclaw-go init
-./fangclaw-go start
-```
-
 ---
 
 ## Features
@@ -122,21 +113,9 @@ cd fangclaw-go
 go build -o fangclaw-go ./cmd/fangclaw-go
 ```
 
-### First-time Setup
-
-Run the setup wizard:
-
-```bash
-./fangclaw-go init
-```
-
-The wizard will guide you through:
-1. Selecting an LLM provider (OpenAI, Anthropic, Groq, Ollama, OpenRouter)
-2. Configuring API Key
-3. Selecting default model
-4. Setting data directory
-
 ### Configuration Example
+In `~/.fangclaw-go/config.toml`, you can find the default configuration:
+
 ```bash
 api_listen = "127.0.0.1:4200"
 default_agent = "browser"
@@ -157,11 +136,20 @@ default_agent = "browser"
   file = ""
 ```
 
-### Starting the Service
+### First-time Setup
+
+Run the setup wizard:
 
 ```bash
-./fangclaw-go start
+./fangclaw-go init
 ```
+
+The wizard will guide you through:
+1. Selecting an LLM provider (OpenAI, Anthropic, Groq, Ollama, OpenRouter)
+2. Configuring API Key
+3. Selecting default model
+4. Setting data directory
+
 
 ### Next Steps After Starting
 
