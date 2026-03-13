@@ -391,91 +391,91 @@ func (k *Kernel) Start(ctx context.Context) error {
 								}
 							}
 						}
-					case types.CronActionKindExecuteShell:
-						log.Info().Str("job", jobName).Msg("Cron: firing execute shell")
-						if job.Action.Command != nil {
-							command := *job.Action.Command
-							args := job.Action.Args
-							log.Info().Str("job", jobName).Str("command", command).Strs("args", args).Msg("Cron: executing shell command")
+						// case types.CronActionKindExecuteShell:
+						// 	log.Info().Str("job", jobName).Msg("Cron: firing execute shell")
+						// 	if job.Action.Command != nil {
+						// 		command := *job.Action.Command
+						// 		args := job.Action.Args
+						// 		log.Info().Str("job", jobName).Str("command", command).Strs("args", args).Msg("Cron: executing shell command")
 
-							if err := ValidateShellCommand(command, args, k.config.CronShellSecurity); err != nil {
-								errMsg := fmt.Sprintf("security validation failed: %v", err)
-								log.Warn().Str("job", jobName).Err(err).Msg("Cron job blocked by security")
-								k.cronScheduler.RecordFailure(jobID, errMsg)
-								continue
-							}
+						// 		if err := ValidateShellCommand(command, args, k.config.CronShellSecurity); err != nil {
+						// 			errMsg := fmt.Sprintf("security validation failed: %v", err)
+						// 			log.Warn().Str("job", jobName).Err(err).Msg("Cron job blocked by security")
+						// 			k.cronScheduler.RecordFailure(jobID, errMsg)
+						// 			continue
+						// 		}
 
-							timeoutSecs := uint64(60)
-							if job.Action.TimeoutSecs != nil {
-								timeoutSecs = *job.Action.TimeoutSecs
-							}
-							timeout := time.Duration(timeoutSecs) * time.Second
-							ctxTimeout, cancel := context.WithTimeout(context.Background(), timeout)
-							defer cancel()
+						// 		timeoutSecs := uint64(60)
+						// 		if job.Action.TimeoutSecs != nil {
+						// 			timeoutSecs = *job.Action.TimeoutSecs
+						// 		}
+						// 		timeout := time.Duration(timeoutSecs) * time.Second
+						// 		ctxTimeout, cancel := context.WithTimeout(context.Background(), timeout)
+						// 		defer cancel()
 
-							delivery := job.Delivery
-							resultChan := make(chan struct {
-								stdout string
-								stderr string
-								err    error
-							}, 1)
+						// 		delivery := job.Delivery
+						// 		resultChan := make(chan struct {
+						// 			stdout string
+						// 			stderr string
+						// 			err    error
+						// 		}, 1)
 
-							go func() {
-								cmd := exec.CommandContext(ctxTimeout, command, args...)
-								var stdoutBuf, stderrBuf bytes.Buffer
-								cmd.Stdout = &stdoutBuf
-								cmd.Stderr = &stderrBuf
+						// 		go func() {
+						// 			cmd := exec.CommandContext(ctxTimeout, command, args...)
+						// 			var stdoutBuf, stderrBuf bytes.Buffer
+						// 			cmd.Stdout = &stdoutBuf
+						// 			cmd.Stderr = &stderrBuf
 
-								log.Info().Str("job", jobName).Msg("Cron: starting command execution")
-								err := cmd.Run()
-								stdout := stdoutBuf.String()
-								stderr := stderrBuf.String()
+						// 			log.Info().Str("job", jobName).Msg("Cron: starting command execution")
+						// 			err := cmd.Run()
+						// 			stdout := stdoutBuf.String()
+						// 			stderr := stderrBuf.String()
 
-								log.Info().Str("job", jobName).Str("stdout", stdout).Str("stderr", stderr).Err(err).Msg("Cron: command execution finished")
-								resultChan <- struct {
-									stdout string
-									stderr string
-									err    error
-								}{stdout, stderr, err}
-							}()
+						// 			log.Info().Str("job", jobName).Str("stdout", stdout).Str("stderr", stderr).Err(err).Msg("Cron: command execution finished")
+						// 			resultChan <- struct {
+						// 				stdout string
+						// 				stderr string
+						// 				err    error
+						// 			}{stdout, stderr, err}
+						// 		}()
 
-							select {
-							case <-ctxTimeout.Done():
-								log.Warn().Str("job", jobName).Uint64("timeout_s", timeoutSecs).Msg("Cron job timed out")
-								k.cronScheduler.RecordFailure(jobID, fmt.Sprintf("timed out after %ds", timeoutSecs))
-							case res := <-resultChan:
-								if res.err != nil {
-									errMsg := fmt.Sprintf("command failed: %v, stderr: %s", res.err, res.stderr)
-									log.Warn().Str("job", jobName).Err(res.err).Str("stderr", res.stderr).Msg("Cron job failed")
-									k.cronScheduler.RecordFailure(jobID, errMsg)
-									var fullResult string
-									if res.stdout != "" && res.stderr != "" {
-										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.stderr, res.err)
-									} else if res.stdout != "" {
-										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.err)
-									} else if res.stderr != "" {
-										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stderr, res.err)
-									} else {
-										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.err)
-									}
-									k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
-								} else {
-									log.Info().Str("job", jobName).Str("stdout", res.stdout).Msg("Cron job completed successfully")
-									k.cronScheduler.RecordSuccess(jobID)
-									var fullResult string
-									if res.stdout != "" && res.stderr != "" {
-										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stdout, res.stderr)
-									} else if res.stdout != "" {
-										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s", command, strings.Join(args, " "), res.stdout)
-									} else if res.stderr != "" {
-										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stderr)
-									} else {
-										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n(无输出)", command, strings.Join(args, " "))
-									}
-									k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
-								}
-							}
-						}
+						// 		select {
+						// 		case <-ctxTimeout.Done():
+						// 			log.Warn().Str("job", jobName).Uint64("timeout_s", timeoutSecs).Msg("Cron job timed out")
+						// 			k.cronScheduler.RecordFailure(jobID, fmt.Sprintf("timed out after %ds", timeoutSecs))
+						// 		case res := <-resultChan:
+						// 			if res.err != nil {
+						// 				errMsg := fmt.Sprintf("command failed: %v, stderr: %s", res.err, res.stderr)
+						// 				log.Warn().Str("job", jobName).Err(res.err).Str("stderr", res.stderr).Msg("Cron job failed")
+						// 				k.cronScheduler.RecordFailure(jobID, errMsg)
+						// 				var fullResult string
+						// 				if res.stdout != "" && res.stderr != "" {
+						// 					fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.stderr, res.err)
+						// 				} else if res.stdout != "" {
+						// 					fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.err)
+						// 				} else if res.stderr != "" {
+						// 					fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stderr, res.err)
+						// 				} else {
+						// 					fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.err)
+						// 				}
+						// 				k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
+						// 			} else {
+						// 				log.Info().Str("job", jobName).Str("stdout", res.stdout).Msg("Cron job completed successfully")
+						// 				k.cronScheduler.RecordSuccess(jobID)
+						// 				var fullResult string
+						// 				if res.stdout != "" && res.stderr != "" {
+						// 					fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stdout, res.stderr)
+						// 				} else if res.stdout != "" {
+						// 					fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s", command, strings.Join(args, " "), res.stdout)
+						// 				} else if res.stderr != "" {
+						// 					fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stderr)
+						// 				} else {
+						// 					fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n(无输出)", command, strings.Join(args, " "))
+						// 				}
+						// 				k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
+						// 			}
+						// 		}
+						// 	}
 					}
 				}
 
