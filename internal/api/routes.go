@@ -484,13 +484,25 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	// Workflows endpoints
 	mux.HandleFunc("POST /api/workflows", r.handleCreateWorkflow)
 	mux.HandleFunc("GET /api/workflows", r.handleListWorkflows)
+	mux.HandleFunc("GET /api/workflows/{id}", r.handleGetWorkflow)
+	mux.HandleFunc("DELETE /api/workflows/{id}", r.handleDeleteWorkflow)
 	mux.HandleFunc("POST /api/workflows/{id}/run", r.handleRunWorkflow)
 	mux.HandleFunc("GET /api/workflows/{id}/runs", r.handleListWorkflowRuns)
+	// Workflow templates endpoints
+	mux.HandleFunc("GET /api/workflow-templates", r.handleListWorkflowTemplates)
+	mux.HandleFunc("GET /api/workflow-templates/{id}", r.handleGetWorkflowTemplate)
+	mux.HandleFunc("POST /api/workflows/from-template", r.handleCreateWorkflowFromTemplate)
+	// Workflow delivery endpoints
+	mux.HandleFunc("POST /api/workflows/{id}/run-with-delivery", r.handleRunWorkflowWithDelivery)
 
 	// Triggers endpoints
 	mux.HandleFunc("POST /api/triggers", r.handleCreateTrigger)
 	mux.HandleFunc("GET /api/triggers", r.handleListTriggers)
 	mux.HandleFunc("DELETE /api/triggers/{id}", r.handleDeleteTrigger)
+
+	// Agent templates endpoints
+	mux.HandleFunc("GET /api/agent-templates", r.handleListAgentTemplates)
+	mux.HandleFunc("GET /api/agent-templates/{id}", r.handleGetAgentTemplate)
 
 	// Shutdown endpoint
 	mux.HandleFunc("POST /api/shutdown", r.handleShutdown)
@@ -595,7 +607,11 @@ func (r *Router) handleCreateAgent(w http.ResponseWriter, req *http.Request) {
 
 	agentID, agentName, err := r.kernel.SpawnAgent(manifest)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Agent spawn failed: "+err.Error())
+		if strings.Contains(err.Error(), "already exists") {
+			respondError(w, http.StatusConflict, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, "Agent spawn failed: "+err.Error())
+		}
 		return
 	}
 
@@ -700,7 +716,17 @@ func (r *Router) handleCreateSession(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	session := types.NewSession(agentID, reqBody.Label)
+	agent := r.kernel.AgentRegistry().Get(agentID)
+	agentName := ""
+	agentModelProvider := ""
+	agentModelName := ""
+	if agent != nil {
+		agentName = agent.Name
+		agentModelProvider = agent.Manifest.Model.Provider
+		agentModelName = agent.Manifest.Model.Model
+	}
+
+	session := types.NewSession(agentID, agentName, agentModelProvider, agentModelName, reqBody.Label)
 	if err := r.kernel.SessionStore().SaveSession(&session); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -743,7 +769,9 @@ func (r *Router) handleDeleteSession(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusNoContent, nil)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
 }
 
 // Chat handlers
@@ -809,10 +837,12 @@ func (r *Router) handleDeleteMemory(w http.ResponseWriter, req *http.Request) {
 // Memory KV handlers
 
 // handleGetAgentKV handles GET /api/memory/agents/{id}/kv — List KV pairs for an agent.
-// Note: memory_store tool writes to a shared namespace, so we read from that
-// same namespace regardless of which agent ID is in the URL.
 func (r *Router) handleGetAgentKV(w http.ResponseWriter, req *http.Request) {
-	agentID := sharedMemoryAgentID()
+	agentID := req.PathValue("id")
+	if agentID == "" {
+		respondError(w, http.StatusBadRequest, "agent id required")
+		return
+	}
 
 	records, err := r.kernel.DB().ListKV(agentID)
 	if err != nil {
@@ -839,7 +869,11 @@ func (r *Router) handleGetAgentKV(w http.ResponseWriter, req *http.Request) {
 
 // handleGetAgentKVKey handles GET /api/memory/agents/{id}/kv/{key} — Get a specific KV value.
 func (r *Router) handleGetAgentKVKey(w http.ResponseWriter, req *http.Request) {
-	agentID := sharedMemoryAgentID()
+	agentID := req.PathValue("id")
+	if agentID == "" {
+		respondError(w, http.StatusBadRequest, "agent id required")
+		return
+	}
 	key := req.PathValue("key")
 
 	record, err := r.kernel.DB().GetKV(agentID, key)
@@ -865,10 +899,12 @@ func (r *Router) handleGetAgentKVKey(w http.ResponseWriter, req *http.Request) {
 }
 
 // handleSetAgentKVKey handles PUT /api/memory/agents/{id}/kv/{key} — Set a KV value.
-// Note: memory_store tool writes to a shared namespace, so we write to that
-// same namespace regardless of which agent ID is in the URL.
 func (r *Router) handleSetAgentKVKey(w http.ResponseWriter, req *http.Request) {
-	agentID := sharedMemoryAgentID()
+	agentID := req.PathValue("id")
+	if agentID == "" {
+		respondError(w, http.StatusBadRequest, "agent id required")
+		return
+	}
 	key := req.PathValue("key")
 
 	var reqBody struct {
@@ -902,7 +938,11 @@ func (r *Router) handleSetAgentKVKey(w http.ResponseWriter, req *http.Request) {
 
 // handleDeleteAgentKVKey handles DELETE /api/memory/agents/{id}/kv/{key} — Delete a KV value.
 func (r *Router) handleDeleteAgentKVKey(w http.ResponseWriter, req *http.Request) {
-	agentID := sharedMemoryAgentID()
+	agentID := req.PathValue("id")
+	if agentID == "" {
+		respondError(w, http.StatusBadRequest, "agent id required")
+		return
+	}
 	key := req.PathValue("key")
 
 	if err := r.kernel.DB().DeleteKV(agentID, key); err != nil {
@@ -1565,31 +1605,177 @@ func (r *Router) handleA2AAgents(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleGetAgentSession(w http.ResponseWriter, req *http.Request) {
+	agentIDStr := req.PathValue("id")
+	if agentIDStr == "" {
+		respondError(w, http.StatusBadRequest, "agent id required")
+		return
+	}
+
+	agentID, err := types.ParseAgentID(agentIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent id")
+		return
+	}
+
+	sessionsStore := r.kernel.SessionStore()
+	if sessionsStore == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"session_id": "default",
+			"messages":   []interface{}{},
+		})
+		return
+	}
+
+	// Check if we have a session id in query or use default
+	sessionIDStr := req.URL.Query().Get("session_id")
+	if sessionIDStr == "" {
+		// If no session id specified, try to get the latest session for this agent
+		sessions, err := sessionsStore.ListAgentSessions(agentID)
+		if err != nil || len(sessions) == 0 {
+			respondJSON(w, http.StatusOK, map[string]interface{}{
+				"session_id": "default",
+				"messages":   []interface{}{},
+			})
+			return
+		}
+		// Use the latest session
+		sessionIDStr = sessions[0]["session_id"].(string)
+	}
+
+	sessionID, err := types.ParseSessionID(sessionIDStr)
+	if err != nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"session_id": sessionIDStr,
+			"messages":   []interface{}{},
+		})
+		return
+	}
+
+	session, err := sessionsStore.GetSession(sessionID)
+	if err != nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"session_id": sessionIDStr,
+			"messages":   []interface{}{},
+		})
+		return
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"session_id": "default",
-		"messages":   []interface{}{},
+		"session_id": session.ID.String(),
+		"messages":   session.Messages,
 	})
 }
 
 func (r *Router) handleGetAgentSessions(w http.ResponseWriter, req *http.Request) {
-	respondJSON(w, http.StatusOK, []interface{}{})
+	agentIDStr := req.PathValue("id")
+	if agentIDStr == "" {
+		respondError(w, http.StatusBadRequest, "agent id required")
+		return
+	}
+
+	agentID, err := types.ParseAgentID(agentIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent id")
+		return
+	}
+
+	sessionsStore := r.kernel.SessionStore()
+	if sessionsStore == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"sessions": []interface{}{}})
+		return
+	}
+
+	sessions, err := sessionsStore.ListAgentSessions(agentID)
+	if err != nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"sessions": []interface{}{}})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"sessions": sessions})
 }
 
 func (r *Router) handleCreateAgentSession(w http.ResponseWriter, req *http.Request) {
+	agentIDStr := req.PathValue("id")
+	if agentIDStr == "" {
+		respondError(w, http.StatusBadRequest, "agent id required")
+		return
+	}
+
+	agentID, err := types.ParseAgentID(agentIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent id")
+		return
+	}
+
+	var reqBody struct {
+		Label string `json:"label"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		// Ignore decode errors, use empty label
+	}
+
+	sessionsStore := r.kernel.SessionStore()
+	agent := r.kernel.AgentRegistry().Get(agentID)
+
+	agentName := ""
+	agentModelProvider := ""
+	agentModelName := ""
+	if agent != nil {
+		agentName = agent.Name
+		agentModelProvider = agent.Manifest.Model.Provider
+		agentModelName = agent.Manifest.Model.Model
+	}
+
+	session := types.NewSession(
+		agentID,
+		agentName,
+		agentModelProvider,
+		agentModelName,
+		&reqBody.Label,
+	)
+
+	if sessionsStore != nil {
+		if err := sessionsStore.SaveSession(&session); err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
 	respondJSON(w, http.StatusCreated, map[string]string{
-		"session_id": "new-session",
+		"session_id": session.ID.String(),
 	})
 }
 
 func (r *Router) handleSwitchSession(w http.ResponseWriter, req *http.Request) {
+	agentID := req.PathValue("id")
+	sessionID := req.PathValue("sid")
+
+	if agentID == "" || sessionID == "" {
+		respondError(w, http.StatusBadRequest, "agent id and session id required")
+		return
+	}
+
+	// Switch session - in a real implementation, this would update the agent's current session
 	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (r *Router) handleResetSession(w http.ResponseWriter, req *http.Request) {
+	agentID := req.PathValue("id")
+	if agentID == "" {
+		respondError(w, http.StatusBadRequest, "agent id required")
+		return
+	}
+
 	respondJSON(w, http.StatusOK, map[string]string{"status": "reset"})
 }
 
 func (r *Router) handleCompactSession(w http.ResponseWriter, req *http.Request) {
+	agentID := req.PathValue("id")
+	if agentID == "" {
+		respondError(w, http.StatusBadRequest, "agent id required")
+		return
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"status":        "compacted",
 		"tokens_before": 0,
@@ -2931,14 +3117,27 @@ func (r *Router) handleCreateWorkflow(w http.ResponseWriter, req *http.Request) 
 			agent.ID = &agentID
 		} else if agentName, ok := stepMap["agent_name"].(string); ok {
 			agent.Name = &agentName
+		} else if agentObj, ok := stepMap["agent"].(map[string]interface{}); ok {
+			if agentID, ok := agentObj["id"].(string); ok {
+				agent.ID = &agentID
+			} else if agentName, ok := agentObj["name"].(string); ok {
+				agent.Name = &agentName
+			} else {
+				respondError(w, http.StatusBadRequest, fmt.Sprintf("Step '%s' needs 'agent_id', 'agent_name', or 'agent' object with 'id' or 'name'", stepName))
+				return
+			}
 		} else {
-			respondError(w, http.StatusBadRequest, fmt.Sprintf("Step '%s' needs 'agent_id' or 'agent_name'", stepName))
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("Step '%s' needs 'agent_id', 'agent_name', or 'agent' object with 'id' or 'name'", stepName))
 			return
 		}
 
 		modeType := "sequential"
 		if mt, ok := stepMap["mode"].(string); ok {
 			modeType = mt
+		} else if modeObj, ok := stepMap["mode"].(map[string]interface{}); ok {
+			if mt, ok := modeObj["type"].(string); ok {
+				modeType = mt
+			}
 		}
 
 		var mode types.StepMode
@@ -2949,18 +3148,31 @@ func (r *Router) handleCreateWorkflow(w http.ResponseWriter, req *http.Request) 
 			mode = types.StepMode{Type: "collect"}
 		case "conditional":
 			condition := ""
-			if c, ok := stepMap["condition"].(string); ok {
+			if modeObj, ok := stepMap["mode"].(map[string]interface{}); ok {
+				if c, ok := modeObj["condition"].(string); ok {
+					condition = c
+				}
+			} else if c, ok := stepMap["condition"].(string); ok {
 				condition = c
 			}
 			mode = types.StepMode{Type: "conditional", Condition: &condition}
 		case "loop":
 			maxIterations := uint32(5)
-			if mi, ok := stepMap["max_iterations"].(float64); ok {
-				maxIterations = uint32(mi)
-			}
 			until := ""
-			if u, ok := stepMap["until"].(string); ok {
-				until = u
+			if modeObj, ok := stepMap["mode"].(map[string]interface{}); ok {
+				if mi, ok := modeObj["max_iterations"].(float64); ok {
+					maxIterations = uint32(mi)
+				}
+				if u, ok := modeObj["until"].(string); ok {
+					until = u
+				}
+			} else {
+				if mi, ok := stepMap["max_iterations"].(float64); ok {
+					maxIterations = uint32(mi)
+				}
+				if u, ok := stepMap["until"].(string); ok {
+					until = u
+				}
 			}
 			mode = types.StepMode{Type: "loop", MaxIterations: &maxIterations, Until: &until}
 		default:
@@ -2970,6 +3182,10 @@ func (r *Router) handleCreateWorkflow(w http.ResponseWriter, req *http.Request) 
 		errorModeType := "fail"
 		if emt, ok := stepMap["error_mode"].(string); ok {
 			errorModeType = emt
+		} else if errorModeObj, ok := stepMap["error_mode"].(map[string]interface{}); ok {
+			if emt, ok := errorModeObj["type"].(string); ok {
+				errorModeType = emt
+			}
 		}
 
 		var errorMode types.ErrorMode
@@ -2978,7 +3194,11 @@ func (r *Router) handleCreateWorkflow(w http.ResponseWriter, req *http.Request) 
 			errorMode = types.ErrorMode{Type: "skip"}
 		case "retry":
 			maxRetries := uint32(3)
-			if mr, ok := stepMap["max_retries"].(float64); ok {
+			if errorModeObj, ok := stepMap["error_mode"].(map[string]interface{}); ok {
+				if mr, ok := errorModeObj["max_retries"].(float64); ok {
+					maxRetries = uint32(mr)
+				}
+			} else if mr, ok := stepMap["max_retries"].(float64); ok {
 				maxRetries = uint32(mr)
 			}
 			errorMode = types.ErrorMode{Type: "retry", MaxRetries: &maxRetries}
@@ -2988,6 +3208,8 @@ func (r *Router) handleCreateWorkflow(w http.ResponseWriter, req *http.Request) 
 
 		promptTemplate := "{{input}}"
 		if pt, ok := stepMap["prompt"].(string); ok {
+			promptTemplate = pt
+		} else if pt, ok := stepMap["prompt_template"].(string); ok {
 			promptTemplate = pt
 		}
 
@@ -3012,7 +3234,14 @@ func (r *Router) handleCreateWorkflow(w http.ResponseWriter, req *http.Request) 
 		})
 	}
 
-	workflowID := types.WorkflowID(fmt.Sprintf("wf-%d", time.Now().UnixNano()))
+	// Get workflow ID from request, or generate a new one if not provided
+	var workflowID types.WorkflowID
+	if idStr, ok := reqBody["id"].(string); ok && idStr != "" {
+		workflowID = types.WorkflowID(idStr)
+	} else {
+		workflowID = types.WorkflowID(fmt.Sprintf("wf-%d", time.Now().UnixNano()))
+	}
+
 	workflow := types.Workflow{
 		ID:          workflowID,
 		Name:        name,
@@ -3042,6 +3271,31 @@ func (r *Router) handleListWorkflows(w http.ResponseWriter, req *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 
+func (r *Router) handleGetWorkflow(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	workflowID := types.WorkflowID(idStr)
+	workflow := r.kernel.WorkflowEngine().GetWorkflow(workflowID)
+	if workflow == nil {
+		respondError(w, http.StatusNotFound, "Workflow not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, workflow)
+}
+
+func (r *Router) handleDeleteWorkflow(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	workflowID := types.WorkflowID(idStr)
+	deleted := r.kernel.WorkflowEngine().RemoveWorkflow(workflowID)
+	if !deleted {
+		respondError(w, http.StatusNotFound, "Workflow not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Workflow deleted",
+	})
+}
+
 func (r *Router) handleRunWorkflow(w http.ResponseWriter, req *http.Request) {
 	idStr := req.PathValue("id")
 	workflowID := types.WorkflowID(idStr)
@@ -3063,23 +3317,30 @@ func (r *Router) handleRunWorkflow(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Create a background context for workflow execution
+	// This ensures that goroutines in fan_out mode don't get cancelled when the request completes
+	execCtx := context.Background()
+
 	resolver := func(agent types.StepAgent) (string, string, bool) {
-		if agent.ID != nil {
-			return *agent.ID, "Agent", true
-		}
 		if agent.Name != nil {
-			return "agent-id", *agent.Name, true
+			agentID, ok := r.kernel.FindAgentByName(execCtx, *agent.Name)
+			if ok {
+				return agentID, *agent.Name, true
+			}
+		}
+		if agent.ID != nil {
+			return *agent.ID, "", true
 		}
 		return "", "", false
 	}
 
 	sender := func(agentID, prompt string) (string, uint64, uint64, error) {
-		return "Sample output", 100, 50, nil
+		return r.kernel.SendMessageWithUsage(execCtx, agentID, prompt)
 	}
 
 	output, err := r.kernel.WorkflowEngine().ExecuteRun(*runID, resolver, sender)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Workflow execution failed")
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Workflow execution failed: %v", err))
 		return
 	}
 
@@ -3091,7 +3352,9 @@ func (r *Router) handleRunWorkflow(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleListWorkflowRuns(w http.ResponseWriter, req *http.Request) {
-	runs := r.kernel.WorkflowEngine().ListRuns(nil)
+	idStr := req.PathValue("id")
+	workflowID := types.WorkflowID(idStr)
+	runs := r.kernel.WorkflowEngine().ListRuns(nil, &workflowID)
 	result := make([]map[string]interface{}, 0)
 	for _, run := range runs {
 		var completedAt *string
@@ -3109,6 +3372,88 @@ func (r *Router) handleListWorkflowRuns(w http.ResponseWriter, req *http.Request
 		})
 	}
 	respondJSON(w, http.StatusOK, result)
+}
+
+func (r *Router) handleListWorkflowTemplates(w http.ResponseWriter, req *http.Request) {
+	templates := r.kernel.ListWorkflowTemplates()
+	result := make([]map[string]interface{}, 0)
+	for _, t := range templates {
+		result = append(result, map[string]interface{}{
+			"id":          t.ID,
+			"name":        t.Name,
+			"description": t.Description,
+			"category":    t.Category,
+			"created_at":  t.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (r *Router) handleGetWorkflowTemplate(w http.ResponseWriter, req *http.Request) {
+	id := types.WorkflowTemplateID(req.PathValue("id"))
+	template := r.kernel.GetWorkflowTemplate(id)
+	if template == nil {
+		respondError(w, http.StatusNotFound, "template not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, template)
+}
+
+func (r *Router) handleCreateWorkflowFromTemplate(w http.ResponseWriter, req *http.Request) {
+	var reqBody struct {
+		TemplateID        string  `json:"template_id"`
+		CustomName        *string `json:"custom_name,omitempty"`
+		CustomDescription *string `json:"custom_description,omitempty"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if reqBody.TemplateID == "" {
+		respondError(w, http.StatusBadRequest, "template_id is required")
+		return
+	}
+
+	var customName, customDesc string
+	if reqBody.CustomName != nil {
+		customName = *reqBody.CustomName
+	}
+	if reqBody.CustomDescription != nil {
+		customDesc = *reqBody.CustomDescription
+	}
+
+	wf, err := r.kernel.CreateWorkflowFromTemplate(types.WorkflowTemplateID(reqBody.TemplateID), customName, customDesc)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusCreated, wf)
+}
+
+func (r *Router) handleRunWorkflowWithDelivery(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	wfID := types.WorkflowID(idStr)
+
+	var reqBody struct {
+		Input    string                `json:"input"`
+		Delivery *types.DeliveryConfig `json:"delivery"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	output, err := r.kernel.ExecuteWorkflowWithDelivery(req.Context(), wfID, reqBody.Input, reqBody.Delivery)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"workflow_id": wfID,
+		"output":      output,
+		"status":      "completed",
+	})
 }
 
 func (r *Router) handleCreateTrigger(w http.ResponseWriter, req *http.Request) {

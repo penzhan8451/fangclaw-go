@@ -12,7 +12,7 @@ function workflowsPage() {
     running: false,
     loading: true,
     loadError: '',
-    newWf: { name: '', description: '', steps: [{ name: '', agent_name: '', mode: 'sequential', prompt: '{{input}}' }] },
+    newWf: { name: '', description: '', steps: [{ name: '', agent_name: '', mode: 'sequential', prompt: '', condition: '', max_iterations: 5, until: '', error_mode: 'fail', max_retries: 3 }] },
 
     // -- Workflows methods --
     async loadWorkflows() {
@@ -31,13 +31,27 @@ function workflowsPage() {
 
     async createWorkflow() {
       var steps = this.newWf.steps.map(function(s) {
-        return { name: s.name || 'step', agent_name: s.agent_name, mode: s.mode, prompt: s.prompt || '{{input}}' };
+        var step = { name: s.name || 'step', agent_name: s.agent_name, mode: s.mode, prompt: s.prompt || '{{input}}', error_mode: s.error_mode || 'fail' };
+        if (s.mode === 'conditional') {
+          step.condition = s.condition || '';
+        } else if (s.mode === 'loop') {
+          if (s.max_iterations) {
+            step.max_iterations = parseInt(s.max_iterations, 10) || 5;
+          }
+          if (s.until) {
+            step.until = s.until;
+          }
+        }
+        if (s.error_mode === 'retry' && s.max_retries) {
+          step.max_retries = parseInt(s.max_retries, 10) || 3;
+        }
+        return step;
       });
       try {
         var wfName = this.newWf.name;
         await FangClawGoAPI.post('/api/workflows', { name: wfName, description: this.newWf.description, steps: steps });
         this.showCreateModal = false;
-        this.newWf = { name: '', description: '', steps: [{ name: '', agent_name: '', mode: 'sequential', prompt: '{{input}}' }] };
+        this.newWf = { name: '', description: '', steps: [{ name: '', agent_name: '', mode: 'sequential', prompt: '', condition: '', max_iterations: 5, until: '', error_mode: 'fail', max_retries: 3 }] };
         FangClawGoToast.success('Workflow "' + wfName + '" created');
         await this.loadWorkflows();
       } catch(e) {
@@ -74,6 +88,19 @@ function workflowsPage() {
       } catch(e) {
         FangClawGoToast.error('Failed to load run history: ' + e.message);
       }
+    },
+
+    async deleteWorkflow(wf) {
+      var self = this;
+      FangClawGoToast.confirm('Delete Workflow', 'Delete "' + wf.name + '"? This cannot be undone.', async function() {
+        try {
+          await FangClawGoAPI.del('/api/workflows/' + wf.id);
+          self.workflows = self.workflows.filter(function(w) { return w.id !== wf.id; });
+          FangClawGoToast.success('Workflow "' + wf.name + '" deleted');
+        } catch(e) {
+          FangClawGoToast.error('Failed to delete workflow: ' + (e.message || e));
+        }
+      });
     }
   };
 }

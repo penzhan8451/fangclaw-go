@@ -27,14 +27,7 @@ function sessionsPage() {
       this.loadError = '';
       try {
         var data = await FangClawGoAPI.get('/api/sessions');
-        var sessions = data.sessions || [];
-        var agents = Alpine.store('app').agents;
-        var agentMap = {};
-        agents.forEach(function(a) { agentMap[a.id] = a.name; });
-        sessions.forEach(function(s) {
-          s.agent_name = agentMap[s.agent_id] || '';
-        });
-        this.sessions = sessions;
+        this.sessions = data.sessions || [];
       } catch(e) {
         this.sessions = [];
         this.loadError = e.message || 'Could not load sessions.';
@@ -43,6 +36,9 @@ function sessionsPage() {
     },
 
     async loadData() { return this.loadSessions(); },
+
+    init() {
+    },
 
     get filteredSessions() {
       var f = this.searchFilter.toLowerCase();
@@ -54,11 +50,19 @@ function sessionsPage() {
     },
 
     openInChat(session) {
-      var agents = Alpine.store('app').agents;
-      var agent = agents.find(function(a) { return a.id === session.agent_id; });
-      if (agent) {
-        Alpine.store('app').pendingAgent = agent;
-      }
+      // 构造包含所有必要信息的 agent 对象
+      var agentObj = {
+        id: session.agent_id,
+        name: session.agent_name || session.agent_id,
+        model_provider: session.agent_model_provider || '?',
+        model_name: session.agent_model_name || '?'
+      };
+      
+      // 先设置 pending 状态
+      Alpine.store('app').pendingAgent = agentObj;
+      Alpine.store('app').pendingSession = session.session_id;
+      
+      // 然后跳转页面
       location.hash = 'agents';
     },
 

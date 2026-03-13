@@ -548,3 +548,32 @@ func SendMessage(registry *Registry, channelID string, content string, metadata 
 
 	return message, nil
 }
+
+// SendMessageToChannelName sends a message through the channel with the specified name.
+func SendMessageToChannelName(registry *Registry, channelName, recipient, content string, metadata interface{}) (*Message, error) {
+	channel, ok := registry.GetChannelByName(channelName)
+	if !ok {
+		return nil, fmt.Errorf("channel not found: %s", channelName)
+	}
+
+	adapter, ok := registry.GetAdapter(channel.ID)
+	if !ok {
+		return nil, fmt.Errorf("adapter not found for channel: %s", channelName)
+	}
+
+	message := &Message{
+		ID:        uuid.New().String(),
+		ChannelID: channel.ID,
+		Content:   content,
+		Recipient: recipient,
+		Metadata:  metadata,
+		CreatedAt: time.Now(),
+	}
+
+	err := adapter.Send(message)
+	if err != nil {
+		return nil, err
+	}
+
+	return message, nil
+}

@@ -106,7 +106,16 @@ function chatPage() {
       // Load session + session list when agent changes
       this.$watch('currentAgent', function(agent) {
         if (agent) {
-          self.loadSession(agent.id);
+          var store = Alpine.store('app');
+          var pendingSessionId = store.pendingSession;
+          if (pendingSessionId) {
+            store.pendingSession = null;
+            // Load the specific pending session
+            self.loadSession(agent.id, pendingSessionId);
+          } else {
+            // Load default/latest session
+            self.loadSession(agent.id);
+          }
           self.loadSessions(agent.id);
         }
       });
@@ -114,15 +123,20 @@ function chatPage() {
       // Check for pending agent from Agents page (set before chat mounted)
       var store = Alpine.store('app');
       if (store.pendingAgent) {
-        self.selectAgent(store.pendingAgent);
+        var agent = store.pendingAgent;
+        var pendingSessionId = store.pendingSession;
         store.pendingAgent = null;
+        // Don't clear pendingSession here - let the $watch('currentAgent') handle it
+        self.selectAgent(agent, !!pendingSessionId);
       }
 
       // Watch for future pending agent selections (e.g., user clicks agent while on chat)
       this.$watch('$store.app.pendingAgent', function(agent) {
         if (agent) {
-          self.selectAgent(agent);
+          var sessionId = Alpine.store('app').pendingSession;
           Alpine.store('app').pendingAgent = null;
+          // Don't clear pendingSession here - let the $watch('currentAgent') handle it
+          self.selectAgent(agent, !!sessionId);
         }
       });
 
@@ -339,26 +353,28 @@ function chatPage() {
       }
     },
 
-    selectAgent(agent) {
+    selectAgent(agent, skipWelcome) {
       this.currentAgent = agent;
       this.messages = [];
       this.connectWs(agent.id);
-      // Always show welcome tips
-      this.messages.push({
-        id: ++msgId,
-        role: 'system',
-        text: '**Welcome to FangClaw-go Chat!**\n\n' +
-          '- Type `/` to see available commands\n' +
-          '- `/help` shows all commands\n' +
-          '- `/think on` enables extended reasoning\n' +
-          '- `/context` shows context window usage\n' +
-          '- `/verbose off` hides tool details\n' +
-          '- `Ctrl+Shift+F` toggles focus mode\n' +
-          '- Drag & drop files to attach them\n' +
-          '- `Ctrl+/` opens the command palette',
-        meta: '',
-        tools: []
-      });
+      if (!skipWelcome) {
+        // Show welcome tips only when not switching to an existing session
+        this.messages.push({
+          id: ++msgId,
+          role: 'system',
+          text: '**Welcome to FangClaw-go Chat!**\n\n' +
+            '- Type `/` to see available commands\n' +
+            '- `/help` shows all commands\n' +
+            '- `/think on` enables extended reasoning\n' +
+            '- `/context` shows context window usage\n' +
+            '- `/verbose off` hides tool details\n' +
+            '- `Ctrl+Shift+F` toggles focus mode\n' +
+            '- Drag & drop files to attach them\n' +
+            '- `Ctrl+/` opens the command palette',
+          meta: '',
+          tools: []
+        });
+      }
       // Focus input after agent selection
       var self = this;
       this.$nextTick(function() {
@@ -367,10 +383,14 @@ function chatPage() {
       });
     },
 
-    async loadSession(agentId) {
+    async loadSession(agentId, sessionId) {
       var self = this;
       try {
-        var data = await FangClawGoAPI.get('/api/agents/' + agentId + '/session');
+        var url = '/api/agents/' + agentId + '/session';
+        if (sessionId) {
+          url += '?session_id=' + encodeURIComponent(sessionId);
+        }
+        var data = await FangClawGoAPI.get(url);
         if (data.messages && data.messages.length) {
           self.messages = data.messages.map(function(m) {
             var role = m.role === 'User' ? 'user' : (m.role === 'System' ? 'system' : 'agent');
@@ -429,7 +449,7 @@ function chatPage() {
       try {
         await FangClawGoAPI.post('/api/agents/' + this.currentAgent.id + '/sessions/' + sessionId + '/switch', {});
         this.messages = [];
-        await this.loadSession(this.currentAgent.id);
+        await this.loadSession(this.currentAgent.id, sessionId);
         await this.loadSessions(this.currentAgent.id);
         // Reconnect WebSocket for new session
         this._wsAgent = null;

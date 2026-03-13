@@ -82,6 +82,12 @@ type Config struct {
 	Groq       GroqConfig       `json:"groq,omitempty"`
 	Gemini     GeminiConfig     `json:"gemini,omitempty"`
 	OpenRouter OpenRouterConfig `json:"openrouter,omitempty"`
+	DeepSeek   DeepSeekConfig   `json:"deepseek,omitempty"`
+	Qwen       QwenConfig       `json:"qwen,omitempty"`
+	Zhipu      ZhipuConfig      `json:"zhipu,omitempty"`
+	Moonshot   MoonshotConfig   `json:"moonshot,omitempty"`
+	MiniMax    MiniMaxConfig    `json:"minimax,omitempty"`
+	Qianfan    QianfanConfig    `json:"qianfan,omitempty"`
 }
 
 // AnthropicConfig holds Anthropic API configuration.
@@ -110,6 +116,42 @@ type GeminiConfig struct {
 
 // OpenRouterConfig holds OpenRouter API configuration.
 type OpenRouterConfig struct {
+	APIKey string `json:"api_key,omitempty"`
+	Model  string `json:"model,omitempty"`
+}
+
+// DeepSeekConfig holds DeepSeek API configuration.
+type DeepSeekConfig struct {
+	APIKey string `json:"api_key,omitempty"`
+	Model  string `json:"model,omitempty"`
+}
+
+// QwenConfig holds Qwen API configuration.
+type QwenConfig struct {
+	APIKey string `json:"api_key,omitempty"`
+	Model  string `json:"model,omitempty"`
+}
+
+// ZhipuConfig holds Zhipu AI API configuration.
+type ZhipuConfig struct {
+	APIKey string `json:"api_key,omitempty"`
+	Model  string `json:"model,omitempty"`
+}
+
+// MoonshotConfig holds Moonshot API configuration.
+type MoonshotConfig struct {
+	APIKey string `json:"api_key,omitempty"`
+	Model  string `json:"model,omitempty"`
+}
+
+// MiniMaxConfig holds MiniMax API configuration.
+type MiniMaxConfig struct {
+	APIKey string `json:"api_key,omitempty"`
+	Model  string `json:"model,omitempty"`
+}
+
+// QianfanConfig holds Qianfan API configuration.
+type QianfanConfig struct {
 	APIKey string `json:"api_key,omitempty"`
 	Model  string `json:"model,omitempty"`
 }

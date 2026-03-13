@@ -53,7 +53,8 @@ func runChat(cmd *cobra.Command, args []string) error {
 }
 
 func runChatWithDaemon(agentID string) error {
-	resp, err := http.Get("http://127.0.0.1:4200/api/agents")
+	daemonAddr := mustGetDaemonAddress()
+	resp, err := http.Get(daemonAddr + "/api/agents")
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -87,7 +88,7 @@ func runChatWithDaemon(agentID string) error {
 
 		client := &http.Client{}
 		req, _ := http.NewRequest("POST",
-			fmt.Sprintf("http://127.0.0.1:4200/api/agents/%s/message", agentID),
+			fmt.Sprintf("%s/api/agents/%s/message", daemonAddr, agentID),
 			strings.NewReader(string(jsonData)))
 		req.Header.Set("Content-Type", "application/json")
 
@@ -445,8 +446,9 @@ func runMessage(cmd *cobra.Command, args []string) error {
 	}
 	jsonData, _ := json.Marshal(messageReq)
 
+	daemonAddr := mustGetDaemonAddress()
 	resp, err := http.Post(
-		fmt.Sprintf("http://127.0.0.1:4200/api/agents/%s/message", agentID),
+		fmt.Sprintf("%s/api/agents/%s/message", daemonAddr, agentID),
 		"application/json",
 		strings.NewReader(string(jsonData)),
 	)

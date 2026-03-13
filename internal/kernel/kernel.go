@@ -1,10 +1,15 @@
 package kernel
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +28,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/pairing"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent_templates"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
@@ -38,6 +44,7 @@ type Kernel struct {
 	scheduler       *Scheduler
 	cronScheduler   *cron.CronScheduler
 	modelCatalog    *model_catalog.ModelCatalog
+	agentTemplates  *agent_templates.AgentTemplates
 	db              *memory.DB
 	semantic        *memory.SemanticStore
 	sessions        *memory.SessionStore
@@ -140,13 +147,21 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 
 	modelCatalogPath := filepath.Join(dataDir, "model_catalog.json")
 	modelCatalog := model_catalog.NewModelCatalog(modelCatalogPath)
-	workflowEngine := NewWorkflowEngine()
+	agentTemplates := agent_templates.NewAgentTemplates()
+	if err := agentTemplates.Load(); err != nil {
+		fmt.Printf("[Kernel] Warning: Failed to load agent templates: %v\n", err)
+	}
+	fmt.Printf("[Kernel] Creating WorkflowEngine with dataDir: '%s'\n", dataDir)
+	workflowEngine := NewWorkflowEngine(dataDir)
+	fmt.Printf("[Kernel] WorkflowEngine created\n")
+
 	k := &Kernel{
 		config:          kernelConfig,
 		eventBus:        eventbus.NewEventBus(),
 		scheduler:       NewScheduler(),
 		cronScheduler:   cronScheduler,
 		modelCatalog:    modelCatalog,
+		agentTemplates:  agentTemplates,
 		db:              db,
 		semantic:        semanticStore,
 		sessions:        sessionStore,
@@ -165,6 +180,11 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		startTime:       time.Now(),
 		stopping:        make(chan struct{}),
 	}
+
+	k.workflowEngine.SetChannelSender(func(channelName, recipient, message string) error {
+		_, err := channels.SendMessageToChannelName(k.registry, channelName, recipient, message, nil)
+		return err
+	})
 
 	mcpCallbacks := &agent.McpCallbacks{
 		GetMcpTools: k.GetMcpTools,
@@ -268,6 +288,8 @@ func (k *Kernel) Start(ctx context.Context) error {
 
 	k.modelCatalog.DetectAuth()
 
+	k.agentTemplates.StartWatching()
+
 	k.started = true
 
 	event := eventbus.NewEvent(eventbus.EventTypeSystem, "kernel", eventbus.EventTargetSystem)
@@ -278,34 +300,40 @@ func (k *Kernel) Start(ctx context.Context) error {
 
 	// Start cron tick loop
 	go func() {
+		log.Info().Msg("Cron: tick loop starting")
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 
 		persistCounter := 0
 
+		log.Info().Msg("Cron: skipping first tick")
 		// Skip first tick
 		<-ticker.C
+		log.Info().Msg("Cron: first tick skipped, starting main loop")
 
 		for {
 			select {
 			case <-ticker.C:
+				log.Info().Msg("Cron: tick received")
 				select {
 				case <-k.stopping:
+					log.Info().Msg("Cron: stopping tick loop")
 					return
 				default:
 				}
 
 				due := k.cronScheduler.DueJobs()
+				log.Info().Int("count", len(due)).Msg("Cron: checking for due jobs")
 				for _, job := range due {
 					jobID := job.ID
 					jobName := job.Name
 
-					log.Debug().Str("job", jobName).Msg("Cron: firing job")
+					log.Info().Str("job", jobName).Msg("Cron: firing job")
 
 					switch job.Action.Kind {
 					case types.CronActionKindSystemEvent:
 						if job.Action.Text != nil {
-							log.Debug().Str("job", jobName).Msg("Cron: firing system event")
+							log.Info().Str("job", jobName).Msg("Cron: firing system event")
 							payload := map[string]interface{}{
 								"type":   fmt.Sprintf("cron.%s", jobName),
 								"text":   *job.Action.Text,
@@ -320,10 +348,134 @@ func (k *Kernel) Start(ctx context.Context) error {
 							k.cronScheduler.RecordSuccess(jobID)
 						}
 					case types.CronActionKindAgentTurn:
-						log.Debug().Str("job", jobName).Str("agent", job.AgentID.String()).Msg("Cron: firing agent turn")
-						// TODO: Implement AgentTurn action handling
-						log.Warn().Str("job", jobName).Msg("Cron: AgentTurn action not yet implemented")
-						k.cronScheduler.RecordFailure(jobID, "AgentTurn action not yet implemented")
+						log.Info().Str("job", jobName).Str("agent", job.AgentID.String()).Msg("Cron: firing agent turn")
+						if job.Action.Message != nil {
+							log.Info().Str("job", jobName).Str("message", *job.Action.Message).Msg("Cron: sending message to agent")
+							timeoutSecs := uint64(120)
+							if job.Action.TimeoutSecs != nil {
+								timeoutSecs = *job.Action.TimeoutSecs
+							}
+							timeout := time.Duration(timeoutSecs) * time.Second
+							ctxTimeout, cancel := context.WithTimeout(context.Background(), timeout)
+							defer cancel()
+
+							delivery := job.Delivery
+							resultChan := make(chan struct {
+								result string
+								err    error
+							}, 1)
+
+							go func() {
+								log.Info().Str("job", jobName).Msg("Cron: calling SendMessage")
+								result, err := k.SendMessage(ctxTimeout, job.AgentID.String(), *job.Action.Message)
+								log.Info().Str("job", jobName).Err(err).Msg("Cron: SendMessage returned")
+								resultChan <- struct {
+									result string
+									err    error
+								}{result, err}
+							}()
+
+							select {
+							case <-ctxTimeout.Done():
+								log.Warn().Str("job", jobName).Uint64("timeout_s", timeoutSecs).Msg("Cron job timed out")
+								k.cronScheduler.RecordFailure(jobID, fmt.Sprintf("timed out after %ds", timeoutSecs))
+							case res := <-resultChan:
+								if res.err != nil {
+									errMsg := res.err.Error()
+									log.Warn().Str("job", jobName).Err(res.err).Msg("Cron job failed")
+									k.cronScheduler.RecordFailure(jobID, errMsg)
+								} else {
+									log.Info().Str("job", jobName).Str("result", res.result).Msg("Cron job completed successfully")
+									k.cronScheduler.RecordSuccess(jobID)
+									k.cronDeliverResponse(job.AgentID, res.result, &delivery)
+								}
+							}
+						}
+					case types.CronActionKindExecuteShell:
+						log.Info().Str("job", jobName).Msg("Cron: firing execute shell")
+						if job.Action.Command != nil {
+							command := *job.Action.Command
+							args := job.Action.Args
+							log.Info().Str("job", jobName).Str("command", command).Strs("args", args).Msg("Cron: executing shell command")
+
+							if err := ValidateShellCommand(command, args, k.config.CronShellSecurity); err != nil {
+								errMsg := fmt.Sprintf("security validation failed: %v", err)
+								log.Warn().Str("job", jobName).Err(err).Msg("Cron job blocked by security")
+								k.cronScheduler.RecordFailure(jobID, errMsg)
+								continue
+							}
+
+							timeoutSecs := uint64(60)
+							if job.Action.TimeoutSecs != nil {
+								timeoutSecs = *job.Action.TimeoutSecs
+							}
+							timeout := time.Duration(timeoutSecs) * time.Second
+							ctxTimeout, cancel := context.WithTimeout(context.Background(), timeout)
+							defer cancel()
+
+							delivery := job.Delivery
+							resultChan := make(chan struct {
+								stdout string
+								stderr string
+								err    error
+							}, 1)
+
+							go func() {
+								cmd := exec.CommandContext(ctxTimeout, command, args...)
+								var stdoutBuf, stderrBuf bytes.Buffer
+								cmd.Stdout = &stdoutBuf
+								cmd.Stderr = &stderrBuf
+
+								log.Info().Str("job", jobName).Msg("Cron: starting command execution")
+								err := cmd.Run()
+								stdout := stdoutBuf.String()
+								stderr := stderrBuf.String()
+
+								log.Info().Str("job", jobName).Str("stdout", stdout).Str("stderr", stderr).Err(err).Msg("Cron: command execution finished")
+								resultChan <- struct {
+									stdout string
+									stderr string
+									err    error
+								}{stdout, stderr, err}
+							}()
+
+							select {
+							case <-ctxTimeout.Done():
+								log.Warn().Str("job", jobName).Uint64("timeout_s", timeoutSecs).Msg("Cron job timed out")
+								k.cronScheduler.RecordFailure(jobID, fmt.Sprintf("timed out after %ds", timeoutSecs))
+							case res := <-resultChan:
+								if res.err != nil {
+									errMsg := fmt.Sprintf("command failed: %v, stderr: %s", res.err, res.stderr)
+									log.Warn().Str("job", jobName).Err(res.err).Str("stderr", res.stderr).Msg("Cron job failed")
+									k.cronScheduler.RecordFailure(jobID, errMsg)
+									var fullResult string
+									if res.stdout != "" && res.stderr != "" {
+										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.stderr, res.err)
+									} else if res.stdout != "" {
+										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.err)
+									} else if res.stderr != "" {
+										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stderr, res.err)
+									} else {
+										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.err)
+									}
+									k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
+								} else {
+									log.Info().Str("job", jobName).Str("stdout", res.stdout).Msg("Cron job completed successfully")
+									k.cronScheduler.RecordSuccess(jobID)
+									var fullResult string
+									if res.stdout != "" && res.stderr != "" {
+										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stdout, res.stderr)
+									} else if res.stdout != "" {
+										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s", command, strings.Join(args, " "), res.stdout)
+									} else if res.stderr != "" {
+										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stderr)
+									} else {
+										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n(无输出)", command, strings.Join(args, " "))
+									}
+									k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
+								}
+							}
+						}
 					}
 				}
 
@@ -360,6 +512,7 @@ func (k *Kernel) Stop(ctx context.Context) error {
 
 	// Stop hot reload first
 	k.cronScheduler.StopHotReload()
+	k.agentTemplates.StopWatching()
 
 	// Signal stopping
 	close(k.stopping)
@@ -463,8 +616,122 @@ func (k *Kernel) ModelCatalog() *model_catalog.ModelCatalog {
 	return k.modelCatalog
 }
 
+func (k *Kernel) AgentTemplates() *agent_templates.AgentTemplates {
+	return k.agentTemplates
+}
+
 func (k *Kernel) WorkflowEngine() *WorkflowEngine {
 	return k.workflowEngine
+}
+
+// ExecuteWorkflow executes a workflow by ID with the given input.
+func (k *Kernel) ExecuteWorkflow(ctx context.Context, workflowID types.WorkflowID, input string) (string, error) {
+	runID := k.workflowEngine.CreateRun(workflowID, input)
+	if runID == nil {
+		return "", fmt.Errorf("workflow not found: %s", workflowID)
+	}
+
+	resolver := func(agent types.StepAgent) (string, string, bool) {
+		if agent.Name != nil {
+			agentID, ok := k.FindAgentByName(ctx, *agent.Name)
+			if ok {
+				return agentID, *agent.Name, true
+			}
+		}
+		if agent.ID != nil {
+			return *agent.ID, "", true
+		}
+		return "", "", false
+	}
+
+	sender := func(agentID, prompt string) (string, uint64, uint64, error) {
+		return k.SendMessageWithUsage(ctx, agentID, prompt)
+	}
+
+	return k.workflowEngine.ExecuteRun(*runID, resolver, sender)
+}
+
+// RegisterWorkflow registers a new workflow with the kernel.
+func (k *Kernel) RegisterWorkflow(workflow types.Workflow) types.WorkflowID {
+	return k.workflowEngine.Register(workflow)
+}
+
+// GetWorkflow gets a workflow by ID.
+func (k *Kernel) GetWorkflow(id types.WorkflowID) *types.Workflow {
+	return k.workflowEngine.GetWorkflow(id)
+}
+
+// ListWorkflows lists all registered workflows.
+func (k *Kernel) ListWorkflows() []types.Workflow {
+	return k.workflowEngine.ListWorkflows()
+}
+
+// RemoveWorkflow removes a workflow by ID.
+func (k *Kernel) RemoveWorkflow(id types.WorkflowID) bool {
+	return k.workflowEngine.RemoveWorkflow(id)
+}
+
+// GetWorkflowRun gets a workflow run by ID.
+func (k *Kernel) GetWorkflowRun(id types.WorkflowRunID) *types.WorkflowRun {
+	return k.workflowEngine.GetRun(id)
+}
+
+// ListWorkflowRuns lists all workflow runs (optionally filtered by state and/or workflow ID).
+func (k *Kernel) ListWorkflowRuns(stateFilter *string, workflowID *types.WorkflowID) []types.WorkflowRun {
+	return k.workflowEngine.ListRuns(stateFilter, workflowID)
+}
+
+// ListWorkflowTemplates lists all available workflow templates.
+func (k *Kernel) ListWorkflowTemplates() []types.WorkflowTemplate {
+	return k.workflowEngine.ListTemplates()
+}
+
+// GetWorkflowTemplate gets a workflow template by ID.
+func (k *Kernel) GetWorkflowTemplate(id types.WorkflowTemplateID) *types.WorkflowTemplate {
+	return k.workflowEngine.GetTemplate(id)
+}
+
+// CreateWorkflowFromTemplate creates a new workflow from a template.
+func (k *Kernel) CreateWorkflowFromTemplate(templateID types.WorkflowTemplateID, customName, customDescription string) (*types.Workflow, error) {
+	return k.workflowEngine.CreateFromTemplate(templateID, customName, customDescription)
+}
+
+// ExecuteWorkflowWithDelivery executes a workflow and delivers the result.
+func (k *Kernel) ExecuteWorkflowWithDelivery(ctx context.Context, workflowID types.WorkflowID, input string, delivery *types.DeliveryConfig) (string, error) {
+	runID := k.workflowEngine.CreateRun(workflowID, input)
+	if runID == nil {
+		return "", fmt.Errorf("workflow not found: %s", workflowID)
+	}
+
+	resolver := func(agent types.StepAgent) (string, string, bool) {
+		if agent.Name != nil {
+			agentID, ok := k.FindAgentByName(ctx, *agent.Name)
+			if ok {
+				return agentID, *agent.Name, true
+			}
+		}
+		if agent.ID != nil {
+			return *agent.ID, "", true
+		}
+		return "", "", false
+	}
+
+	sender := func(agentID, prompt string) (string, uint64, uint64, error) {
+		return k.SendMessageWithUsage(ctx, agentID, prompt)
+	}
+
+	output, err := k.workflowEngine.ExecuteRun(*runID, resolver, sender)
+	if err != nil {
+		return "", err
+	}
+
+	if delivery != nil {
+		if deliveryErr := k.workflowEngine.DeliverResult(workflowID, output, delivery); deliveryErr != nil {
+			log.Warn().Err(deliveryErr).Str("workflow_id", string(workflowID)).Msg("Failed to deliver workflow result")
+		}
+	}
+
+	return output, nil
 }
 
 func (k *Kernel) ReloadConfig(newConfig types.KernelConfig) *configreload.ReloadPlan {
@@ -678,6 +945,16 @@ func (k *Kernel) SendMessage(ctx context.Context, agentID string, message string
 	return result.Response, nil
 }
 
+// SendMessageWithUsage sends a message to an agent and gets the response with token usage.
+func (k *Kernel) SendMessageWithUsage(ctx context.Context, agentID string, message string) (string, uint64, uint64, error) {
+	runner := agent.NewAgentRunner(k.agentRuntime)
+	result, err := runner.RunAgent(ctx, agentID, message, nil, nil)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	return result.Response, uint64(result.TotalUsage.PromptTokens), uint64(result.TotalUsage.CompletionTokens), nil
+}
+
 // FindAgentByName finds an agent by name.
 func (k *Kernel) FindAgentByName(ctx context.Context, name string) (string, bool) {
 	entry := k.agentRegistry.FindByName(name)
@@ -720,6 +997,7 @@ func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error
 	var agentName, agentSystemPrompt, agentProvider, agentModel, agentAPIKeyEnv string
 	var agentTools, agentSkills []string
 	var agentSkillPromptContext string
+	var registerErr error
 
 	// Part 1: Operations that require a lock
 	func() {
@@ -762,7 +1040,7 @@ func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error
 			LastActive: time.Now(),
 		}
 
-		if err := k.agentRegistry.Register(entry); err != nil {
+		if registerErr = k.agentRegistry.Register(entry); registerErr != nil {
 			return
 		}
 
@@ -772,6 +1050,11 @@ func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error
 		agentSkills = manifest.Skills
 		agentSkillPromptContext = manifest.SkillPromptContext
 	}()
+
+	// Check if register failed
+	if registerErr != nil {
+		return "", "", registerErr
+	}
 
 	// Part 2: Operations that don't require a lock
 	apiKey := os.Getenv(agentAPIKeyEnv)
@@ -939,4 +1222,194 @@ func (k *Kernel) GetMcpServers() []McpServerInfo {
 		return true
 	})
 	return servers
+}
+
+// cronDeliverResponse delivers the response from an agent turn to the configured destination.
+func (k *Kernel) cronDeliverResponse(agentID types.AgentID, response string, delivery *types.CronDelivery) {
+	log.Info().
+		Str("agent", agentID.String()).
+		Str("delivery_kind", string(delivery.Kind)).
+		Msg("Cron: delivering response")
+
+	switch delivery.Kind {
+	case types.CronDeliveryKindNone:
+		log.Info().Msg("Cron delivery: kind is None, skipping")
+		return
+
+	case types.CronDeliveryKindChannel:
+		if delivery.ChannelName == nil {
+			log.Warn().Str("agent", agentID.String()).Msg("Cron delivery: channel name not specified")
+			return
+		}
+
+		var recipient string
+		if delivery.Recipient != nil {
+			recipient = *delivery.Recipient
+		}
+
+		log.Info().
+			Str("channel_name", *delivery.ChannelName).
+			Str("recipient", recipient).
+			Msg("Cron delivery: preparing to send via channel")
+
+		// Find channel by name
+		channelList := k.registry.ListChannels()
+		var targetChannel *channels.Channel
+		var availableChannelNames []string
+		for _, ch := range channelList {
+			availableChannelNames = append(availableChannelNames, ch.Name)
+			if ch.Name == *delivery.ChannelName {
+				targetChannel = ch
+				break
+			}
+		}
+
+		log.Info().
+			Strs("available_channels", availableChannelNames).
+			Msg("Cron delivery: available channels")
+
+		if targetChannel == nil {
+			log.Warn().Str("channel", *delivery.ChannelName).Msg("Cron delivery: channel not found")
+			return
+		}
+
+		adapter, ok := k.registry.GetAdapter(targetChannel.ID)
+		if !ok {
+			log.Warn().Str("channel", targetChannel.ID).Msg("Cron delivery: adapter not found")
+			return
+		}
+
+		msg := &channels.Message{
+			ID:        fmt.Sprintf("cron_%d", time.Now().UnixNano()),
+			ChannelID: targetChannel.ID,
+			Content:   response,
+			Recipient: recipient,
+			CreatedAt: time.Now(),
+		}
+
+		if err := adapter.Send(msg); err != nil {
+			log.Warn().Err(err).Str("channel", targetChannel.ID).Msg("Cron delivery: failed to send message")
+		}
+
+	case types.CronDeliveryKindLastChannel:
+		log.Warn().Msg("Cron delivery: LastChannel not implemented yet")
+
+	case types.CronDeliveryKindWebhook:
+		if delivery.Url == nil {
+			log.Warn().Msg("Cron delivery: webhook URL not specified")
+			return
+		}
+
+		// Prepare payload
+		payload := map[string]interface{}{
+			"agent_id":  agentID.String(),
+			"response":  response,
+			"timestamp": time.Now().UTC(),
+		}
+
+		payloadBytes, err := json.Marshal(payload)
+		if err != nil {
+			log.Warn().Err(err).Msg("Cron delivery: failed to marshal webhook payload")
+			return
+		}
+
+		// Send webhook
+		req, err := http.NewRequest("POST", *delivery.Url, bytes.NewBuffer(payloadBytes))
+		if err != nil {
+			log.Warn().Err(err).Msg("Cron delivery: failed to create webhook request")
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{
+			Timeout: 30 * time.Second,
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Warn().Err(err).Msg("Cron delivery: failed to send webhook")
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			log.Warn().Int("status", resp.StatusCode).Msg("Cron delivery: webhook returned non-success status")
+		}
+	}
+}
+
+// ValidateShellCommand validates a shell command against security configuration
+func ValidateShellCommand(command string, args []string, config types.CronShellSecurityConfig) error {
+	log.Info().
+		Str("command", command).
+		Strs("args", args).
+		Str("security_mode", config.SecurityMode).
+		Msg("Cron: validating shell command")
+
+	if !config.EnableExecuteShell {
+		return fmt.Errorf("execute_shell is disabled in configuration")
+	}
+
+	for _, forbidden := range config.ForbiddenCommands {
+		if command == forbidden {
+			log.Warn().Str("command", command).Msg("Cron: command is forbidden")
+			return fmt.Errorf("command '%s' is forbidden", command)
+		}
+	}
+
+	switch config.SecurityMode {
+	case "strict":
+		allowed := false
+		for _, allowedCmd := range config.AllowedCommands {
+			if command == allowedCmd {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			log.Warn().Str("command", command).Strs("allowed_commands", config.AllowedCommands).Msg("Cron: command not in allowed list")
+			return fmt.Errorf("command '%s' is not in allowed list", command)
+		}
+
+	case "path":
+		cmdPath, err := exec.LookPath(command)
+		if err != nil {
+			return fmt.Errorf("command not found: %w", err)
+		}
+		cmdPath = filepath.Clean(cmdPath)
+
+		allowed := false
+		for _, allowedPath := range config.AllowedPaths {
+			allowedPath = filepath.Clean(allowedPath)
+			if strings.HasPrefix(cmdPath, allowedPath+string(os.PathSeparator)) || cmdPath == allowedPath {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			log.Warn().Str("command", command).Str("cmd_path", cmdPath).Strs("allowed_paths", config.AllowedPaths).Msg("Cron: command path not in allowed paths")
+			return fmt.Errorf("command path '%s' is not in allowed paths", cmdPath)
+		}
+
+	case "none":
+		log.Warn().Str("command", command).Msg("Cron: execute_shell running in 'none' security mode")
+
+	default:
+		return fmt.Errorf("invalid security mode: %s", config.SecurityMode)
+	}
+
+	for _, arg := range args {
+		for _, pattern := range config.ForbiddenArgsPatterns {
+			matched, err := regexp.MatchString(pattern, arg)
+			if err != nil {
+				return fmt.Errorf("invalid pattern '%s': %w", pattern, err)
+			}
+			if matched {
+				log.Warn().Str("argument", arg).Str("pattern", pattern).Msg("Cron: argument contains forbidden pattern")
+				return fmt.Errorf("argument '%s' contains forbidden pattern", arg)
+			}
+		}
+	}
+
+	log.Info().Str("command", command).Msg("Cron: shell command validation passed")
+	return nil
 }

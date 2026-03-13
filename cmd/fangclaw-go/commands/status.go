@@ -28,7 +28,8 @@ func statusCmd() *cobra.Command {
 func runStatus(cmd *cobra.Command, args []string) error {
 	// Try to connect to daemon
 	if isDaemonRunning() {
-		resp, err := http.Get("http://127.0.0.1:4200/api/status")
+		daemonAddr := mustGetDaemonAddress()
+		resp, err := http.Get(daemonAddr + "/api/status")
 		if err != nil {
 			return fmt.Errorf("failed to connect to daemon: %w", err)
 		}

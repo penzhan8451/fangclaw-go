@@ -1162,6 +1162,7 @@
                     <td>
                       <button class="btn btn-primary btn-sm" @click="showRunModal(wf)">Run</button>
                       <button class="btn btn-ghost btn-sm" @click="viewRuns(wf)">History</button>
+                      <button class="btn btn-danger btn-sm" @click="deleteWorkflow(wf)">Delete</button>
                     </td>
                   </tr>
                 </template>
@@ -1191,20 +1192,37 @@
                     <div class="card mt-2" style="padding:10px">
                       <div class="flex gap-2 items-center">
                         <span class="text-xs text-dim font-bold" x-text="'#' + (i+1)" style="width:24px"></span>
-                        <input class="form-input" style="flex:1" x-model="step.name" placeholder="Step name">
-                        <input class="form-input" style="flex:1" x-model="step.agent_name" placeholder="Agent name">
+                        <input class="form-input" style="flex:1" x-model="step.name" placeholder="step name, e.g., analyze">
+                        <input class="form-input" style="flex:1" x-model="step.agent_name" placeholder="agent name, e.g., Data Analyst">
                         <select class="form-select" style="width:120px" x-model="step.mode">
                           <option value="sequential">Sequential</option>
                           <option value="fan_out">Fan Out</option>
                           <option value="conditional">Conditional</option>
                           <option value="loop">Loop</option>
                         </select>
+                        <select class="form-select" style="width:100px" x-model="step.error_mode">
+                          <option value="fail">Fail</option>
+                          <option value="skip">Skip</option>
+                          <option value="retry">Retry</option>
+                        </select>
                         <button class="btn btn-danger btn-sm" @click="newWf.steps.splice(i,1)">&times;</button>
                       </div>
-                      <input class="form-input mt-2" x-model="step.prompt" placeholder="Prompt template (use {{input}})">
+                      <input class="form-input mt-2" x-model="step.prompt" placeholder="e.g., Analyze this: {{input}}  or  Use output from step 1: {{steps.analyze.output}}">
+                      <template x-if="step.mode === 'conditional'">
+                        <input class="form-input mt-2" x-model="step.condition" placeholder="e.g., steps.analyze.output.includes('ERROR') or steps.analyze.output.length > 100">
+                      </template>
+                      <template x-if="step.mode === 'loop'">
+                        <div class="flex gap-2 mt-2">
+                          <input class="form-input" style="flex:1" x-model="step.max_iterations" type="number" placeholder="Max iterations (e.g., 5)" min="1">
+                          <input class="form-input" style="flex:1" x-model="step.until" placeholder="e.g., steps.loop.output.includes('DONE')">
+                        </div>
+                      </template>
+                      <template x-if="step.error_mode === 'retry'">
+                        <input class="form-input mt-2" x-model="step.max_retries" type="number" placeholder="Max retries (e.g., 3)" min="1">
+                      </template>
                     </div>
                   </template>
-                  <button class="btn btn-ghost btn-sm mt-2" @click="newWf.steps.push({name:'',agent_name:'',mode:'sequential',prompt:'{{input}}'})">+ Add Step</button>
+                  <button class="btn btn-ghost btn-sm mt-2" @click="newWf.steps.push({name:'',agent_name:'',mode:'sequential',prompt:'',condition:'',max_iterations:5,until:'',error_mode:'fail',max_retries:3})">+ Add Step</button>
                 </div>
                 <button class="btn btn-primary btn-block" @click="createWorkflow()">Create</button>
               </div>
@@ -1288,63 +1306,8 @@
                   </defs>
                   <rect x="-2000" y="-2000" width="6000" height="6000" fill="url(#wf-grid)"/>
 
-                  <!-- Connections -->
-                  <template x-for="conn in connections" :key="conn.id">
-                    <g>
-                      <path :d="getConnectionPath(conn)" fill="none" stroke="var(--text-dim)" stroke-width="2"
-                            style="cursor:pointer" @click.stop="selectedConnection = conn"
-                            :stroke="selectedConnection && selectedConnection.id === conn.id ? 'var(--accent)' : 'var(--text-dim)'"
-                            :stroke-width="selectedConnection && selectedConnection.id === conn.id ? 3 : 2"/>
-                      <!-- Arrow at midpoint -->
-                    </g>
-                  </template>
-
-                  <!-- Connection preview line -->
-                  <template x-if="connecting && connectPreview">
-                    <path :d="getPreviewPath()" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6,3"/>
-                  </template>
-
-                  <!-- Nodes -->
-                  <template x-for="node in nodes" :key="node.id">
-                    <g class="wf-node" :transform="'translate(' + node.x + ',' + node.y + ')'"
-                       @mousedown="onNodeMouseDown(node, $event)" @dblclick="editNode(node)">
-                      <!-- Node body -->
-                      <rect x="0" y="0" :width="node.width" :height="node.height" rx="8" ry="8"
-                            :fill="selectedNode && selectedNode.id === node.id ? 'var(--card-bg)' : 'var(--bg-secondary)'"
-                            :stroke="selectedNode && selectedNode.id === node.id ? node.color : 'var(--border)'"
-                            stroke-width="2" style="cursor:grab"/>
-                      <!-- Color accent bar -->
-                      <rect x="0" y="0" width="6" :height="node.height" rx="3" ry="0" :fill="node.color"/>
-                      <!-- Icon -->
-                      <circle cx="28" :cy="node.height/2" r="14" :fill="node.color" opacity="0.15"/>
-                      <text x="28" :y="node.height/2 + 4" text-anchor="middle" :fill="node.color"
-                            style="font-size:12px;font-weight:700;pointer-events:none" x-text="node.icon"></text>
-                      <!-- Label -->
-                      <text x="50" :y="node.height/2 - 4" fill="var(--text)" style="font-size:12px;font-weight:600;pointer-events:none"
-                            x-text="node.label"></text>
-                      <!-- Sub-label (config hint) -->
-                      <text x="50" :y="node.height/2 + 12" fill="var(--text-dim)" style="font-size:10px;pointer-events:none"
-                            x-text="node.type === 'agent' ? (node.config.agent_name || 'No agent') :
-                                    node.type === 'condition' ? (node.config.expression || 'No condition') :
-                                    node.type === 'loop' ? ('max ' + (node.config.max_iterations || 5) + ' iters') :
-                                    node.type === 'parallel' ? (node.config.fan_count + ' branches') :
-                                    node.type === 'collect' ? node.config.strategy : ''"></text>
-
-                      <!-- Input ports -->
-                      <template x-for="pi in Array.from({length: node.ports.in}, function(_,i){return i})" :key="'in-'+pi">
-                        <circle class="wf-port wf-port-in" :cx="node.width / (node.ports.in + 1) * (pi + 1)" cy="0" r="6"
-                                fill="var(--bg-secondary)" stroke="var(--text-dim)" stroke-width="2"
-                                @mouseup.stop="endConnect(node.id, pi, $event)"/>
-                      </template>
-
-                      <!-- Output ports -->
-                      <template x-for="po in Array.from({length: node.ports.out}, function(_,i){return i})" :key="'out-'+po">
-                        <circle class="wf-port wf-port-out" :cx="node.width / (node.ports.out + 1) * (po + 1)" :cy="node.height" r="6"
-                                fill="var(--bg-secondary)" :stroke="node.color" stroke-width="2"
-                                @mousedown.stop="startConnect(node.id, po, $event)"/>
-                      </template>
-                    </g>
-                  </template>
+                  <!-- Manually rendered nodes & connections (Alpine x-for breaks inside SVG) -->
+                  <g id="wf-render-group" x-effect="nodes.length; connections.length; selectedNode; selectedConnection; connecting; connectPreview; scheduleRender()"></g>
                 </g>
               </svg>
 
@@ -1364,7 +1327,7 @@
                 <div>
                   <div class="form-group">
                     <label class="text-xs">Label</label>
-                    <input class="form-input" x-model="selectedNode.label" style="font-size:11px">
+                    <input class="form-input" x-model="selectedNode.label" @input="applyNodeEdit()" style="font-size:11px">
                   </div>
 
                   <!-- Agent config -->
@@ -3766,7 +3729,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Sessions -->
     <template x-if="page === 'sessions'">
-      <div x-data="sessionsPage">
+      <div x-data="sessionsPage" x-init="init()">
         <div class="page-header">
           <h2>Sessions</h2>
           <input class="form-input" style="width:200px" placeholder="Filter by agent..." x-model="searchFilter" x-show="tab === 'sessions'">
@@ -3797,8 +3760,19 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 <tbody>
                   <template x-for="s in filteredSessions" :key="s.session_id">
                     <tr>
-                      <td class="text-xs truncate" style="font-family:monospace;max-width:120px" x-text="s.session_id ? s.session_id.substring(0, 8) + '...' : '-'" :title="s.session_id"></td>
-                      <td class="font-bold" x-text="s.agent_name || s.agent_id"></td>
+                      <td style="max-width:200px">
+                        <div class="font-bold" x-text="s.label || (s.summary || 'New Session')" :title="s.label || s.summary"></div>
+                        <div class="text-xs text-dim" style="font-family:monospace" x-text="s.session_id ? s.session_id.substring(0, 12) + '...' : '-'" :title="s.session_id"></div>
+                      </td>
+                      <td>
+                        <template x-if="s.agent_name">
+                          <div class="font-bold" x-text="s.agent_name"></div>
+                          <div class="text-xs text-dim" style="font-family:monospace" x-text="s.agent_id ? '(' + s.agent_id.substring(0, 12) + '...)' : ''" :title="s.agent_id"></div>
+                        </template>
+                        <template x-if="!s.agent_name">
+                          <div class="font-bold" x-text="s.agent_id"></div>
+                        </template>
+                      </td>
                       <td x-text="s.message_count"></td>
                       <td class="text-xs" x-text="s.created_at ? new Date(s.created_at).toLocaleString() : '-'"></td>
                       <td>
@@ -3853,10 +3827,47 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                   <tbody>
                     <template x-for="kv in kvPairs" :key="kv.key">
                       <tr>
-                        <td class="font-bold" style="white-space:nowrap" x-text="kv.key"></td>
+                        <td style="white-space:nowrap">
+                          <div class="flex items-center gap-2">
+                            <template x-if="kv.key.toLowerCase().includes('preference') || kv.key.toLowerCase().includes('pref')">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                            </template>
+                            <template x-if="kv.key.toLowerCase().includes('project') || kv.key.toLowerCase().includes('context')">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3b82f6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+                            </template>
+                            <template x-if="kv.key.toLowerCase().includes('user') || kv.key.toLowerCase().includes('name')">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#8b5cf6"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            </template>
+                            <template x-if="kv.key.toLowerCase().includes('note') || kv.key.toLowerCase().includes('memo')">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#10b981"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </template>
+                            <template x-if="!(kv.key.toLowerCase().includes('preference') || kv.key.toLowerCase().includes('pref') || kv.key.toLowerCase().includes('project') || kv.key.toLowerCase().includes('context') || kv.key.toLowerCase().includes('user') || kv.key.toLowerCase().includes('name') || kv.key.toLowerCase().includes('note') || kv.key.toLowerCase().includes('memo'))">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#6b7280"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                            </template>
+                            <div>
+                              <div class="font-bold" x-text="kv.key"></div>
+                              <div class="text-xs text-dim" x-show="kv.key.toLowerCase().includes('preference') || kv.key.toLowerCase().includes('pref')">User Preference</div>
+                              <div class="text-xs text-dim" x-show="kv.key.toLowerCase().includes('project') || kv.key.toLowerCase().includes('context')">Project Context</div>
+                              <div class="text-xs text-dim" x-show="kv.key.toLowerCase().includes('user') || kv.key.toLowerCase().includes('name')">User Info</div>
+                              <div class="text-xs text-dim" x-show="kv.key.toLowerCase().includes('note') || kv.key.toLowerCase().includes('memo')">Note / Memo</div>
+                              <div class="text-xs text-dim" x-show="!(kv.key.toLowerCase().includes('preference') || kv.key.toLowerCase().includes('pref') || kv.key.toLowerCase().includes('project') || kv.key.toLowerCase().includes('context') || kv.key.toLowerCase().includes('user') || kv.key.toLowerCase().includes('name') || kv.key.toLowerCase().includes('note') || kv.key.toLowerCase().includes('memo'))">General</div>
+                            </div>
+                          </div>
+                        </td>
                         <td>
                           <template x-if="editingKey !== kv.key">
-                            <pre style="font-size:11px;max-width:400px;overflow:auto;white-space:pre-wrap;margin:0;color:var(--text-dim)" x-text="typeof kv.value === 'object' ? JSON.stringify(kv.value, null, 2) : String(kv.value)"></pre>
+                            <div>
+                              <template x-if="typeof kv.value === 'object'">
+                                <div style="font-size:11px;max-width:400px;overflow:auto;white-space:pre-wrap;margin:0;color:var(--text-dim)">
+                                  <template x-for="(v, k) in kv.value" :key="k">
+                                    <div><span class="font-bold" x-text="k + ':'"></span> <span x-text="String(v)"></span></div>
+                                  </template>
+                                </div>
+                              </template>
+                              <template x-if="typeof kv.value !== 'object'">
+                                <pre style="font-size:11px;max-width:400px;overflow:auto;white-space:pre-wrap;margin:0;color:var(--text-dim)" x-text="String(kv.value)"></pre>
+                              </template>
+                            </div>
                           </template>
                           <template x-if="editingKey === kv.key">
                             <div>

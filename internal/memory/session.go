@@ -45,6 +45,9 @@ func (s *SessionStore) initSchema() error {
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
 			agent_id TEXT NOT NULL,
+			agent_name TEXT NOT NULL DEFAULT '',
+			agent_model_provider TEXT NOT NULL DEFAULT '',
+			agent_model_name TEXT NOT NULL DEFAULT '',
 			messages BLOB NOT NULL,
 			context_window_tokens INTEGER NOT NULL DEFAULT 0,
 			label TEXT,
@@ -63,6 +66,21 @@ func (s *SessionStore) initSchema() error {
 		var dummy int
 		err := s.db.QueryRow("SELECT 1 FROM pragma_table_info('sessions') WHERE name = ?", colName).Scan(&dummy)
 		return err == nil
+	}
+
+	// Add agent_name if missing
+	if !columnExists("agent_name") {
+		_, _ = s.db.Exec("ALTER TABLE sessions ADD COLUMN agent_name TEXT NOT NULL DEFAULT ''")
+	}
+
+	// Add agent_model_provider if missing
+	if !columnExists("agent_model_provider") {
+		_, _ = s.db.Exec("ALTER TABLE sessions ADD COLUMN agent_model_provider TEXT NOT NULL DEFAULT ''")
+	}
+
+	// Add agent_model_name if missing
+	if !columnExists("agent_model_name") {
+		_, _ = s.db.Exec("ALTER TABLE sessions ADD COLUMN agent_model_name TEXT NOT NULL DEFAULT ''")
 	}
 
 	// Add context_window_tokens if missing
@@ -92,16 +110,16 @@ func (s *SessionStore) GetSession(sessionID types.SessionID) (*types.Session, er
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var agentIDStr string
+	var agentIDStr, agentName, agentModelProvider, agentModelName string
 	var messagesBlob []byte
 	var tokens int64
 	var label sql.NullString
 	var createdAt, updatedAt string
 
 	err := s.db.QueryRow(`
-		SELECT agent_id, messages, context_window_tokens, label, created_at, updated_at
+		SELECT agent_id, agent_name, agent_model_provider, agent_model_name, messages, context_window_tokens, label, created_at, updated_at
 		FROM sessions WHERE id = ?
-	`, sessionID.String()).Scan(&agentIDStr, &messagesBlob, &tokens, &label, &createdAt, &updatedAt)
+	`, sessionID.String()).Scan(&agentIDStr, &agentName, &agentModelProvider, &agentModelName, &messagesBlob, &tokens, &label, &createdAt, &updatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -131,6 +149,9 @@ func (s *SessionStore) GetSession(sessionID types.SessionID) (*types.Session, er
 	return &types.Session{
 		ID:                  sessionID,
 		AgentID:             agentID,
+		AgentName:           agentName,
+		AgentModelProvider:  agentModelProvider,
+		AgentModelName:      agentModelName,
 		Messages:            messages,
 		ContextWindowTokens: uint64(tokens),
 		Label:               sessionLabel,
@@ -159,14 +180,17 @@ func (s *SessionStore) SaveSession(session *types.Session) error {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO sessions (id, agent_id, messages, context_window_tokens, label, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO sessions (id, agent_id, agent_name, agent_model_provider, agent_model_name, messages, context_window_tokens, label, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
+			agent_name = excluded.agent_name,
+			agent_model_provider = excluded.agent_model_provider,
+			agent_model_name = excluded.agent_model_name,
 			messages = excluded.messages,
 			context_window_tokens = excluded.context_window_tokens,
 			label = excluded.label,
 			updated_at = excluded.updated_at
-	`, session.ID.String(), session.AgentID.String(), messagesBlob,
+	`, session.ID.String(), session.AgentID.String(), session.AgentName, session.AgentModelProvider, session.AgentModelName, messagesBlob,
 		session.ContextWindowTokens, label, now, now)
 
 	if err != nil {
@@ -200,7 +224,7 @@ func (s *SessionStore) ListSessions() ([]map[string]interface{}, error) {
 	defer s.mu.RUnlock()
 
 	rows, err := s.db.Query(`
-		SELECT id, agent_id, messages, created_at, label
+		SELECT id, agent_id, agent_name, agent_model_provider, agent_model_name, messages, created_at, label
 		FROM sessions ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -210,11 +234,11 @@ func (s *SessionStore) ListSessions() ([]map[string]interface{}, error) {
 
 	var result []map[string]interface{}
 	for rows.Next() {
-		var idStr, agentIDStr, createdAt string
+		var idStr, agentIDStr, agentName, agentModelProvider, agentModelName, createdAt string
 		var messagesBlob []byte
 		var label sql.NullString
 
-		err := rows.Scan(&idStr, &agentIDStr, &messagesBlob, &createdAt, &label)
+		err := rows.Scan(&idStr, &agentIDStr, &agentName, &agentModelProvider, &agentModelName, &messagesBlob, &createdAt, &label)
 		if err != nil {
 			continue
 		}
@@ -223,14 +247,34 @@ func (s *SessionStore) ListSessions() ([]map[string]interface{}, error) {
 		json.Unmarshal(messagesBlob, &messages)
 
 		sessionInfo := map[string]interface{}{
-			"session_id":    idStr,
-			"agent_id":      agentIDStr,
-			"message_count": len(messages),
-			"created_at":    createdAt,
+			"session_id":           idStr,
+			"agent_id":             agentIDStr,
+			"agent_name":           agentName,
+			"agent_model_provider": agentModelProvider,
+			"agent_model_name":     agentModelName,
+			"message_count":        len(messages),
+			"created_at":           createdAt,
 		}
 
 		if label.Valid {
 			sessionInfo["label"] = label.String
+		}
+
+		if len(messages) > 0 {
+			for _, msg := range messages {
+				if msg.Role == string(types.RoleUser) {
+					contentStr := msg.Content
+					if contentStr != "" {
+						runes := []rune(contentStr)
+						if len(runes) > 50 {
+							sessionInfo["summary"] = string(runes[:50]) + "..."
+						} else {
+							sessionInfo["summary"] = contentStr
+						}
+						break
+					}
+				}
+			}
 		}
 
 		result = append(result, sessionInfo)
@@ -245,7 +289,7 @@ func (s *SessionStore) ListAgentSessions(agentID types.AgentID) ([]map[string]in
 	defer s.mu.RUnlock()
 
 	rows, err := s.db.Query(`
-		SELECT id, agent_id, messages, created_at, label
+		SELECT id, agent_id, agent_name, agent_model_provider, agent_model_name, messages, created_at, label
 		FROM sessions WHERE agent_id = ? ORDER BY created_at DESC
 	`, agentID.String())
 	if err != nil {
@@ -255,11 +299,11 @@ func (s *SessionStore) ListAgentSessions(agentID types.AgentID) ([]map[string]in
 
 	var result []map[string]interface{}
 	for rows.Next() {
-		var idStr, agentIDStr, createdAt string
+		var idStr, agentIDStr, agentName, agentModelProvider, agentModelName, createdAt string
 		var messagesBlob []byte
 		var label sql.NullString
 
-		err := rows.Scan(&idStr, &agentIDStr, &messagesBlob, &createdAt, &label)
+		err := rows.Scan(&idStr, &agentIDStr, &agentName, &agentModelProvider, &agentModelName, &messagesBlob, &createdAt, &label)
 		if err != nil {
 			continue
 		}
@@ -268,14 +312,34 @@ func (s *SessionStore) ListAgentSessions(agentID types.AgentID) ([]map[string]in
 		json.Unmarshal(messagesBlob, &messages)
 
 		sessionInfo := map[string]interface{}{
-			"session_id":    idStr,
-			"agent_id":      agentIDStr,
-			"message_count": len(messages),
-			"created_at":    createdAt,
+			"session_id":           idStr,
+			"agent_id":             agentIDStr,
+			"agent_name":           agentName,
+			"agent_model_provider": agentModelProvider,
+			"agent_model_name":     agentModelName,
+			"message_count":        len(messages),
+			"created_at":           createdAt,
 		}
 
 		if label.Valid {
 			sessionInfo["label"] = label.String
+		}
+
+		if len(messages) > 0 {
+			for _, msg := range messages {
+				if msg.Role == string(types.RoleUser) {
+					contentStr := msg.Content
+					if contentStr != "" {
+						runes := []rune(contentStr)
+						if len(runes) > 50 {
+							sessionInfo["summary"] = string(runes[:50]) + "..."
+						} else {
+							sessionInfo["summary"] = contentStr
+						}
+						break
+					}
+				}
+			}
 		}
 
 		result = append(result, sessionInfo)

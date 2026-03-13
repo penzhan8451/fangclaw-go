@@ -1,11 +1,14 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -45,13 +48,13 @@ func getDaemonPath() (string, error) {
 	return filepath.Join(daemonDir, "daemon"), nil
 }
 
-func writeDaemonInfo(daemonPath string) error {
+func writeDaemonInfo(daemonPath string, cfg *config.Config) error {
 	info := DaemonInfo{
 		PID:        os.Getpid(),
-		ListenAddr: "127.0.0.1:4200",
+		ListenAddr: cfg.APIListen,
 		StartedAt:  time.Now().Format(time.RFC3339),
 		Version:    "0.2.0",
-		Platform:   "darwin",
+		Platform:   runtime.GOOS,
 	}
 
 	data, err := json.MarshalIndent(info, "", "  ")
@@ -66,7 +69,50 @@ func cleanupDaemonInfo(daemonPath string) {
 	_ = os.Remove(daemonPath)
 }
 
+func setupLogFile() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	logFile := filepath.Join(homeDir, ".fangclaw-go", "daemon.log")
+
+	// Check log file size
+	if fi, err := os.Stat(logFile); err == nil {
+		if fi.Size() > 50*1024*1024 { // 50MB limit
+			// Truncate log file
+			if err := os.Truncate(logFile, 0); err != nil {
+				return fmt.Errorf("failed to truncate log file: %w", err)
+			}
+		}
+	}
+
+	// Open log file for append
+	// f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to open log file: %w", err)
+	// }
+
+	// // Redirect stdout and stderr to log file
+	// os.Stdout = f
+	// os.Stderr = f
+
+	// Add timestamp to each log line
+	// log.SetOutput(f)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+
+	// Log startup message
+	log.Println("Daemon starting...")
+	log.Printf("Log file: %s", logFile)
+
+	return nil
+}
+
 func runDaemon(cmd *cobra.Command, args []string) error {
+	// Setup log file
+	if err := setupLogFile(); err != nil {
+		return fmt.Errorf("failed to setup log file: %w", err)
+	}
+
 	daemonPath, err := getDaemonPath()
 	if err != nil {
 		return fmt.Errorf("failed to get daemon path: %w", err)
@@ -85,7 +131,12 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		_ = os.Remove(daemonPath)
 	}
 
-	if err := writeDaemonInfo(daemonPath); err != nil {
+	cfg, err := config.Load("")
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	if err := writeDaemonInfo(daemonPath, cfg); err != nil {
 		return fmt.Errorf("failed to write daemon info: %w", err)
 	}
 	defer cleanupDaemonInfo(daemonPath)
@@ -98,40 +149,30 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to boot kernel: %w", err)
 	}
 
+	// Start the cron scheduler
+	if err := k.Start(context.Background()); err != nil {
+		return fmt.Errorf("failed to start kernel: %w", err)
+	}
+
 	// Auto-register all configured channels (from env vars)
 	if err := channels.AutoRegisterAll(k.Registry()); err != nil {
 		fmt.Printf("Warning: Failed to auto-register some channels: %v\n", err)
 	}
 
 	// Also load channels from config.toml
-	cfg, err := config.Load("")
-	if err == nil {
-		fmt.Println("Loading channels from config file...")
-		started, err := channels.LoadConfiguredChannels(k.Registry(), cfg)
-		if err != nil {
-			fmt.Printf("Warning: Failed to load channels from config: %v\n", err)
-		} else if len(started) > 0 {
-			fmt.Printf("Started channels from config: %v\n", started)
-		}
-	} else {
-		fmt.Printf("Warning: Failed to load config for channels: %v\n", err)
+	fmt.Println("Loading channels from config file...")
+	started, err := channels.LoadConfiguredChannels(k.Registry(), cfg)
+	if err != nil {
+		fmt.Printf("Warning: Failed to load channels from config: %v\n", err)
+	} else if len(started) > 0 {
+		fmt.Printf("Started channels from config: %v\n", started)
 	}
 
 	// Create and start Channel Bridge Manager
 	router := channels.NewAgentRouter()
 
 	// Read default agent from config file
-	// Note: cfg has already been loaded above
-	if cfg == nil {
-		cfg, err = config.Load("")
-		if err != nil {
-			fmt.Printf("Warning: Failed to load config, using defaults: %v\n", err)
-		} else {
-			fmt.Printf("Config loaded. Default agent from config: '%s'\n", cfg.DefaultAgent)
-		}
-	} else {
-		fmt.Printf("Config loaded. Default agent from config: '%s'\n", cfg.DefaultAgent)
-	}
+	fmt.Printf("Config loaded. Default agent from config: '%s'\n", cfg.DefaultAgent)
 
 	// Find and set default agent from agent registry
 	agents := k.AgentRegistry().List()

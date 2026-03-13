@@ -58,10 +58,13 @@ func (db *DB) Migrate() error {
 			session_id TEXT NOT NULL DEFAULT ''
 		)`,
 
-		// Sessions table
+		// Sessions table (updated with agent info)
 		`CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
 			agent_id TEXT NOT NULL,
+			agent_name TEXT NOT NULL DEFAULT '',
+			agent_model_provider TEXT NOT NULL DEFAULT '',
+			agent_model_name TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL,
 			messages TEXT NOT NULL,
 			FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
@@ -180,6 +183,28 @@ func (db *DB) Migrate() error {
 		if _, err := db.Exec(m); err != nil {
 			return fmt.Errorf("migration failed: %w", err)
 		}
+	}
+
+	// Function to check if column exists
+	columnExists := func(colName string) bool {
+		var dummy int
+		err := db.QueryRow("SELECT 1 FROM pragma_table_info('sessions') WHERE name = ?", colName).Scan(&dummy)
+		return err == nil
+	}
+
+	// Add agent_name if missing
+	if !columnExists("agent_name") {
+		_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN agent_name TEXT NOT NULL DEFAULT ''")
+	}
+
+	// Add agent_model_provider if missing
+	if !columnExists("agent_model_provider") {
+		_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN agent_model_provider TEXT NOT NULL DEFAULT ''")
+	}
+
+	// Add agent_model_name if missing
+	if !columnExists("agent_model_name") {
+		_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN agent_model_name TEXT NOT NULL DEFAULT ''")
 	}
 
 	return nil
@@ -694,18 +719,21 @@ func (db *DB) DeleteCronJob(id string) error {
 
 // SessionRecord represents a session in the database.
 type SessionRecord struct {
-	ID        string
-	AgentID   string
-	CreatedAt time.Time
-	Messages  string
+	ID                 string
+	AgentID            string
+	AgentName          string
+	AgentModelProvider string
+	AgentModelName     string
+	CreatedAt          time.Time
+	Messages           string
 }
 
 // SaveSession saves a session.
 func (db *DB) SaveSession(session *SessionRecord) error {
 	_, err := db.Exec(`
-		INSERT OR REPLACE INTO sessions (id, agent_id, created_at, messages)
-		VALUES (?, ?, ?, ?)
-	`, session.ID, session.AgentID, session.CreatedAt.Format(time.RFC3339), session.Messages)
+		INSERT OR REPLACE INTO sessions (id, agent_id, agent_name, agent_model_provider, agent_model_name, created_at, messages)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, session.ID, session.AgentID, session.AgentName, session.AgentModelProvider, session.AgentModelName, session.CreatedAt.Format(time.RFC3339), session.Messages)
 	return err
 }
 
@@ -713,9 +741,9 @@ func (db *DB) SaveSession(session *SessionRecord) error {
 func (db *DB) GetSession(id string) (*SessionRecord, error) {
 	var session SessionRecord
 	err := db.QueryRow(`
-		SELECT id, agent_id, created_at, messages
+		SELECT id, agent_id, agent_name, agent_model_provider, agent_model_name, created_at, messages
 		FROM sessions WHERE id = ?
-	`, id).Scan(&session.ID, &session.AgentID, &session.CreatedAt, &session.Messages)
+	`, id).Scan(&session.ID, &session.AgentID, &session.AgentName, &session.AgentModelProvider, &session.AgentModelName, &session.CreatedAt, &session.Messages)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -725,12 +753,12 @@ func (db *DB) GetSession(id string) (*SessionRecord, error) {
 	return &session, nil
 }
 
-// ListSessions lists all sessions for an agent.
-func (db *DB) ListSessions(agentID string) ([]*SessionRecord, error) {
+// ListAllSessions lists all sessions.
+func (db *DB) ListAllSessions() ([]*SessionRecord, error) {
 	rows, err := db.Query(`
-		SELECT id, agent_id, created_at, messages
-		FROM sessions WHERE agent_id = ? ORDER BY created_at DESC
-	`, agentID)
+		SELECT id, agent_id, agent_name, agent_model_provider, agent_model_name, created_at, messages
+		FROM sessions ORDER BY created_at DESC
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -739,7 +767,7 @@ func (db *DB) ListSessions(agentID string) ([]*SessionRecord, error) {
 	var sessions []*SessionRecord
 	for rows.Next() {
 		var session SessionRecord
-		if err := rows.Scan(&session.ID, &session.AgentID, &session.CreatedAt, &session.Messages); err != nil {
+		if err := rows.Scan(&session.ID, &session.AgentID, &session.AgentName, &session.AgentModelProvider, &session.AgentModelName, &session.CreatedAt, &session.Messages); err != nil {
 			return nil, err
 		}
 		sessions = append(sessions, &session)

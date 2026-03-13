@@ -85,8 +85,9 @@ func dashboardCmd() *cobra.Command {
 }
 
 func runDashboard(cmd *cobra.Command, args []string) error {
+	daemonAddr := mustGetDaemonAddress()
 	fmt.Println("Opening web dashboard...")
-	fmt.Println("URL: http://127.0.0.1:4200/")
+	fmt.Println("URL: " + daemonAddr + "/")
 	fmt.Println("(Requires daemon to be running)")
 	return nil
 }
@@ -122,7 +123,8 @@ func runMcp(cmd *cobra.Command, args []string) error {
 }
 
 func runMcpWithDaemon() error {
-	backend := NewDaemonMcpBackend("http://127.0.0.1:4200")
+	daemonAddr := mustGetDaemonAddress()
+	backend := NewDaemonMcpBackend(daemonAddr)
 	server := mcp.NewMcpServer(backend)
 	mcp.RunStdioServer(server)
 	return nil

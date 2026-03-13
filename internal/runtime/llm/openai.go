@@ -16,9 +16,10 @@ import (
 
 // OpenAIProvider implements Driver for OpenAI.
 type OpenAIProvider struct {
-	apiKey string
-	model  string
-	client *http.Client
+	apiKey  string
+	model   string
+	baseURL string
+	client  *http.Client
 }
 
 // NewOpenAI creates a new OpenAI provider.
@@ -30,9 +31,23 @@ func NewOpenAI(apiKey, model string) *OpenAIProvider {
 		model = "gpt-4o"
 	}
 	return &OpenAIProvider{
-		apiKey: apiKey,
-		model:  model,
-		client: &http.Client{Timeout: 60 * time.Second},
+		apiKey:  apiKey,
+		model:   model,
+		baseURL: "https://api.openai.com/v1",
+		client:  &http.Client{Timeout: 60 * time.Second},
+	}
+}
+
+// NewOpenAICompatible creates a new OpenAI-compatible provider with custom baseURL.
+func NewOpenAICompatible(apiKey, model, baseURL string) *OpenAIProvider {
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+	return &OpenAIProvider{
+		apiKey:  apiKey,
+		model:   model,
+		baseURL: baseURL,
+		client:  &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
@@ -122,7 +137,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req *Request) (*Response, err
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		"https://api.openai.com/v1/chat/completions",
+		p.baseURL+"/chat/completions",
 		bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -208,7 +223,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req *Request) (<-chan S
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		"https://api.openai.com/v1/chat/completions",
+		p.baseURL+"/chat/completions",
 		bytes.NewReader(body))
 	if err != nil {
 		return nil, err

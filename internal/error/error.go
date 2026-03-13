@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// Error codes for OpenFang.
+// Error codes for FangClaw-Go.
 const (
 	ErrCodeConfig       = "CONFIG"
 	ErrCodeDatabase     = "DATABASE"
@@ -20,27 +20,27 @@ const (
 	ErrCodeInternal     = "INTERNAL"
 )
 
-// OpenFangError represents an OpenFang-specific error.
-type OpenFangError struct {
+// FangClawGoError represents an FangClawGo-specific error.
+type FangClawGoError struct {
 	Code    string
 	Message string
 	Err     error
 }
 
-func (e *OpenFangError) Error() string {
+func (e *FangClawGoError) Error() string {
 	if e.Err != nil {
 		return fmt.Sprintf("[%s] %s: %v", e.Code, e.Message, e.Err)
 	}
 	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
 }
 
-func (e *OpenFangError) Unwrap() error {
+func (e *FangClawGoError) Unwrap() error {
 	return e.Err
 }
 
-// New creates a new OpenFangError.
+// New creates a new FangClawGoError.
 func New(code, message string) error {
-	return &OpenFangError{
+	return &FangClawGoError{
 		Code:    code,
 		Message: message,
 	}
@@ -48,7 +48,7 @@ func New(code, message string) error {
 
 // Wrap wraps an error with code and message.
 func Wrap(code, message string, err error) error {
-	return &OpenFangError{
+	return &FangClawGoError{
 		Code:    code,
 		Message: message,
 		Err:     err,
@@ -82,7 +82,7 @@ var (
 
 // ConfigError creates a config-related error.
 func ConfigError(format string, args ...interface{}) error {
-	return &OpenFangError{
+	return &FangClawGoError{
 		Code:    ErrCodeConfig,
 		Message: fmt.Sprintf(format, args...),
 	}
@@ -90,7 +90,7 @@ func ConfigError(format string, args ...interface{}) error {
 
 // DatabaseError creates a database-related error.
 func DatabaseError(format string, args ...interface{}) error {
-	return &OpenFangError{
+	return &FangClawGoError{
 		Code:    ErrCodeDatabase,
 		Message: fmt.Sprintf(format, args...),
 	}
@@ -98,7 +98,7 @@ func DatabaseError(format string, args ...interface{}) error {
 
 // KernelError creates a kernel-related error.
 func KernelError(format string, args ...interface{}) error {
-	return &OpenFangError{
+	return &FangClawGoError{
 		Code:    ErrCodeKernel,
 		Message: fmt.Sprintf(format, args...),
 	}
@@ -106,7 +106,7 @@ func KernelError(format string, args ...interface{}) error {
 
 // AgentError creates an agent-related error.
 func AgentError(format string, args ...interface{}) error {
-	return &OpenFangError{
+	return &FangClawGoError{
 		Code:    ErrCodeAgent,
 		Message: fmt.Sprintf(format, args...),
 	}

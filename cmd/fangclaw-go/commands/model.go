@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
 	"github.com/spf13/cobra"
 )
 
@@ -32,8 +34,23 @@ func modelCmd() *cobra.Command {
 
 var modelsJSON bool
 
+func getModelCatalog() (*model_catalog.ModelCatalog, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
+	}
+	modelCatalogPath := filepath.Join(homeDir, ".fangclaw-go", "model_catalog.json")
+	catalog := model_catalog.NewModelCatalog(modelCatalogPath)
+	return catalog, nil
+}
+
 func runModelList(cmd *cobra.Command, args []string) error {
-	models := getDefaultModels()
+	catalog, err := getModelCatalog()
+	if err != nil {
+		return err
+	}
+	models := catalog.ListModels()
+
 	if modelsJSON {
 		json.NewEncoder(os.Stdout).Encode(models)
 		return nil
@@ -42,44 +59,30 @@ func runModelList(cmd *cobra.Command, args []string) error {
 	fmt.Printf("%-40s %-12s %s\n", "MODEL", "PROVIDER", "CONTEXT")
 	fmt.Println("--------------------------------------------------------------------")
 	for _, m := range models {
-		fmt.Printf("%-40s %-12s %d\n", m["id"], m["provider"], m["context_size"])
+		modelID := fmt.Sprintf("%s/%s", m.Provider, m.ModelName)
+		fmt.Printf("%-40s %-12s %d\n", modelID, m.Provider, m.ContextWindow)
 	}
 
 	return nil
 }
 
 func runModelProviders(cmd *cobra.Command, args []string) error {
-	providers := getDefaultProviders()
+	catalog, err := getModelCatalog()
+	if err != nil {
+		return err
+	}
+	providers := catalog.ListProviders()
+
 	if modelsJSON {
 		json.NewEncoder(os.Stdout).Encode(providers)
 		return nil
 	}
 
-	fmt.Printf("%-15s %-10s %s\n", "PROVIDER", "ENV VAR", "STREAMING")
+	fmt.Printf("%-15s %-20s %s\n", "PROVIDER", "ENV VAR", "MODEL COUNT")
 	fmt.Println("------------------------------------------------")
 	for _, p := range providers {
-		fmt.Printf("%-15s %-10s %s\n", p["name"], p["api_key_env"], "✓")
+		fmt.Printf("%-15s %-20s %d\n", p.DisplayName, p.APIKeyEnv, p.ModelCount)
 	}
 
 	return nil
-}
-
-func getDefaultModels() []map[string]interface{} {
-	return []map[string]interface{}{
-		{"id": "groq/llama-3.3-70b-versatile", "name": "Llama 3.3 70B", "provider": "groq", "context_size": 128000},
-		{"id": "anthropic/claude-sonnet-4-20250514", "name": "Claude Sonnet 4", "provider": "anthropic", "context_size": 200000},
-		{"id": "openai/gpt-4o", "name": "GPT-4o", "provider": "openai", "context_size": 128000},
-		{"id": "gemini/gemini-2.0-flash", "name": "Gemini 2.0 Flash", "provider": "gemini", "context_size": 1000000},
-		{"id": "deepseek/deepseek-chat", "name": "DeepSeek Chat", "provider": "deepseek", "context_size": 64000},
-	}
-}
-
-func getDefaultProviders() []map[string]string {
-	return []map[string]string{
-		{"id": "groq", "name": "Groq", "api_key_env": "GROQ_API_KEY"},
-		{"id": "anthropic", "name": "Anthropic", "api_key_env": "ANTHROPIC_API_KEY"},
-		{"id": "openai", "name": "OpenAI", "api_key_env": "OPENAI_API_KEY"},
-		{"id": "gemini", "name": "Gemini", "api_key_env": "GEMINI_API_KEY"},
-		{"id": "deepseek", "name": "DeepSeek", "api_key_env": "DEEPSEEK_API_KEY"},
-	}
 }

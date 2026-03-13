@@ -42,15 +42,16 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to start daemon: %w", err)
 	}
 
+	daemonAddr := mustGetDaemonAddress()
 	fmt.Println("Daemon started (PID:", proc.Process.Pid, ")")
-	fmt.Println("API:       http://127.0.0.1:4200")
-	fmt.Println("Dashboard: http://127.0.0.1:4200/")
+	fmt.Println("API:       " + daemonAddr)
+	fmt.Println("Dashboard: " + daemonAddr + "/")
 
 	// Wait for daemon to be ready
 	fmt.Print("Waiting for daemon to be ready...")
 	for i := 0; i < 10; i++ {
 		time.Sleep(500 * time.Millisecond)
-		resp, err := http.Get("http://127.0.0.1:4200/api/health")
+		resp, err := http.Get(daemonAddr + "/api/health")
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -67,7 +68,8 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 func isDaemonRunning() bool {
 	// Try to connect directly
-	resp, err := http.Get("http://127.0.0.1:4200/api/health")
+	daemonAddr := mustGetDaemonAddress()
+	resp, err := http.Get(daemonAddr + "/api/health")
 	if err != nil {
 		return false
 	}

@@ -1,4 +1,4 @@
-// OpenFang App — Alpine.js init, hash router, global store
+// FangClaw-Go App — Alpine.js init, hash router, global store
 'use strict';
 
 // Marked.js configuration
@@ -88,7 +88,7 @@ function toolIcon(toolName) {
 // Alpine.js global store
 document.addEventListener('alpine:init', function() {
   // Restore saved API key on load
-  var savedKey = localStorage.getItem('openfang-api-key');
+  var savedKey = localStorage.getItem('fangclawgo-api-key');
   if (savedKey) FangClawGoAPI.setAuthToken(savedKey);
 
   Alpine.store('app', {
@@ -101,6 +101,7 @@ document.addEventListener('alpine:init', function() {
     version: '0.1.0',
     agentCount: 0,
     pendingAgent: null,
+    pendingSession: null,
     focusMode: localStorage.getItem('openfang-focus') === 'true',
     showOnboarding: false,
     showAuthPrompt: false,

@@ -5,18 +5,29 @@ import (
 	"time"
 )
 
+// CronShellSecurityConfig represents cron shell security configuration.
+type CronShellSecurityConfig struct {
+	EnableExecuteShell    bool     `toml:"enable_execute_shell" json:"enable_execute_shell"`
+	SecurityMode          string   `toml:"security_mode" json:"security_mode"`
+	AllowedCommands       []string `toml:"allowed_commands" json:"allowed_commands"`
+	AllowedPaths          []string `toml:"allowed_paths" json:"allowed_paths"`
+	ForbiddenCommands     []string `toml:"forbidden_commands" json:"forbidden_commands"`
+	ForbiddenArgsPatterns []string `toml:"forbidden_args_patterns" json:"forbidden_args_patterns"`
+}
+
 // KernelConfig represents the kernel configuration.
 type KernelConfig struct {
-	DataDir    string            `toml:"data_dir" json:"data_dir"`
-	LogLevel   string            `toml:"log_level" json:"log_level"`
-	API        APIConfig         `toml:"api" json:"api"`
-	Models     ModelsConfig      `toml:"models" json:"models"`
-	Memory     MemoryConfig      `toml:"memory" json:"memory"`
-	Security   SecurityConfig    `toml:"security" json:"security"`
-	Skills     SkillsConfig      `toml:"skills" json:"skills"`
-	Extensions ExtensionsConfig  `toml:"extensions" json:"extensions"`
-	McpServers []McpServerConfig `toml:"mcp_servers,omitempty" json:"mcp_servers,omitempty"`
-	Include    []string          `toml:"include,omitempty" json:"include,omitempty"`
+	DataDir           string                  `toml:"data_dir" json:"data_dir"`
+	LogLevel          string                  `toml:"log_level" json:"log_level"`
+	API               APIConfig               `toml:"api" json:"api"`
+	Models            ModelsConfig            `toml:"models" json:"models"`
+	Memory            MemoryConfig            `toml:"memory" json:"memory"`
+	Security          SecurityConfig          `toml:"security" json:"security"`
+	Skills            SkillsConfig            `toml:"skills" json:"skills"`
+	Extensions        ExtensionsConfig        `toml:"extensions" json:"extensions"`
+	CronShellSecurity CronShellSecurityConfig `toml:"cron_shell_security" json:"cron_shell_security"`
+	McpServers        []McpServerConfig       `toml:"mcp_servers,omitempty" json:"mcp_servers,omitempty"`
+	Include           []string                `toml:"include,omitempty" json:"include,omitempty"`
 }
 
 // APIConfig represents API server configuration.
@@ -92,7 +103,7 @@ type AutonomousConfig struct {
 // DefaultConfig returns the default kernel configuration.
 func DefaultConfig() KernelConfig {
 	return KernelConfig{
-		DataDir:  "~/.fangclaw",
+		DataDir:  "~/.fangclaw-go",
 		LogLevel: "info",
 		API: APIConfig{
 			Host:         "127.0.0.1",
@@ -113,7 +124,7 @@ func DefaultConfig() KernelConfig {
 			},
 		},
 		Memory: MemoryConfig{
-			Path:           "~/.fangclaw/memory.db",
+			Path:           "~/.fangclaw-go/memory.db",
 			EnableSemantic: true,
 			EmbeddingModel: "text-embedding-3-small",
 			MaxMemorySize:  10000,
@@ -121,17 +132,63 @@ func DefaultConfig() KernelConfig {
 		Security: SecurityConfig{
 			EnableRBAC:      false,
 			EnableAuditLogs: true,
-			AuditLogPath:    "~/.fangclaw/audit.log",
+			AuditLogPath:    "~/.fangclaw-go/audit.log",
 		},
 		Skills: SkillsConfig{
-			Path:               "~/.fangclaw/skills",
+			Path:               "~/.fangclaw-go/skills",
 			EnableRemoteSkills: true,
 			ClawHubURL:         "https://clawhub.io",
 			AllowedRuntimes:    []string{"python", "node", "wasm", "builtin", "prompt"},
 		},
 		Extensions: ExtensionsConfig{
-			Path:             "~/.fangclaw/extensions",
+			Path:             "~/.fangclaw-go/extensions",
 			EnableExtensions: true,
+		},
+		CronShellSecurity: CronShellSecurityConfig{
+			EnableExecuteShell: true,
+			SecurityMode:       "strict",
+			AllowedCommands: []string{
+				"date",
+				"echo",
+				"ls",
+				"cat",
+				"pwd",
+				"whoami",
+				"uptime",
+				"df",
+				"du",
+			},
+			AllowedPaths: []string{
+				"/bin",
+				"/usr/bin",
+				"/usr/local/bin",
+			},
+			ForbiddenCommands: []string{
+				"rm",
+				"rmdir",
+				"mkfs",
+				"dd",
+				"chmod",
+				"chown",
+				"su",
+				"sudo",
+			},
+			ForbiddenArgsPatterns: []string{
+				"^/",
+				"^\\.\\./",
+				"&&",
+				"\\|\\|",
+				";",
+				">",
+				">>",
+				"<",
+				"\\$(",
+				"`",
+				"\\*",
+				"\\?",
+				"\\[",
+				"\\]",
+			},
 		},
 		McpServers: []McpServerConfig{},
 	}

@@ -44,11 +44,11 @@ func (e *AgentEntry) GetCreatedAt() time.Time {
 }
 
 type AgentRegistry struct {
-	mu         sync.RWMutex
-	agents     map[types.AgentID]*AgentEntry
-	nameIndex  map[string]types.AgentID
-	tagIndex   map[string][]types.AgentID
-	dataDir    string
+	mu        sync.RWMutex
+	agents    map[types.AgentID]*AgentEntry
+	nameIndex map[string]types.AgentID
+	tagIndex  map[string][]types.AgentID
+	dataDir   string
 }
 
 func NewAgentRegistry(dataDir string) *AgentRegistry {

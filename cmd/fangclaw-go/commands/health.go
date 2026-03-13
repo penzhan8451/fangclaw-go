@@ -37,7 +37,8 @@ func runHealth(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 
-	resp, err := http.Get("http://127.0.0.1:4200/api/health")
+	daemonAddr := mustGetDaemonAddress()
+	resp, err := http.Get(daemonAddr + "/api/health")
 	if err != nil {
 		if healthJSON {
 			json.NewEncoder(os.Stdout).Encode(map[string]interface{}{

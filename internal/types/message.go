@@ -100,6 +100,9 @@ func ParseSessionID(s string) (SessionID, error) {
 type Session struct {
 	ID                  SessionID `json:"id"`
 	AgentID             AgentID   `json:"agent_id"`
+	AgentName           string    `json:"agent_name"`
+	AgentModelProvider  string    `json:"agent_model_provider"`
+	AgentModelName      string    `json:"agent_model_name"`
 	Messages            []Message `json:"messages"`
 	ContextWindowTokens uint64    `json:"context_window_tokens"`
 	Label               *string   `json:"label,omitempty"`
@@ -108,15 +111,18 @@ type Session struct {
 }
 
 // NewSession creates a new session.
-func NewSession(agentID AgentID, label *string) Session {
+func NewSession(agentID AgentID, agentName, agentModelProvider, agentModelName string, label *string) Session {
 	now := time.Now()
 	return Session{
-		ID:        NewSessionID(),
-		AgentID:   agentID,
-		Messages:  []Message{},
-		Label:     label,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:                  NewSessionID(),
+		AgentID:             agentID,
+		AgentName:           agentName,
+		AgentModelProvider:  agentModelProvider,
+		AgentModelName:      agentModelName,
+		Messages:            []Message{},
+		Label:               label,
+		CreatedAt:           now,
+		UpdatedAt:           now,
 	}
 }
 

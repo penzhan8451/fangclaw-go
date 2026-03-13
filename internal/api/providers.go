@@ -8,76 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
+	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
-
-type ProviderInfo struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"display_name"`
-	AuthStatus  string `json:"auth_status"`
-	ModelCount  int    `json:"model_count"`
-	KeyRequired bool   `json:"key_required"`
-	APIKeyEnv   string `json:"api_key_env"`
-	BaseURL     string `json:"base_url"`
-}
-
-var providers = []ProviderInfo{
-	{
-		ID:          "openai",
-		DisplayName: "OpenAI",
-		AuthStatus:  "not_configured",
-		ModelCount:  5,
-		KeyRequired: true,
-		APIKeyEnv:   "OPENAI_API_KEY",
-		BaseURL:     "https://api.openai.com/v1",
-	},
-	{
-		ID:          "anthropic",
-		DisplayName: "Anthropic",
-		AuthStatus:  "not_configured",
-		ModelCount:  3,
-		KeyRequired: true,
-		APIKeyEnv:   "ANTHROPIC_API_KEY",
-		BaseURL:     "https://api.anthropic.com/v1",
-	},
-	{
-		ID:          "openrouter",
-		DisplayName: "OpenRouter",
-		AuthStatus:  "not_configured",
-		ModelCount:  100,
-		KeyRequired: true,
-		APIKeyEnv:   "OPENROUTER_API_KEY",
-		BaseURL:     "https://openrouter.ai/api/v1",
-	},
-	{
-		ID:          "groq",
-		DisplayName: "Groq",
-		AuthStatus:  "not_configured",
-		ModelCount:  4,
-		KeyRequired: true,
-		APIKeyEnv:   "GROQ_API_KEY",
-		BaseURL:     "https://api.groq.com/openai/v1",
-	},
-}
-
-func refreshProviderAuthStatus() {
-	for i := range providers {
-		apiKey := os.Getenv(providers[i].APIKeyEnv)
-		if apiKey != "" {
-			providers[i].AuthStatus = "configured"
-		} else {
-			providers[i].AuthStatus = "not_configured"
-		}
-	}
-}
-
-func getProvider(id string) *ProviderInfo {
-	for i := range providers {
-		if providers[i].ID == id {
-			return &providers[i]
-		}
-	}
-	return nil
-}
 
 func getSecretsPath() (string, error) {
 	homeDir, err := os.UserHomeDir()
@@ -156,14 +90,24 @@ func removeSecretEnv(envVar string) error {
 }
 
 func (r *Router) handleProviders(w http.ResponseWriter, req *http.Request) {
-	refreshProviderAuthStatus()
+	catalog := r.kernel.ModelCatalog()
+	providers := catalog.ListProviders()
 
 	var result []map[string]interface{}
 	for _, p := range providers {
+		authStatus := "not_configured"
+		if p.KeyRequired && p.APIKeyEnv != "" {
+			if os.Getenv(p.APIKeyEnv) != "" {
+				authStatus = "configured"
+			}
+		} else if !p.KeyRequired {
+			authStatus = "not_required"
+		}
+
 		result = append(result, map[string]interface{}{
 			"id":           p.ID,
 			"display_name": p.DisplayName,
-			"auth_status":  p.AuthStatus,
+			"auth_status":  authStatus,
 			"model_count":  p.ModelCount,
 			"key_required": p.KeyRequired,
 			"api_key_env":  p.APIKeyEnv,
@@ -177,10 +121,21 @@ func (r *Router) handleProviders(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
+func getProviderFromCatalog(catalog *model_catalog.ModelCatalog, id string) *types.ProviderInfo {
+	providers := catalog.ListProviders()
+	for i := range providers {
+		if providers[i].ID == id {
+			return &providers[i]
+		}
+	}
+	return nil
+}
+
 func (r *Router) handleSetProviderKey(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
+	catalog := r.kernel.ModelCatalog()
 
-	provider := getProvider(name)
+	provider := getProviderFromCatalog(catalog, name)
 	if provider == nil {
 		respondError(w, http.StatusNotFound, fmt.Sprintf("Unknown provider '%s'", name))
 		return
@@ -212,7 +167,7 @@ func (r *Router) handleSetProviderKey(w http.ResponseWriter, req *http.Request) 
 
 	os.Setenv(provider.APIKeyEnv, key)
 
-	refreshProviderAuthStatus()
+	catalog.DetectAuth()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "saved",
@@ -222,8 +177,9 @@ func (r *Router) handleSetProviderKey(w http.ResponseWriter, req *http.Request) 
 
 func (r *Router) handleDeleteProviderKey(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
+	catalog := r.kernel.ModelCatalog()
 
-	provider := getProvider(name)
+	provider := getProviderFromCatalog(catalog, name)
 	if provider == nil {
 		respondError(w, http.StatusNotFound, fmt.Sprintf("Unknown provider '%s'", name))
 		return
@@ -241,7 +197,7 @@ func (r *Router) handleDeleteProviderKey(w http.ResponseWriter, req *http.Reques
 
 	os.Unsetenv(provider.APIKeyEnv)
 
-	refreshProviderAuthStatus()
+	catalog.DetectAuth()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "removed",
@@ -251,8 +207,9 @@ func (r *Router) handleDeleteProviderKey(w http.ResponseWriter, req *http.Reques
 
 func (r *Router) handleTestProvider(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
+	catalog := r.kernel.ModelCatalog()
 
-	provider := getProvider(name)
+	provider := getProviderFromCatalog(catalog, name)
 	if provider == nil {
 		respondError(w, http.StatusNotFound, fmt.Sprintf("Unknown provider '%s'", name))
 		return
@@ -273,8 +230,9 @@ func (r *Router) handleTestProvider(w http.ResponseWriter, req *http.Request) {
 
 func (r *Router) handleSetProviderURL(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
+	catalog := r.kernel.ModelCatalog()
 
-	provider := getProvider(name)
+	provider := getProviderFromCatalog(catalog, name)
 	if provider == nil {
 		respondError(w, http.StatusNotFound, fmt.Sprintf("Unknown provider '%s'", name))
 		return
@@ -294,11 +252,9 @@ func (r *Router) handleSetProviderURL(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	provider.BaseURL = baseURL
-
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"status":    "updated",
-		"provider":  name,
-		"base_url":  baseURL,
+		"status":   "updated",
+		"provider": name,
+		"base_url": baseURL,
 	})
 }

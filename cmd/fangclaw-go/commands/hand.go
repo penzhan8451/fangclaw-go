@@ -189,7 +189,8 @@ func getActiveHandInstances() ([]map[string]interface{}, error) {
 		return nil, fmt.Errorf("daemon not running")
 	}
 
-	resp, err := http.Get("http://127.0.0.1:4200/api/hands/active")
+	daemonAddr := mustGetDaemonAddress()
+	resp, err := http.Get(daemonAddr + "/api/hands/active")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get active hands: %w", err)
 	}
@@ -266,8 +267,9 @@ func runHandActivate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("daemon not running. Start with 'fangclaw-go start'")
 	}
 
+	daemonAddr := mustGetDaemonAddress()
 	resp, err := http.Post(
-		fmt.Sprintf("http://127.0.0.1:4200/api/hands/%s/activate", handID),
+		fmt.Sprintf("%s/api/hands/%s/activate", daemonAddr, handID),
 		"application/json",
 		bytes.NewBufferString(`{"config":{}}`),
 	)
@@ -407,8 +409,9 @@ func runHandPause(cmd *cobra.Command, args []string) error {
 
 	instanceID := instance["instance_id"].(string)
 
+	daemonAddr := mustGetDaemonAddress()
 	resp, err := http.Post(
-		fmt.Sprintf("http://127.0.0.1:4200/api/hands/instances/%s/pause", instanceID),
+		fmt.Sprintf("%s/api/hands/instances/%s/pause", daemonAddr, instanceID),
 		"application/json",
 		nil,
 	)
@@ -447,8 +450,9 @@ func runHandDeactivate(cmd *cobra.Command, args []string) error {
 
 	instanceID := instance["instance_id"].(string)
 
+	daemonAddr := mustGetDaemonAddress()
 	client := &http.Client{}
-	req, _ := http.NewRequest("POST", fmt.Sprintf("http://127.0.0.1:4200/api/hands/instances/%s/deactivate", instanceID), nil)
+	req, _ := http.NewRequest("POST", fmt.Sprintf("%s/api/hands/instances/%s/deactivate", daemonAddr, instanceID), nil)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to deactivate hand: %w", err)

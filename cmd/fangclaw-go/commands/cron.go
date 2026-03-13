@@ -70,7 +70,8 @@ func runCronList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("daemon not running. Start with 'fangclaw-go start'")
 	}
 
-	resp, err := http.Get("http://127.0.0.1:4200/api/cron/jobs")
+	daemonAddr := mustGetDaemonAddress()
+	resp, err := http.Get(daemonAddr + "/api/cron/jobs")
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -138,7 +139,8 @@ func runCronCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid JSON: %w", err)
 	}
 
-	resp, err := http.Post("http://127.0.0.1:4200/api/cron/jobs", "application/json", bytes.NewReader(data))
+	daemonAddr := mustGetDaemonAddress()
+	resp, err := http.Post(daemonAddr+"/api/cron/jobs", "application/json", bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -178,7 +180,8 @@ func runCronDelete(cmd *cobra.Command, args []string) error {
 
 	id := args[0]
 
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://127.0.0.1:4200/api/cron/jobs/%s", id), nil)
+	daemonAddr := mustGetDaemonAddress()
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/api/cron/jobs/%s", daemonAddr, id), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -221,7 +224,8 @@ func runCronEnable(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	req, err := http.NewRequest("PUT", fmt.Sprintf("http://127.0.0.1:4200/api/cron/jobs/%s/enable", id), bytes.NewReader(data))
+	daemonAddr := mustGetDaemonAddress()
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/api/cron/jobs/%s/enable", daemonAddr, id), bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -265,7 +269,8 @@ func runCronDisable(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	req, err := http.NewRequest("PUT", fmt.Sprintf("http://127.0.0.1:4200/api/cron/jobs/%s/enable", id), bytes.NewReader(data))
+	daemonAddr := mustGetDaemonAddress()
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/api/cron/jobs/%s/enable", daemonAddr, id), bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -303,7 +308,8 @@ func runCronStatus(cmd *cobra.Command, args []string) error {
 
 	id := args[0]
 
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:4200/api/cron/jobs/%s/status", id))
+	daemonAddr := mustGetDaemonAddress()
+	resp, err := http.Get(fmt.Sprintf("%s/api/cron/jobs/%s/status", daemonAddr, id))
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}

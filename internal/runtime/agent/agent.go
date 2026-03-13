@@ -898,6 +898,9 @@ func (r *Runtime) saveSession(ctx context.Context, agentCtx *AgentContext) error
 	session := &types.Session{
 		ID:                  agentCtx.SessionID,
 		AgentID:             agentCtx.AgentID,
+		AgentName:           agentCtx.Name,
+		AgentModelProvider:  agentCtx.Provider,
+		AgentModelName:      agentCtx.Model,
 		Messages:            agentCtx.GetMessages(),
 		ContextWindowTokens: uint64(agentCtx.Config.MaxTokens),
 		CreatedAt:           time.Now(),

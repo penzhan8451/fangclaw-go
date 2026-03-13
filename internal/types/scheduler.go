@@ -87,8 +87,9 @@ func NewCronScheduleCron(expr string, tz *string) CronSchedule {
 type CronActionKind string
 
 const (
-	CronActionKindSystemEvent CronActionKind = "system_event"
-	CronActionKindAgentTurn   CronActionKind = "agent_turn"
+	CronActionKindSystemEvent  CronActionKind = "system_event"
+	CronActionKindAgentTurn    CronActionKind = "agent_turn"
+	CronActionKindExecuteShell CronActionKind = "execute_shell"
 )
 
 type CronAction struct {
@@ -97,6 +98,8 @@ type CronAction struct {
 	Message       *string        `json:"message,omitempty"`
 	ModelOverride *string        `json:"model_override,omitempty"`
 	TimeoutSecs   *uint64        `json:"timeout_secs,omitempty"`
+	Command       *string        `json:"command,omitempty"`
+	Args          []string       `json:"args,omitempty"`
 }
 
 func NewCronActionSystemEvent(text string) CronAction {
@@ -112,6 +115,15 @@ func NewCronActionAgentTurn(message string, modelOverride *string, timeoutSecs *
 		Message:       &message,
 		ModelOverride: modelOverride,
 		TimeoutSecs:   timeoutSecs,
+	}
+}
+
+func NewCronActionExecuteShell(command string, args []string, timeoutSecs *uint64) CronAction {
+	return CronAction{
+		Kind:        CronActionKindExecuteShell,
+		Command:     &command,
+		Args:        args,
+		TimeoutSecs: timeoutSecs,
 	}
 }
 
@@ -258,6 +270,13 @@ func (a *CronAction) Validate() error {
 		if a.TimeoutSecs != nil && *a.TimeoutSecs == 0 {
 			return fmt.Errorf("timeout_secs must be positive")
 		}
+	case CronActionKindExecuteShell:
+		if a.Command == nil || len(*a.Command) == 0 {
+			return fmt.Errorf("command is required for execute_shell action")
+		}
+		if a.TimeoutSecs != nil && *a.TimeoutSecs == 0 {
+			return fmt.Errorf("timeout_secs must be positive")
+		}
 	default:
 		return fmt.Errorf("unknown action kind: %s", a.Kind)
 	}
@@ -373,6 +392,30 @@ func UnmarshalCronAction(data []byte) (CronAction, error) {
 			}
 		}
 		return NewCronActionAgentTurn(message, modelOverride, timeoutSecs), nil
+	case CronActionKindExecuteShell:
+		command, ok := raw["command"].(string)
+		if !ok {
+			return CronAction{}, fmt.Errorf("missing or invalid command field")
+		}
+		var args []string
+		if argsVal, ok := raw["args"]; ok && argsVal != nil {
+			if argsSlice, ok := argsVal.([]interface{}); ok {
+				for _, arg := range argsSlice {
+					if argStr, ok := arg.(string); ok {
+						args = append(args, argStr)
+					}
+				}
+			}
+		}
+		var timeoutSecs *uint64
+		if tsVal, ok := raw["timeout_secs"]; ok && tsVal != nil {
+			tsFloat, ok := tsVal.(float64)
+			if ok {
+				ts := uint64(tsFloat)
+				timeoutSecs = &ts
+			}
+		}
+		return NewCronActionExecuteShell(command, args, timeoutSecs), nil
 	default:
 		return CronAction{}, fmt.Errorf("unknown action kind: %s", kind)
 	}

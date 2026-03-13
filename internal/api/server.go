@@ -18,8 +18,6 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 func findStaticDir() string {
@@ -82,7 +80,7 @@ func DefaultServerConfig() *ServerConfig {
 	return &ServerConfig{
 		ListenAddr:   "127.0.0.1:4200",
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 300 * time.Second, // 5 minutes for workflow execution
 		IdleTimeout:  60 * time.Second,
 	}
 }
@@ -97,7 +95,7 @@ func NewServer(k *kernel.Kernel, cfg *ServerConfig) *Server {
 	server := &Server{
 		Server: &http.Server{
 			Addr:         cfg.ListenAddr,
-			Handler:      h2c.NewHandler(mux, &http2.Server{}),
+			Handler:      mux, // Use regular HTTP handler instead of h2c
 			ReadTimeout:  cfg.ReadTimeout,
 			WriteTimeout: cfg.WriteTimeout,
 			IdleTimeout:  cfg.IdleTimeout,
@@ -163,13 +161,13 @@ type HealthResponse struct {
 
 // StatusResponse represents the daemon status.
 type StatusResponse struct {
-	Status         string `json:"status"`
-	Version        string `json:"version"`
-	ListenAddr     string `json:"listen_addr"`
-	AgentCount     int    `json:"agent_count"`
-	ModelCount     int    `json:"model_count"`
-	Uptime         string `json:"uptime"`
-	UptimeSeconds  int    `json:"uptime_seconds"`
+	Status        string `json:"status"`
+	Version       string `json:"version"`
+	ListenAddr    string `json:"listen_addr"`
+	AgentCount    int    `json:"agent_count"`
+	ModelCount    int    `json:"model_count"`
+	Uptime        string `json:"uptime"`
+	UptimeSeconds int    `json:"uptime_seconds"`
 }
 
 // ErrorResponse represents an error response.

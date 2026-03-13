@@ -415,7 +415,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 
 		// Create and register new channel
 		newChannel := &Channel{
-			Name:  ct.name + " Channel",
+			Name:  ct.name,
 			Type:  ct.typ,
 			State: ChannelStateIdle,
 		}

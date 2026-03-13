@@ -4849,6 +4849,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                     <td>
                       <button class="btn btn-primary btn-sm" @click="showRunModal(wf)">Run</button>
                       <button class="btn btn-ghost btn-sm" @click="viewRuns(wf)">History</button>
+                      <button class="btn btn-danger btn-sm" @click="deleteWorkflow(wf)">Delete</button>
                     </td>
                   </tr>
                 </template>
@@ -4878,20 +4879,37 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                     <div class="card mt-2" style="padding:10px">
                       <div class="flex gap-2 items-center">
                         <span class="text-xs text-dim font-bold" x-text="'#' + (i+1)" style="width:24px"></span>
-                        <input class="form-input" style="flex:1" x-model="step.name" placeholder="Step name">
-                        <input class="form-input" style="flex:1" x-model="step.agent_name" placeholder="Agent name">
+                        <input class="form-input" style="flex:1" x-model="step.name" placeholder="step name, e.g., analyze">
+                        <input class="form-input" style="flex:1" x-model="step.agent_name" placeholder="agent name, e.g., Data Analyst">
                         <select class="form-select" style="width:120px" x-model="step.mode">
                           <option value="sequential">Sequential</option>
                           <option value="fan_out">Fan Out</option>
                           <option value="conditional">Conditional</option>
                           <option value="loop">Loop</option>
                         </select>
+                        <select class="form-select" style="width:100px" x-model="step.error_mode">
+                          <option value="fail">Fail</option>
+                          <option value="skip">Skip</option>
+                          <option value="retry">Retry</option>
+                        </select>
                         <button class="btn btn-danger btn-sm" @click="newWf.steps.splice(i,1)">&times;</button>
                       </div>
-                      <input class="form-input mt-2" x-model="step.prompt" placeholder="Prompt template (use {{input}})">
+                      <input class="form-input mt-2" x-model="step.prompt" placeholder="e.g., Analyze this: {{input}}  or  Use output from step 1: {{steps.analyze.output}}">
+                      <template x-if="step.mode === 'conditional'">
+                        <input class="form-input mt-2" x-model="step.condition" placeholder="e.g., steps.analyze.output.includes('ERROR') or steps.analyze.output.length > 100">
+                      </template>
+                      <template x-if="step.mode === 'loop'">
+                        <div class="flex gap-2 mt-2">
+                          <input class="form-input" style="flex:1" x-model="step.max_iterations" type="number" placeholder="Max iterations (e.g., 5)" min="1">
+                          <input class="form-input" style="flex:1" x-model="step.until" placeholder="e.g., steps.loop.output.includes('DONE')">
+                        </div>
+                      </template>
+                      <template x-if="step.error_mode === 'retry'">
+                        <input class="form-input mt-2" x-model="step.max_retries" type="number" placeholder="Max retries (e.g., 3)" min="1">
+                      </template>
                     </div>
                   </template>
-                  <button class="btn btn-ghost btn-sm mt-2" @click="newWf.steps.push({name:'',agent_name:'',mode:'sequential',prompt:'{{input}}'})">+ Add Step</button>
+                  <button class="btn btn-ghost btn-sm mt-2" @click="newWf.steps.push({name:'',agent_name:'',mode:'sequential',prompt:'',condition:'',max_iterations:5,until:'',error_mode:'fail',max_retries:3})">+ Add Step</button>
                 </div>
                 <button class="btn btn-primary btn-block" @click="createWorkflow()">Create</button>
               </div>
@@ -4975,63 +4993,8 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   </defs>
                   <rect x="-2000" y="-2000" width="6000" height="6000" fill="url(#wf-grid)"/>
 
-                  <!-- Connections -->
-                  <template x-for="conn in connections" :key="conn.id">
-                    <g>
-                      <path :d="getConnectionPath(conn)" fill="none" stroke="var(--text-dim)" stroke-width="2"
-                            style="cursor:pointer" @click.stop="selectedConnection = conn"
-                            :stroke="selectedConnection && selectedConnection.id === conn.id ? 'var(--accent)' : 'var(--text-dim)'"
-                            :stroke-width="selectedConnection && selectedConnection.id === conn.id ? 3 : 2"/>
-                      <!-- Arrow at midpoint -->
-                    </g>
-                  </template>
-
-                  <!-- Connection preview line -->
-                  <template x-if="connecting && connectPreview">
-                    <path :d="getPreviewPath()" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6,3"/>
-                  </template>
-
-                  <!-- Nodes -->
-                  <template x-for="node in nodes" :key="node.id">
-                    <g class="wf-node" :transform="'translate(' + node.x + ',' + node.y + ')'"
-                       @mousedown="onNodeMouseDown(node, $event)" @dblclick="editNode(node)">
-                      <!-- Node body -->
-                      <rect x="0" y="0" :width="node.width" :height="node.height" rx="8" ry="8"
-                            :fill="selectedNode && selectedNode.id === node.id ? 'var(--card-bg)' : 'var(--bg-secondary)'"
-                            :stroke="selectedNode && selectedNode.id === node.id ? node.color : 'var(--border)'"
-                            stroke-width="2" style="cursor:grab"/>
-                      <!-- Color accent bar -->
-                      <rect x="0" y="0" width="6" :height="node.height" rx="3" ry="0" :fill="node.color"/>
-                      <!-- Icon -->
-                      <circle cx="28" :cy="node.height/2" r="14" :fill="node.color" opacity="0.15"/>
-                      <text x="28" :y="node.height/2 + 4" text-anchor="middle" :fill="node.color"
-                            style="font-size:12px;font-weight:700;pointer-events:none" x-text="node.icon"></text>
-                      <!-- Label -->
-                      <text x="50" :y="node.height/2 - 4" fill="var(--text)" style="font-size:12px;font-weight:600;pointer-events:none"
-                            x-text="node.label"></text>
-                      <!-- Sub-label (config hint) -->
-                      <text x="50" :y="node.height/2 + 12" fill="var(--text-dim)" style="font-size:10px;pointer-events:none"
-                            x-text="node.type === 'agent' ? (node.config.agent_name || 'No agent') :
-                                    node.type === 'condition' ? (node.config.expression || 'No condition') :
-                                    node.type === 'loop' ? ('max ' + (node.config.max_iterations || 5) + ' iters') :
-                                    node.type === 'parallel' ? (node.config.fan_count + ' branches') :
-                                    node.type === 'collect' ? node.config.strategy : ''"></text>
-
-                      <!-- Input ports -->
-                      <template x-for="pi in Array.from({length: node.ports.in}, function(_,i){return i})" :key="'in-'+pi">
-                        <circle class="wf-port wf-port-in" :cx="node.width / (node.ports.in + 1) * (pi + 1)" cy="0" r="6"
-                                fill="var(--bg-secondary)" stroke="var(--text-dim)" stroke-width="2"
-                                @mouseup.stop="endConnect(node.id, pi, $event)"/>
-                      </template>
-
-                      <!-- Output ports -->
-                      <template x-for="po in Array.from({length: node.ports.out}, function(_,i){return i})" :key="'out-'+po">
-                        <circle class="wf-port wf-port-out" :cx="node.width / (node.ports.out + 1) * (po + 1)" :cy="node.height" r="6"
-                                fill="var(--bg-secondary)" :stroke="node.color" stroke-width="2"
-                                @mousedown.stop="startConnect(node.id, po, $event)"/>
-                      </template>
-                    </g>
-                  </template>
+                  <!-- Manually rendered nodes & connections (Alpine x-for breaks inside SVG) -->
+                  <g id="wf-render-group" x-effect="nodes.length; connections.length; selectedNode; selectedConnection; connecting; connectPreview; scheduleRender()"></g>
                 </g>
               </svg>
 
@@ -5051,7 +5014,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                 <div>
                   <div class="form-group">
                     <label class="text-xs">Label</label>
-                    <input class="form-input" x-model="selectedNode.label" style="font-size:11px">
+                    <input class="form-input" x-model="selectedNode.label" @input="applyNodeEdit()" style="font-size:11px">
                   </div>
 
                   <!-- Agent config -->
@@ -7453,7 +7416,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Sessions -->
     <template x-if="page === 'sessions'">
-      <div x-data="sessionsPage">
+      <div x-data="sessionsPage" x-init="init()">
         <div class="page-header">
           <h2>Sessions</h2>
           <input class="form-input" style="width:200px" placeholder="Filter by agent..." x-model="searchFilter" x-show="tab === 'sessions'">
@@ -7484,8 +7447,19 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 <tbody>
                   <template x-for="s in filteredSessions" :key="s.session_id">
                     <tr>
-                      <td class="text-xs truncate" style="font-family:monospace;max-width:120px" x-text="s.session_id ? s.session_id.substring(0, 8) + '...' : '-'" :title="s.session_id"></td>
-                      <td class="font-bold" x-text="s.agent_name || s.agent_id"></td>
+                      <td style="max-width:200px">
+                        <div class="font-bold" x-text="s.label || (s.summary || 'New Session')" :title="s.label || s.summary"></div>
+                        <div class="text-xs text-dim" style="font-family:monospace" x-text="s.session_id ? s.session_id.substring(0, 12) + '...' : '-'" :title="s.session_id"></div>
+                      </td>
+                      <td>
+                        <template x-if="s.agent_name">
+                          <div class="font-bold" x-text="s.agent_name"></div>
+                          <div class="text-xs text-dim" style="font-family:monospace" x-text="s.agent_id ? '(' + s.agent_id.substring(0, 12) + '...)' : ''" :title="s.agent_id"></div>
+                        </template>
+                        <template x-if="!s.agent_name">
+                          <div class="font-bold" x-text="s.agent_id"></div>
+                        </template>
+                      </td>
                       <td x-text="s.message_count"></td>
                       <td class="text-xs" x-text="s.created_at ? new Date(s.created_at).toLocaleString() : '-'"></td>
                       <td>
@@ -7540,10 +7514,47 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                   <tbody>
                     <template x-for="kv in kvPairs" :key="kv.key">
                       <tr>
-                        <td class="font-bold" style="white-space:nowrap" x-text="kv.key"></td>
+                        <td style="white-space:nowrap">
+                          <div class="flex items-center gap-2">
+                            <template x-if="kv.key.toLowerCase().includes('preference') || kv.key.toLowerCase().includes('pref')">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                            </template>
+                            <template x-if="kv.key.toLowerCase().includes('project') || kv.key.toLowerCase().includes('context')">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3b82f6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+                            </template>
+                            <template x-if="kv.key.toLowerCase().includes('user') || kv.key.toLowerCase().includes('name')">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#8b5cf6"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            </template>
+                            <template x-if="kv.key.toLowerCase().includes('note') || kv.key.toLowerCase().includes('memo')">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#10b981"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </template>
+                            <template x-if="!(kv.key.toLowerCase().includes('preference') || kv.key.toLowerCase().includes('pref') || kv.key.toLowerCase().includes('project') || kv.key.toLowerCase().includes('context') || kv.key.toLowerCase().includes('user') || kv.key.toLowerCase().includes('name') || kv.key.toLowerCase().includes('note') || kv.key.toLowerCase().includes('memo'))">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#6b7280"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                            </template>
+                            <div>
+                              <div class="font-bold" x-text="kv.key"></div>
+                              <div class="text-xs text-dim" x-show="kv.key.toLowerCase().includes('preference') || kv.key.toLowerCase().includes('pref')">User Preference</div>
+                              <div class="text-xs text-dim" x-show="kv.key.toLowerCase().includes('project') || kv.key.toLowerCase().includes('context')">Project Context</div>
+                              <div class="text-xs text-dim" x-show="kv.key.toLowerCase().includes('user') || kv.key.toLowerCase().includes('name')">User Info</div>
+                              <div class="text-xs text-dim" x-show="kv.key.toLowerCase().includes('note') || kv.key.toLowerCase().includes('memo')">Note / Memo</div>
+                              <div class="text-xs text-dim" x-show="!(kv.key.toLowerCase().includes('preference') || kv.key.toLowerCase().includes('pref') || kv.key.toLowerCase().includes('project') || kv.key.toLowerCase().includes('context') || kv.key.toLowerCase().includes('user') || kv.key.toLowerCase().includes('name') || kv.key.toLowerCase().includes('note') || kv.key.toLowerCase().includes('memo'))">General</div>
+                            </div>
+                          </div>
+                        </td>
                         <td>
                           <template x-if="editingKey !== kv.key">
-                            <pre style="font-size:11px;max-width:400px;overflow:auto;white-space:pre-wrap;margin:0;color:var(--text-dim)" x-text="typeof kv.value === 'object' ? JSON.stringify(kv.value, null, 2) : String(kv.value)"></pre>
+                            <div>
+                              <template x-if="typeof kv.value === 'object'">
+                                <div style="font-size:11px;max-width:400px;overflow:auto;white-space:pre-wrap;margin:0;color:var(--text-dim)">
+                                  <template x-for="(v, k) in kv.value" :key="k">
+                                    <div><span class="font-bold" x-text="k + ':'"></span> <span x-text="String(v)"></span></div>
+                                  </template>
+                                </div>
+                              </template>
+                              <template x-if="typeof kv.value !== 'object'">
+                                <pre style="font-size:11px;max-width:400px;overflow:auto;white-space:pre-wrap;margin:0;color:var(--text-dim)" x-text="String(kv.value)"></pre>
+                              </template>
+                            </div>
                           </template>
                           <template x-if="editingKey === kv.key">
                             <div>
@@ -9721,7 +9732,7 @@ var FangClawGoAPI = (function() {
   };
 })();
 
-// OpenFang App — Alpine.js init, hash router, global store
+// FangClaw-Go App — Alpine.js init, hash router, global store
 'use strict';
 
 // Marked.js configuration
@@ -9811,7 +9822,7 @@ function toolIcon(toolName) {
 // Alpine.js global store
 document.addEventListener('alpine:init', function() {
   // Restore saved API key on load
-  var savedKey = localStorage.getItem('openfang-api-key');
+  var savedKey = localStorage.getItem('fangclawgo-api-key');
   if (savedKey) FangClawGoAPI.setAuthToken(savedKey);
 
   Alpine.store('app', {
@@ -9824,6 +9835,7 @@ document.addEventListener('alpine:init', function() {
     version: '0.1.0',
     agentCount: 0,
     pendingAgent: null,
+    pendingSession: null,
     focusMode: localStorage.getItem('openfang-focus') === 'true',
     showOnboarding: false,
     showAuthPrompt: false,
@@ -10437,7 +10449,16 @@ function chatPage() {
       // Load session + session list when agent changes
       this.$watch('currentAgent', function(agent) {
         if (agent) {
-          self.loadSession(agent.id);
+          var store = Alpine.store('app');
+          var pendingSessionId = store.pendingSession;
+          if (pendingSessionId) {
+            store.pendingSession = null;
+            // Load the specific pending session
+            self.loadSession(agent.id, pendingSessionId);
+          } else {
+            // Load default/latest session
+            self.loadSession(agent.id);
+          }
           self.loadSessions(agent.id);
         }
       });
@@ -10445,15 +10466,20 @@ function chatPage() {
       // Check for pending agent from Agents page (set before chat mounted)
       var store = Alpine.store('app');
       if (store.pendingAgent) {
-        self.selectAgent(store.pendingAgent);
+        var agent = store.pendingAgent;
+        var pendingSessionId = store.pendingSession;
         store.pendingAgent = null;
+        // Don't clear pendingSession here - let the $watch('currentAgent') handle it
+        self.selectAgent(agent, !!pendingSessionId);
       }
 
       // Watch for future pending agent selections (e.g., user clicks agent while on chat)
       this.$watch('$store.app.pendingAgent', function(agent) {
         if (agent) {
-          self.selectAgent(agent);
+          var sessionId = Alpine.store('app').pendingSession;
           Alpine.store('app').pendingAgent = null;
+          // Don't clear pendingSession here - let the $watch('currentAgent') handle it
+          self.selectAgent(agent, !!sessionId);
         }
       });
 
@@ -10670,26 +10696,28 @@ function chatPage() {
       }
     },
 
-    selectAgent(agent) {
+    selectAgent(agent, skipWelcome) {
       this.currentAgent = agent;
       this.messages = [];
       this.connectWs(agent.id);
-      // Always show welcome tips
-      this.messages.push({
-        id: ++msgId,
-        role: 'system',
-        text: '**Welcome to FangClaw-go Chat!**\n\n' +
-          '- Type `/` to see available commands\n' +
-          '- `/help` shows all commands\n' +
-          '- `/think on` enables extended reasoning\n' +
-          '- `/context` shows context window usage\n' +
-          '- `/verbose off` hides tool details\n' +
-          '- `Ctrl+Shift+F` toggles focus mode\n' +
-          '- Drag & drop files to attach them\n' +
-          '- `Ctrl+/` opens the command palette',
-        meta: '',
-        tools: []
-      });
+      if (!skipWelcome) {
+        // Show welcome tips only when not switching to an existing session
+        this.messages.push({
+          id: ++msgId,
+          role: 'system',
+          text: '**Welcome to FangClaw-go Chat!**\n\n' +
+            '- Type `/` to see available commands\n' +
+            '- `/help` shows all commands\n' +
+            '- `/think on` enables extended reasoning\n' +
+            '- `/context` shows context window usage\n' +
+            '- `/verbose off` hides tool details\n' +
+            '- `Ctrl+Shift+F` toggles focus mode\n' +
+            '- Drag & drop files to attach them\n' +
+            '- `Ctrl+/` opens the command palette',
+          meta: '',
+          tools: []
+        });
+      }
       // Focus input after agent selection
       var self = this;
       this.$nextTick(function() {
@@ -10698,10 +10726,14 @@ function chatPage() {
       });
     },
 
-    async loadSession(agentId) {
+    async loadSession(agentId, sessionId) {
       var self = this;
       try {
-        var data = await FangClawGoAPI.get('/api/agents/' + agentId + '/session');
+        var url = '/api/agents/' + agentId + '/session';
+        if (sessionId) {
+          url += '?session_id=' + encodeURIComponent(sessionId);
+        }
+        var data = await FangClawGoAPI.get(url);
         if (data.messages && data.messages.length) {
           self.messages = data.messages.map(function(m) {
             var role = m.role === 'User' ? 'user' : (m.role === 'System' ? 'system' : 'agent');
@@ -10760,7 +10792,7 @@ function chatPage() {
       try {
         await FangClawGoAPI.post('/api/agents/' + this.currentAgent.id + '/sessions/' + sessionId + '/switch', {});
         this.messages = [];
-        await this.loadSession(this.currentAgent.id);
+        await this.loadSession(this.currentAgent.id, sessionId);
         await this.loadSessions(this.currentAgent.id);
         // Reconnect WebSocket for new session
         this._wsAgent = null;
@@ -11466,98 +11498,7 @@ function agentsPage() {
     selectedCategory: 'All',
     searchQuery: '',
 
-    builtinTemplates: [
-      {
-        name: 'General Assistant',
-        description: 'A versatile conversational agent that can help with everyday tasks, answer questions, and provide recommendations.',
-        category: 'General',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'full',
-        system_prompt: 'You are a helpful, friendly assistant. Provide clear, accurate, and concise responses. Ask clarifying questions when needed.'
-      },
-      {
-        name: 'Code Helper',
-        description: 'A programming-focused agent that writes, reviews, and debugs code across multiple languages.',
-        category: 'Development',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'coding',
-        system_prompt: 'You are an expert programmer. Help users write clean, efficient code. Explain your reasoning. Follow best practices and conventions for the language being used.'
-      },
-      {
-        name: 'Researcher',
-        description: 'An analytical agent that breaks down complex topics, synthesizes information, and provides cited summaries.',
-        category: 'Research',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'research',
-        system_prompt: 'You are a research analyst. Break down complex topics into clear explanations. Provide structured analysis with key findings. Cite sources when available.'
-      },
-      {
-        name: 'Writer',
-        description: 'A creative writing agent that helps with drafting, editing, and improving written content of all kinds.',
-        category: 'Writing',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'full',
-        system_prompt: 'You are a skilled writer and editor. Help users create polished content. Adapt your tone and style to match the intended audience. Offer constructive suggestions for improvement.'
-      },
-      {
-        name: 'Data Analyst',
-        description: 'A data-focused agent that helps analyze datasets, create queries, and interpret statistical results.',
-        category: 'Development',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'coding',
-        system_prompt: 'You are a data analysis expert. Help users understand their data, write SQL/Python queries, and interpret results. Present findings clearly with actionable insights.'
-      },
-      {
-        name: 'DevOps Engineer',
-        description: 'A systems-focused agent for CI/CD, infrastructure, Docker, and deployment troubleshooting.',
-        category: 'Development',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'automation',
-        system_prompt: 'You are a DevOps engineer. Help with CI/CD pipelines, Docker, Kubernetes, infrastructure as code, and deployment. Prioritize reliability and security.'
-      },
-      {
-        name: 'Customer Support',
-        description: 'A professional, empathetic agent for handling customer inquiries and resolving issues.',
-        category: 'Business',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'messaging',
-        system_prompt: 'You are a professional customer support representative. Be empathetic, patient, and solution-oriented. Acknowledge concerns before offering solutions. Escalate complex issues appropriately.'
-      },
-      {
-        name: 'Tutor',
-        description: 'A patient educational agent that explains concepts step-by-step and adapts to the learner\'s level.',
-        category: 'General',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'full',
-        system_prompt: 'You are a patient and encouraging tutor. Explain concepts step by step, starting from fundamentals. Use analogies and examples. Check understanding before moving on. Adapt to the learner\'s pace.'
-      },
-      {
-        name: 'API Designer',
-        description: 'An agent specialized in RESTful API design, OpenAPI specs, and integration architecture.',
-        category: 'Development',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'coding',
-        system_prompt: 'You are an API design expert. Help users design clean, consistent RESTful APIs following best practices. Cover endpoint naming, request/response schemas, error handling, and versioning.'
-      },
-      {
-        name: 'Meeting Notes',
-        description: 'Summarizes meeting transcripts into structured notes with action items and key decisions.',
-        category: 'Business',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'minimal',
-        system_prompt: 'You are a meeting summarizer. When given a meeting transcript or notes, produce a structured summary with: key decisions, action items (with owners), discussion highlights, and follow-up questions.'
-      }
-    ],
+    builtinTemplates: [],
 
     // ── Profile Descriptions ──
     profileDescriptions: {
@@ -11654,6 +11595,8 @@ function agentsPage() {
       this.loadError = '';
       try {
         await Alpine.store('app').refreshAgents();
+        await this.loadTemplates();
+
       } catch(e) {
         this.loadError = e.message || 'Could not load agents. Is the daemon running?';
       }
@@ -11688,13 +11631,13 @@ function agentsPage() {
       this.tplLoadError = '';
       try {
         var results = await Promise.all([
-          FangClawGoAPI.get('/api/templates'),
+          FangClawGoAPI.get('/api/agent-templates'),
           FangClawGoAPI.get('/api/providers').catch(function() { return { providers: [] }; })
         ]);
-        this.tplTemplates = results[0].templates || [];
+        this.builtinTemplates = results[0].templates || [];
         this.tplProviders = results[1].providers || [];
       } catch(e) {
-        this.tplTemplates = [];
+        this.builtinTemplates = [];
         this.tplLoadError = e.message || 'Could not load templates.';
       }
       this.tplLoading = false;
@@ -11969,6 +11912,16 @@ function agentsPage() {
       toml += 'profile = "' + t.profile + '"\n\n';
       toml += '[model]\nprovider = "' + t.provider + '"\nmodel = "' + t.model + '"\n';
       toml += 'system_prompt = """\n' + t.system_prompt + '\n"""\n';
+      
+      if (t.tools && t.tools.length > 0) {
+        toml += 'tools = ' + JSON.stringify(t.tools) + '\n';
+      }
+      if (t.skills && t.skills.length > 0) {
+        toml += 'skills = ' + JSON.stringify(t.skills) + '\n';
+      }
+      if (t.mcp_servers && t.mcp_servers.length > 0) {
+        toml += 'mcp_servers = ' + JSON.stringify(t.mcp_servers) + '\n';
+      }
 
       try {
         var res = await FangClawGoAPI.post('/api/agents', { manifest_toml: toml });
@@ -11998,7 +11951,7 @@ function workflowsPage() {
     running: false,
     loading: true,
     loadError: '',
-    newWf: { name: '', description: '', steps: [{ name: '', agent_name: '', mode: 'sequential', prompt: '{{input}}' }] },
+    newWf: { name: '', description: '', steps: [{ name: '', agent_name: '', mode: 'sequential', prompt: '', condition: '', max_iterations: 5, until: '', error_mode: 'fail', max_retries: 3 }] },
 
     // -- Workflows methods --
     async loadWorkflows() {
@@ -12017,13 +11970,27 @@ function workflowsPage() {
 
     async createWorkflow() {
       var steps = this.newWf.steps.map(function(s) {
-        return { name: s.name || 'step', agent_name: s.agent_name, mode: s.mode, prompt: s.prompt || '{{input}}' };
+        var step = { name: s.name || 'step', agent_name: s.agent_name, mode: s.mode, prompt: s.prompt || '{{input}}', error_mode: s.error_mode || 'fail' };
+        if (s.mode === 'conditional') {
+          step.condition = s.condition || '';
+        } else if (s.mode === 'loop') {
+          if (s.max_iterations) {
+            step.max_iterations = parseInt(s.max_iterations, 10) || 5;
+          }
+          if (s.until) {
+            step.until = s.until;
+          }
+        }
+        if (s.error_mode === 'retry' && s.max_retries) {
+          step.max_retries = parseInt(s.max_retries, 10) || 3;
+        }
+        return step;
       });
       try {
         var wfName = this.newWf.name;
         await FangClawGoAPI.post('/api/workflows', { name: wfName, description: this.newWf.description, steps: steps });
         this.showCreateModal = false;
-        this.newWf = { name: '', description: '', steps: [{ name: '', agent_name: '', mode: 'sequential', prompt: '{{input}}' }] };
+        this.newWf = { name: '', description: '', steps: [{ name: '', agent_name: '', mode: 'sequential', prompt: '', condition: '', max_iterations: 5, until: '', error_mode: 'fail', max_retries: 3 }] };
         FangClawGoToast.success('Workflow "' + wfName + '" created');
         await this.loadWorkflows();
       } catch(e) {
@@ -12060,6 +12027,19 @@ function workflowsPage() {
       } catch(e) {
         FangClawGoToast.error('Failed to load run history: ' + e.message);
       }
+    },
+
+    async deleteWorkflow(wf) {
+      var self = this;
+      FangClawGoToast.confirm('Delete Workflow', 'Delete "' + wf.name + '"? This cannot be undone.', async function() {
+        try {
+          await FangClawGoAPI.del('/api/workflows/' + wf.id);
+          self.workflows = self.workflows.filter(function(w) { return w.id !== wf.id; });
+          FangClawGoToast.success('Workflow "' + wf.name + '" deleted');
+        } catch(e) {
+          FangClawGoToast.error('Failed to delete workflow: ' + (e.message || e));
+        }
+      });
     }
   };
 }
@@ -12103,6 +12083,13 @@ function workflowBuilder() {
       { type: 'end', label: 'End', color: '#ef4444', icon: 'E', ports: { in: 1, out: 0 } }
     ],
 
+    _renderScheduled: false,
+    _lastClickNodeId: null,
+    _lastClickTime: 0,
+    _didDrag: false,
+    _didConnect: false,
+    _didPan: false,
+
     async init() {
       var self = this;
       // Load agents for the agent step dropdown
@@ -12114,6 +12101,157 @@ function workflowBuilder() {
       }
       // Add default start node
       self.addNode('start', 60, 200);
+    },
+
+    // ── SVG Manual Rendering ────────────────────────────
+    // Alpine.js x-for inside <svg> breaks because document.importNode
+    // doesn't handle SVG namespace correctly. We render nodes/connections
+    // manually via createElementNS and schedule re-renders reactively.
+
+    scheduleRender: function() {
+      if (this._renderScheduled) return;
+      this._renderScheduled = true;
+      var self = this;
+      requestAnimationFrame(function() {
+        self._renderScheduled = false;
+        self.renderCanvas();
+      });
+    },
+
+    renderCanvas: function() {
+      var container = document.getElementById('wf-render-group');
+      if (!container) return;
+      var SVG_NS = 'http://www.w3.org/2000/svg';
+      var self = this;
+
+      // Clear previous rendered content
+      while (container.firstChild) container.removeChild(container.firstChild);
+
+      // ── Connections ──
+      for (var ci = 0; ci < this.connections.length; ci++) {
+        var conn = this.connections[ci];
+        var d = this.getConnectionPath(conn);
+        if (!d) continue;
+        var path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('d', d);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', (this.selectedConnection && this.selectedConnection.id === conn.id) ? 'var(--accent)' : 'var(--text-dim)');
+        path.setAttribute('stroke-width', (this.selectedConnection && this.selectedConnection.id === conn.id) ? '3' : '2');
+        path.style.cursor = 'pointer';
+        (function(c) {
+          path.addEventListener('click', function(e) { e.stopPropagation(); self.selectedConnection = c; self.scheduleRender(); });
+        })(conn);
+        container.appendChild(path);
+      }
+
+      // ── Connection preview ──
+      if (this.connecting && this.connectPreview) {
+        var pd = this.getPreviewPath();
+        if (pd) {
+          var preview = document.createElementNS(SVG_NS, 'path');
+          preview.setAttribute('d', pd);
+          preview.setAttribute('fill', 'none');
+          preview.setAttribute('stroke', 'var(--accent)');
+          preview.setAttribute('stroke-width', '2');
+          preview.setAttribute('stroke-dasharray', '6,3');
+          container.appendChild(preview);
+        }
+      }
+
+      // ── Nodes ──
+      for (var ni = 0; ni < this.nodes.length; ni++) {
+        var node = this.nodes[ni];
+        var g = document.createElementNS(SVG_NS, 'g');
+        g.classList.add('wf-node');
+        g.setAttribute('transform', 'translate(' + node.x + ',' + node.y + ')');
+        (function(n) {
+          g.addEventListener('mousedown', function(e) { self.onNodeMouseDown(n, e); });
+          g.addEventListener('dblclick', function() { self.editNode(n); });
+        })(node);
+
+        // Node body rect
+        var rect = document.createElementNS(SVG_NS, 'rect');
+        rect.setAttribute('x', '0'); rect.setAttribute('y', '0');
+        rect.setAttribute('width', node.width); rect.setAttribute('height', node.height);
+        rect.setAttribute('rx', '8'); rect.setAttribute('ry', '8');
+        rect.setAttribute('fill', (self.selectedNode && self.selectedNode.id === node.id) ? 'var(--card-bg)' : 'var(--bg-secondary)');
+        rect.setAttribute('stroke', (self.selectedNode && self.selectedNode.id === node.id) ? node.color : 'var(--border)');
+        rect.setAttribute('stroke-width', '2');
+        rect.style.cursor = 'grab';
+        g.appendChild(rect);
+
+        // Color accent bar
+        var bar = document.createElementNS(SVG_NS, 'rect');
+        bar.setAttribute('x', '0'); bar.setAttribute('y', '0');
+        bar.setAttribute('width', '6'); bar.setAttribute('height', node.height);
+        bar.setAttribute('rx', '3'); bar.setAttribute('ry', '0');
+        bar.setAttribute('fill', node.color);
+        g.appendChild(bar);
+
+        // Icon circle + text
+        var circle = document.createElementNS(SVG_NS, 'circle');
+        circle.setAttribute('cx', '28'); circle.setAttribute('cy', node.height / 2);
+        circle.setAttribute('r', '14'); circle.setAttribute('fill', node.color);
+        circle.setAttribute('opacity', '0.15');
+        g.appendChild(circle);
+
+        var iconText = document.createElementNS(SVG_NS, 'text');
+        iconText.setAttribute('x', '28'); iconText.setAttribute('y', node.height / 2 + 4);
+        iconText.setAttribute('text-anchor', 'middle'); iconText.setAttribute('fill', node.color);
+        iconText.setAttribute('style', 'font-size:12px;font-weight:700;pointer-events:none');
+        iconText.textContent = node.icon;
+        g.appendChild(iconText);
+
+        // Label
+        var label = document.createElementNS(SVG_NS, 'text');
+        label.setAttribute('x', '50'); label.setAttribute('y', node.height / 2 - 4);
+        label.setAttribute('fill', 'var(--text)');
+        label.setAttribute('style', 'font-size:12px;font-weight:600;pointer-events:none');
+        label.textContent = node.label;
+        g.appendChild(label);
+
+        // Sub-label
+        var subLabel = document.createElementNS(SVG_NS, 'text');
+        subLabel.setAttribute('x', '50'); subLabel.setAttribute('y', node.height / 2 + 12);
+        subLabel.setAttribute('fill', 'var(--text-dim)');
+        subLabel.setAttribute('style', 'font-size:10px;pointer-events:none');
+        if (node.type === 'agent') subLabel.textContent = node.config.agent_name || 'No agent';
+        else if (node.type === 'condition') subLabel.textContent = node.config.expression || 'No condition';
+        else if (node.type === 'loop') subLabel.textContent = 'max ' + (node.config.max_iterations || 5) + ' iters';
+        else if (node.type === 'parallel') subLabel.textContent = (node.config.fan_count || 3) + ' branches';
+        else if (node.type === 'collect') subLabel.textContent = node.config.strategy || 'all';
+        g.appendChild(subLabel);
+
+        // Input ports
+        for (var pi = 0; pi < node.ports.in; pi++) {
+          var inp = document.createElementNS(SVG_NS, 'circle');
+          inp.classList.add('wf-port', 'wf-port-in');
+          inp.setAttribute('cx', node.width / (node.ports.in + 1) * (pi + 1));
+          inp.setAttribute('cy', '0'); inp.setAttribute('r', '6');
+          inp.setAttribute('fill', 'var(--bg-secondary)');
+          inp.setAttribute('stroke', 'var(--text-dim)'); inp.setAttribute('stroke-width', '2');
+          (function(nid, idx) {
+            inp.addEventListener('mouseup', function(e) { e.stopPropagation(); self.endConnect(nid, idx, e); });
+          })(node.id, pi);
+          g.appendChild(inp);
+        }
+
+        // Output ports
+        for (var po = 0; po < node.ports.out; po++) {
+          var outp = document.createElementNS(SVG_NS, 'circle');
+          outp.classList.add('wf-port', 'wf-port-out');
+          outp.setAttribute('cx', node.width / (node.ports.out + 1) * (po + 1));
+          outp.setAttribute('cy', node.height); outp.setAttribute('r', '6');
+          outp.setAttribute('fill', 'var(--bg-secondary)');
+          outp.setAttribute('stroke', node.color); outp.setAttribute('stroke-width', '2');
+          (function(nid, idx) {
+            outp.addEventListener('mousedown', function(e) { e.stopPropagation(); self.startConnect(nid, idx, e); });
+          })(node.id, po);
+          g.appendChild(outp);
+        }
+
+        container.appendChild(g);
+      }
     },
 
     // ── Node Management ──────────────────────────────────
@@ -12149,6 +12287,7 @@ function workflowBuilder() {
         node.config = { strategy: 'all' };
       }
       this.nodes.push(node);
+      this.scheduleRender();
       return node;
     },
 
@@ -12161,6 +12300,7 @@ function workflowBuilder() {
         this.selectedNode = null;
         this.showNodeEditor = false;
       }
+      this.scheduleRender();
     },
 
     duplicateNode: function(node) {
@@ -12232,19 +12372,36 @@ function workflowBuilder() {
       }
       this.connecting = null;
       this.connectPreview = null;
+      this.scheduleRender();
     },
 
     deleteConnection: function(connId) {
       this.connections = this.connections.filter(function(c) { return c.id !== connId; });
       this.selectedConnection = null;
+      this.scheduleRender();
     },
 
     // ── Drag Handling ────────────────────────────────────
 
     onNodeMouseDown: function(node, e) {
       e.stopPropagation();
+      // Detect double-click manually — the native dblclick event never fires
+      // because scheduleRender() destroys and recreates all SVG elements between
+      // the first and second click, so the browser loses the DOM target for dblclick.
+      var now = Date.now();
+      if (this._lastClickNodeId === node.id && (now - this._lastClickTime) < 350) {
+        // Double-click detected — open editor instead of starting drag
+        this._lastClickNodeId = null;
+        this._lastClickTime = 0;
+        this.editNode(node);
+        return;
+      }
+      this._lastClickNodeId = node.id;
+      this._lastClickTime = now;
+
       this.selectedNode = node;
       this.selectedConnection = null;
+      this._didDrag = false;
       this.dragging = node.id;
       var rect = this._getCanvasRect();
       this.dragOffset = {
@@ -12259,6 +12416,7 @@ function workflowBuilder() {
       this.selectedConnection = null;
       this.showNodeEditor = false;
       // Start canvas pan
+      this._didPan = false;
       this.canvasDragging = true;
       this.canvasDragStart = { x: e.clientX - this.canvasOffset.x * this.zoom, y: e.clientY - this.canvasOffset.y * this.zoom };
     },
@@ -12266,17 +12424,22 @@ function workflowBuilder() {
     onCanvasMouseMove: function(e) {
       var rect = this._getCanvasRect();
       if (this.dragging) {
+        this._didDrag = true;
         var node = this.getNode(this.dragging);
         if (node) {
           node.x = Math.max(0, (e.clientX - rect.left) / this.zoom - this.canvasOffset.x - this.dragOffset.x);
           node.y = Math.max(0, (e.clientY - rect.top) / this.zoom - this.canvasOffset.y - this.dragOffset.y);
         }
+        this.scheduleRender();
       } else if (this.connecting) {
+        this._didConnect = true;
         this.connectPreview = {
           x: (e.clientX - rect.left) / this.zoom - this.canvasOffset.x,
           y: (e.clientY - rect.top) / this.zoom - this.canvasOffset.y
         };
+        this.scheduleRender();
       } else if (this.canvasDragging) {
+        this._didPan = true;
         this.canvasOffset = {
           x: (e.clientX - this.canvasDragStart.x) / this.zoom,
           y: (e.clientY - this.canvasDragStart.y) / this.zoom
@@ -12285,10 +12448,19 @@ function workflowBuilder() {
     },
 
     onCanvasMouseUp: function() {
+      // Only re-render if something actually moved. Rendering on every mouseup
+      // destroys SVG elements between clicks, which prevents dblclick detection.
+      var needsRender = this._didDrag || this._didConnect || this._didPan;
       this.dragging = null;
       this.connecting = null;
       this.connectPreview = null;
       this.canvasDragging = false;
+      this._didDrag = false;
+      this._didConnect = false;
+      this._didPan = false;
+      if (needsRender) {
+        this.scheduleRender();
+      }
     },
 
     onCanvasWheel: function(e) {
@@ -12333,6 +12505,12 @@ function workflowBuilder() {
     editNode: function(node) {
       this.selectedNode = node;
       this.showNodeEditor = true;
+      this.scheduleRender();
+    },
+
+    // Called from editor panel inputs to reflect changes on the canvas SVG
+    applyNodeEdit: function() {
+      this.scheduleRender();
     },
 
     // ── TOML Generation ──────────────────────────────────
@@ -12452,7 +12630,7 @@ function workflowBuilder() {
       var rect = this._getCanvasRect();
       var x = (e.clientX - rect.left) / this.zoom - this.canvasOffset.x;
       var y = (e.clientY - rect.top) / this.zoom - this.canvasOffset.y;
-      this.addNode(type, x - 90, y - 35);
+      this.addNode(type, x - 90, y - 35); // addNode already calls scheduleRender
     },
 
     onCanvasDragOver: function(e) {
@@ -12471,6 +12649,7 @@ function workflowBuilder() {
         this.nodes[i].y = y;
         y += 120;
       }
+      this.scheduleRender();
     },
 
     // ── Clear ────────────────────────────────────────────
@@ -12480,7 +12659,7 @@ function workflowBuilder() {
       this.connections = [];
       this.selectedNode = null;
       this.nextId = 1;
-      this.addNode('start', 60, 200);
+      this.addNode('start', 60, 200); // addNode already calls scheduleRender
     },
 
     // ── Zoom controls ────────────────────────────────────
@@ -14981,14 +15160,7 @@ function sessionsPage() {
       this.loadError = '';
       try {
         var data = await FangClawGoAPI.get('/api/sessions');
-        var sessions = data.sessions || [];
-        var agents = Alpine.store('app').agents;
-        var agentMap = {};
-        agents.forEach(function(a) { agentMap[a.id] = a.name; });
-        sessions.forEach(function(s) {
-          s.agent_name = agentMap[s.agent_id] || '';
-        });
-        this.sessions = sessions;
+        this.sessions = data.sessions || [];
       } catch(e) {
         this.sessions = [];
         this.loadError = e.message || 'Could not load sessions.';
@@ -14997,6 +15169,9 @@ function sessionsPage() {
     },
 
     async loadData() { return this.loadSessions(); },
+
+    init() {
+    },
 
     get filteredSessions() {
       var f = this.searchFilter.toLowerCase();
@@ -15008,11 +15183,19 @@ function sessionsPage() {
     },
 
     openInChat(session) {
-      var agents = Alpine.store('app').agents;
-      var agent = agents.find(function(a) { return a.id === session.agent_id; });
-      if (agent) {
-        Alpine.store('app').pendingAgent = agent;
-      }
+      // 构造包含所有必要信息的 agent 对象
+      var agentObj = {
+        id: session.agent_id,
+        name: session.agent_name || session.agent_id,
+        model_provider: session.agent_model_provider || '?',
+        model_name: session.agent_model_name || '?'
+      };
+      
+      // 先设置 pending 状态
+      Alpine.store('app').pendingAgent = agentObj;
+      Alpine.store('app').pendingSession = session.session_id;
+      
+      // 然后跳转页面
       location.hash = 'agents';
     },
 
@@ -15376,118 +15559,7 @@ function wizardPage() {
     keySaved: false,
 
     // Step 3: Agent creation
-    templates: [
-      {
-        id: 'assistant',
-        name: 'General Assistant',
-        description: 'A versatile helper for everyday tasks, answering questions, and providing recommendations.',
-        icon: 'GA',
-        category: 'General',
-        provider: 'deepseek',
-        model: 'deepseek-chat',
-        profile: 'balanced',
-        system_prompt: 'You are a helpful, friendly assistant. Provide clear, accurate, and concise responses. Ask clarifying questions when needed.'
-      },
-      {
-        id: 'coder',
-        name: 'Code Helper',
-        description: 'A programming-focused agent that writes, reviews, and debugs code across multiple languages.',
-        icon: 'CH',
-        category: 'Development',
-        provider: 'deepseek',
-        model: 'deepseek-chat',
-        profile: 'precise',
-        system_prompt: 'You are an expert programmer. Help users write clean, efficient code. Explain your reasoning. Follow best practices and conventions for the language being used.'
-      },
-      {
-        id: 'researcher',
-        name: 'Researcher',
-        description: 'An analytical agent that breaks down complex topics, synthesizes information, and provides cited summaries.',
-        icon: 'RS',
-        category: 'Research',
-        provider: 'gemini',
-        model: 'gemini-2.5-flash',
-        profile: 'balanced',
-        system_prompt: 'You are a research analyst. Break down complex topics into clear explanations. Provide structured analysis with key findings. Cite sources when available.'
-      },
-      {
-        id: 'writer',
-        name: 'Writer',
-        description: 'A creative writing agent that helps with drafting, editing, and improving written content of all kinds.',
-        icon: 'WR',
-        category: 'Writing',
-        provider: 'deepseek',
-        model: 'deepseek-chat',
-        profile: 'creative',
-        system_prompt: 'You are a skilled writer and editor. Help users create polished content. Adapt your tone and style to match the intended audience. Offer constructive suggestions for improvement.'
-      },
-      {
-        id: 'data-analyst',
-        name: 'Data Analyst',
-        description: 'A data-focused agent that helps analyze datasets, create queries, and interpret statistical results.',
-        icon: 'DA',
-        category: 'Development',
-        provider: 'gemini',
-        model: 'gemini-2.5-flash',
-        profile: 'precise',
-        system_prompt: 'You are a data analysis expert. Help users understand their data, write SQL/Python queries, and interpret results. Present findings clearly with actionable insights.'
-      },
-      {
-        id: 'devops',
-        name: 'DevOps Engineer',
-        description: 'A systems-focused agent for CI/CD, infrastructure, Docker, and deployment troubleshooting.',
-        icon: 'DO',
-        category: 'Development',
-        provider: 'deepseek',
-        model: 'deepseek-chat',
-        profile: 'precise',
-        system_prompt: 'You are a DevOps engineer. Help with CI/CD pipelines, Docker, Kubernetes, infrastructure as code, and deployment. Prioritize reliability and security.'
-      },
-      {
-        id: 'support',
-        name: 'Customer Support',
-        description: 'A professional, empathetic agent for handling customer inquiries and resolving issues.',
-        icon: 'CS',
-        category: 'Business',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'balanced',
-        system_prompt: 'You are a professional customer support representative. Be empathetic, patient, and solution-oriented. Acknowledge concerns before offering solutions. Escalate complex issues appropriately.'
-      },
-      {
-        id: 'tutor',
-        name: 'Tutor',
-        description: 'A patient educational agent that explains concepts step-by-step and adapts to the learner\'s level.',
-        icon: 'TU',
-        category: 'General',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'balanced',
-        system_prompt: 'You are a patient and encouraging tutor. Explain concepts step by step, starting from fundamentals. Use analogies and examples. Check understanding before moving on. Adapt to the learner\'s pace.'
-      },
-      {
-        id: 'api-designer',
-        name: 'API Designer',
-        description: 'An agent specialized in RESTful API design, OpenAPI specs, and integration architecture.',
-        icon: 'AD',
-        category: 'Development',
-        provider: 'deepseek',
-        model: 'deepseek-chat',
-        profile: 'precise',
-        system_prompt: 'You are an API design expert. Help users design clean, consistent RESTful APIs following best practices. Cover endpoint naming, request/response schemas, error handling, and versioning.'
-      },
-      {
-        id: 'meeting-notes',
-        name: 'Meeting Notes',
-        description: 'Summarizes meeting transcripts into structured notes with action items and key decisions.',
-        icon: 'MN',
-        category: 'Business',
-        provider: 'groq',
-        model: 'llama-3.3-70b-versatile',
-        profile: 'precise',
-        system_prompt: 'You are a meeting summarizer. When given a meeting transcript or notes, produce a structured summary with: key decisions, action items (with owners), discussion highlights, and follow-up questions.'
-      }
-    ],
+    templates: [],
     selectedTemplate: 0,
     agentName: 'my-assistant',
     creatingAgent: false,
@@ -15601,11 +15673,23 @@ function wizardPage() {
       this.loading = true;
       this.error = '';
       try {
-        await this.loadProviders();
+        await Promise.all([
+          this.loadProviders(),
+          this.loadTemplates()
+        ]);
       } catch(e) {
         this.error = e.message || 'Could not load setup data.';
       }
       this.loading = false;
+    },
+
+    async loadTemplates() {
+      try {
+        var data = await FangClawGoAPI.get('/api/agent-templates');
+        this.templates = data.templates || [];
+      } catch(e) {
+        this.templates = [];
+      }
     },
 
     // ── Navigation ──

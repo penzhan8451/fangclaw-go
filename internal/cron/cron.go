@@ -122,6 +122,8 @@ func (cs *CronScheduler) Persist() error {
 func (cs *CronScheduler) AddJob(job types.CronJob, oneShot bool) (types.CronJobID, error) {
 	cs.mu.Lock()
 
+	log.Info().Str("job_name", job.Name).Str("agent_id", job.AgentID.String()).Msg("Cron: adding new job")
+
 	maxJobs := cs.maxTotalJobs.Load()
 	if uint32(len(cs.jobs)) >= maxJobs {
 		cs.mu.Unlock()
@@ -143,13 +145,19 @@ func (cs *CronScheduler) AddJob(job types.CronJob, oneShot bool) (types.CronJobI
 	nextRun := ComputeNextRun(&job.Schedule)
 	job.NextRun = &nextRun
 
+	log.Info().Str("job_name", job.Name).Time("next_run", nextRun).Msg("Cron: computed next run time")
+
 	id := job.ID
 	cs.jobs[id] = NewJobMeta(job, oneShot)
+
+	log.Info().Str("job_id", id.String()).Str("job_name", job.Name).Int("total_jobs", len(cs.jobs)).Msg("Cron: job added successfully")
 
 	cs.mu.Unlock()
 
 	if err := cs.Persist(); err != nil {
 		log.Warn().Err(err).Msg("Failed to persist after adding job")
+	} else {
+		log.Info().Str("job_id", id.String()).Msg("Cron: job persisted to disk")
 	}
 
 	return id, nil
@@ -264,12 +272,24 @@ func (cs *CronScheduler) DueJobs() []types.CronJob {
 	now := time.Now().UTC()
 	var due []types.CronJob
 
+	log.Info().Time("now", now).Int("total_jobs", len(cs.jobs)).Msg("Cron: checking due jobs")
+
 	for id, meta := range cs.jobs {
-		if meta.Job.Enabled && meta.Job.NextRun != nil && !meta.Job.NextRun.After(now) {
-			due = append(due, meta.Job)
-			nextRun := ComputeNextRunAfter(&meta.Job.Schedule, now)
+		job := meta.Job
+		log.Info().
+			Str("job_id", id.String()).
+			Str("job_name", job.Name).
+			Bool("enabled", job.Enabled).
+			Time("next_run", *job.NextRun).
+			Bool("is_due", job.Enabled && job.NextRun != nil && !job.NextRun.After(now)).
+			Msg("Cron: checking job")
+
+		if job.Enabled && job.NextRun != nil && !job.NextRun.After(now) {
+			due = append(due, job)
+			nextRun := ComputeNextRunAfter(&job.Schedule, now)
 			meta.Job.NextRun = &nextRun
 			cs.jobs[id] = meta
+			log.Info().Str("job_name", job.Name).Time("next_run", nextRun).Msg("Cron: job fired, updated next run")
 		}
 	}
 

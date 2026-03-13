@@ -37,7 +37,6 @@ func Register(root *cobra.Command) {
 	// System
 	root.AddCommand(systemCmd())
 	root.AddCommand(logsCmd())
-	root.AddCommand(sessionsCmd())
 
 	// Security & governance
 	root.AddCommand(securityCmd())

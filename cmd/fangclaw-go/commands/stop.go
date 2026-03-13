@@ -42,8 +42,9 @@ func runStop(cmd *cobra.Command, args []string) error {
 	}
 
 	// Try graceful shutdown first
+	daemonAddr := mustGetDaemonAddress()
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post("http://127.0.0.1:4200/api/shutdown", "", nil)
+	resp, err := client.Post(daemonAddr+"/api/shutdown", "", nil)
 	if err == nil && resp.StatusCode == http.StatusOK {
 		// Wait for daemon to stop
 		for i := 0; i < 10; i++ {

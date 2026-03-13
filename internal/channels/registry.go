@@ -146,6 +146,19 @@ func (r *Registry) ListChannels() []*Channel {
 	return channels
 }
 
+// GetChannelByName returns a channel by name.
+func (r *Registry) GetChannelByName(name string) (*Channel, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, channel := range r.channels {
+		if channel.Name == name {
+			return channel, true
+		}
+	}
+	return nil, false
+}
+
 // RemoveChannel removes a channel by ID.
 func (r *Registry) RemoveChannel(id string) error {
 	r.mu.Lock()
