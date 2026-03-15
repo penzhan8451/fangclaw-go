@@ -31,10 +31,37 @@ function approvalsPage() {
     },
 
     async approve(id) {
+      var self = this;
       try {
+        // Find the approval to get session_id
+        var approval = this.approvals.find(function(a) { return a.id === id; });
+        console.log('[Approvals] Approve:', approval);
+        
         await FangClawGoAPI.post('/api/approvals/' + id + '/approve', {});
         FangClawGoToast.success('Approved');
+        
+        // Don't auto-navigate - stay on approvals page for multi-user scenario
+        // Navigate back to chat if we have session_id
+        // if (approval && approval.session_id) {
+        //   var store = Alpine.store('app');
+        //   
+        //   // Use the agent info directly from the approval object
+        //   var agent = {
+        //     id: approval.agent_id,
+        //     name: approval.agent_name || approval.agent_id,
+        //     model_provider: approval.model_provider || '?',
+        //     model_name: approval.model_name || '?'
+        //   };
+        //   
+        //   store.pendingAgent = agent;
+        //   store.pendingSession = approval.session_id;
+        //   // console.log('[Approvals] Navigating to chat with session:', approval.session_id, 'agent:', agent);
+        //   
+        //   // Navigate to agents page
+        //   location.hash = 'agents';
+        // } else {
         await this.loadData();
+        // }
       } catch(e) {
         FangClawGoToast.error(e.message);
       }
@@ -44,9 +71,35 @@ function approvalsPage() {
       var self = this;
       FangClawGoToast.confirm('Reject Action', 'Are you sure you want to reject this action?', async function() {
         try {
+          // Find the approval to get session_id
+          var approval = self.approvals.find(function(a) { return a.id === id; });
+          console.log('[Approvals] Reject:', approval);
+          
           await FangClawGoAPI.post('/api/approvals/' + id + '/reject', {});
           FangClawGoToast.success('Rejected');
+          
+          // Don't auto-navigate - stay on approvals page for multi-user scenario
+          // Navigate back to chat if we have session_id
+          // if (approval && approval.session_id) {
+          //   var store = Alpine.store('app');
+          //   
+          //   // Use the agent info directly from the approval object
+          //   var agent = {
+          //     id: approval.agent_id,
+          //     name: approval.agent_name || approval.agent_id,
+          //     model_provider: approval.model_provider || '?',
+          //     model_name: approval.model_name || '?'
+          //   };
+          //   
+          //   store.pendingAgent = agent;
+          //   store.pendingSession = approval.session_id;
+          //   console.log('[Approvals] Navigating to chat with session:', approval.session_id, 'agent:', agent);
+          //   
+          //   // Navigate to agents page
+          //   location.hash = 'agents';
+          // } else {
           await self.loadData();
+          // }
         } catch(e) {
           FangClawGoToast.error(e.message);
         }

@@ -21,7 +21,6 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
-	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
@@ -316,9 +315,71 @@ type Router struct {
 
 // NewRouter creates a new API router.
 func NewRouter(k *kernel.Kernel) *Router {
-	return &Router{
+	r := &Router{
 		kernel: k,
 	}
+
+	// Register approval callback to notify frontend
+	k.ApprovalManager().SetOnNewRequest(func(req *approvals.ApprovalRequest) {
+		// Create WebSocket message
+		type WSMessage struct {
+			Type string                 `json:"type"`
+			Data map[string]interface{} `json:"data"`
+		}
+
+		msg := WSMessage{
+			Type: "new_approval",
+			Data: map[string]interface{}{
+				"id":           req.ID,
+				"agent_id":     req.AgentID,
+				"tool_name":    req.ToolName,
+				"description":  req.Description,
+				"risk_level":   req.RiskLevel,
+				"created_at":   req.CreatedAt,
+				"timeout_secs": req.TimeoutSecs,
+			},
+		}
+
+		msgBytes, err := json.Marshal(msg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to marshal approval message: %v\n", err)
+			return
+		}
+
+		// Broadcast to all connected clients
+		wsManager.BroadcastToAll(msgBytes)
+	})
+
+	// Register approval resolved callback to notify frontend
+	k.ApprovalManager().SetOnResolve(func(req *approvals.ApprovalRequest, decision approvals.ApprovalDecision, reason string) {
+		// Create WebSocket message
+		type WSMessage struct {
+			Type string                 `json:"type"`
+			Data map[string]interface{} `json:"data"`
+		}
+
+		msg := WSMessage{
+			Type: "approval_resolved",
+			Data: map[string]interface{}{
+				"id":         req.ID,
+				"agent_id":   req.AgentID,
+				"session_id": req.SessionID,
+				"decision":   decision,
+				"reason":     reason,
+			},
+		}
+
+		msgBytes, err := json.Marshal(msg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to marshal approval resolved message: %v\n", err)
+			return
+		}
+
+		// Broadcast to all connected clients
+		wsManager.BroadcastToAll(msgBytes)
+	})
+
+	return r
 }
 
 // RegisterRoutes registers all API routes.
@@ -1652,7 +1713,7 @@ func (r *Router) handleGetAgentSession(w http.ResponseWriter, req *http.Request)
 	}
 
 	session, err := sessionsStore.GetSession(sessionID)
-	if err != nil {
+	if err != nil || session == nil {
 		respondJSON(w, http.StatusOK, map[string]interface{}{
 			"session_id": sessionIDStr,
 			"messages":   []interface{}{},
@@ -1824,25 +1885,23 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	runner := agent.NewAgentRunner(agentRuntime)
-
 	ctx := context.Background()
-	result, err := runner.RunAgent(ctx, actualAgentID, reqBody.Message, nil, nil)
+	response, inputTokens, outputTokens, err := r.kernel.SendMessageWithUsage(ctx, actualAgentID, reqBody.Message)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"response": result.Response,
+		"response": response,
 		"message": map[string]string{
 			"role":    "assistant",
-			"content": result.Response,
+			"content": response,
 		},
 		"usage": map[string]interface{}{
-			"input_tokens":  result.TotalUsage.PromptTokens,
-			"output_tokens": result.TotalUsage.CompletionTokens,
-			"total_tokens":  result.TotalUsage.TotalTokens,
+			"input_tokens":  inputTokens,
+			"output_tokens": outputTokens,
+			"total_tokens":  inputTokens + outputTokens,
 		},
 	})
 }
@@ -1945,23 +2004,58 @@ func (r *Router) handleUsage(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleAuditRecent(w http.ResponseWriter, req *http.Request) {
+	nStr := req.URL.Query().Get("n")
+	n := 50
+	if nStr != "" {
+		if parsed, err := strconv.Atoi(nStr); err == nil && parsed > 0 {
+			n = parsed
+		}
+	}
+	if n > 1000 {
+		n = 1000
+	}
+
+	entries := r.kernel.AuditLog().GetRecent(n)
+	tipHash := r.kernel.AuditLog().GetChainHash()
+
+	items := make([]map[string]interface{}, 0, len(entries))
+	for i, entry := range entries {
+		items = append(items, map[string]interface{}{
+			"seq":       i + 1,
+			"timestamp": entry.Timestamp.Format(time.RFC3339),
+			"agent_id":  entry.Target,
+			"action":    string(entry.Action),
+			"detail":    entry.Details,
+			"outcome":   entry.Result,
+			"hash":      entry.Hash,
+		})
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"events": []interface{}{},
+		"entries":  items,
+		"tip_hash": tipHash,
 	})
 }
 
 func (r *Router) handleAuditVerify(w http.ResponseWriter, req *http.Request) {
+	valid, err := r.kernel.AuditLog().Verify()
+	if err != nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"valid": false,
+			"error": err.Error(),
+		})
+		return
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"verified":    true,
-		"merkle_root": "0000000000000000000000000000000000000000000000000000000000000000",
+		"valid":   valid,
+		"entries": r.kernel.AuditLog().Count(),
 	})
 }
 
 func (r *Router) handleMcpServers(w http.ResponseWriter, req *http.Request) {
 	servers := r.kernel.GetMcpServers()
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"servers": servers,
-	})
+	respondJSON(w, http.StatusOK, servers)
 }
 
 func (r *Router) handleMcpServerReconnect(w http.ResponseWriter, req *http.Request) {
@@ -1990,7 +2084,91 @@ func (r *Router) handleLogsStream(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	flusher.Flush()
+	levelFilter := req.URL.Query().Get("level")
+	textFilter := req.URL.Query().Get("filter")
+	if textFilter != "" {
+		textFilter = strings.ToLower(textFilter)
+	}
+
+	ctx := req.Context()
+
+	var lastSeq int
+	firstPoll := true
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	heartbeatTicker := time.NewTicker(15 * time.Second)
+	defer heartbeatTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-heartbeatTicker.C:
+			fmt.Fprintf(w, ": ping\n\n")
+			flusher.Flush()
+		case <-ticker.C:
+			entries := r.kernel.AuditLog().GetRecent(200)
+
+			for i, entry := range entries {
+				seq := i + 1
+
+				if !firstPoll && seq <= lastSeq {
+					continue
+				}
+
+				actionStr := string(entry.Action)
+
+				if levelFilter != "" {
+					classified := classifyAuditLevel(actionStr)
+					if classified != levelFilter {
+						continue
+					}
+				}
+
+				if textFilter != "" {
+					haystack := strings.ToLower(fmt.Sprintf("%s %s %s", actionStr, entry.Details, entry.Target))
+					if !strings.Contains(haystack, textFilter) {
+						continue
+					}
+				}
+
+				jsonData := map[string]interface{}{
+					"seq":       seq,
+					"timestamp": entry.Timestamp.Format(time.RFC3339),
+					"agent_id":  entry.Target,
+					"action":    actionStr,
+					"detail":    entry.Details,
+					"outcome":   entry.Result,
+					"hash":      entry.Hash,
+				}
+
+				dataBytes, err := json.Marshal(jsonData)
+				if err != nil {
+					continue
+				}
+
+				fmt.Fprintf(w, "data: %s\n\n", dataBytes)
+				flusher.Flush()
+			}
+
+			if len(entries) > 0 {
+				lastSeq = len(entries)
+			}
+			firstPoll = false
+		}
+	}
+}
+
+func classifyAuditLevel(action string) string {
+	a := strings.ToLower(action)
+	if strings.Contains(a, "error") || strings.Contains(a, "fail") || strings.Contains(a, "crash") || strings.Contains(a, "denied") {
+		return "error"
+	} else if strings.Contains(a, "warn") || strings.Contains(a, "block") || strings.Contains(a, "kill") {
+		return "warn"
+	}
+	return "info"
 }
 
 func (r *Router) handleUsageSummary(w http.ResponseWriter, req *http.Request) {
@@ -2968,22 +3146,15 @@ func (r *Router) handleListApprovals(w http.ResponseWriter, req *http.Request) {
 	pending := r.kernel.ApprovalManager().ListPending()
 	total := len(pending)
 
-	agents := r.kernel.AgentRegistry().List()
-
 	var approvals []map[string]interface{}
 	for _, a := range pending {
-		agentName := a.AgentID
-		for _, agent := range agents {
-			if agent.ID.String() == a.AgentID || agent.Name == a.AgentID {
-				agentName = agent.Name
-				break
-			}
-		}
-
 		approvals = append(approvals, map[string]interface{}{
 			"id":             a.ID,
 			"agent_id":       a.AgentID,
-			"agent_name":     agentName,
+			"agent_name":     a.AgentName,
+			"model_provider": a.ModelProvider,
+			"model_name":     a.ModelName,
+			"session_id":     a.SessionID,
 			"tool_name":      a.ToolName,
 			"description":    a.Description,
 			"action_summary": a.ActionSummary,
@@ -3005,6 +3176,10 @@ func (r *Router) handleListApprovals(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleCreateApproval(w http.ResponseWriter, req *http.Request) {
 	var reqBody struct {
 		AgentID       string `json:"agent_id"`
+		AgentName     string `json:"agent_name"`
+		ModelProvider string `json:"model_provider"`
+		ModelName     string `json:"model_name"`
+		SessionID     string `json:"session_id"`
 		ToolName      string `json:"tool_name"`
 		Description   string `json:"description"`
 		ActionSummary string `json:"action_summary"`
@@ -3025,8 +3200,12 @@ func (r *Router) handleCreateApproval(w http.ResponseWriter, req *http.Request) 
 		actionSummary = reqBody.ToolName
 	}
 
-	approvalReq := approvals.NewApprovalRequest(
+	approvalReq := approvals.NewApprovalRequestWithDetails(
 		reqBody.AgentID,
+		reqBody.AgentName,
+		reqBody.ModelProvider,
+		reqBody.ModelName,
+		reqBody.SessionID,
 		reqBody.ToolName,
 		description,
 		actionSummary,

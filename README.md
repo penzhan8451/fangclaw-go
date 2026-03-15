@@ -136,6 +136,8 @@ default_agent = "browser"
   file = ""
 ```
 
+> **Note**: This is the global daemon configuration. Skills are configured per-Agent, not in this file. See the "Loading Skills" section for details.
+
 ### First-time Setup
 
 Run the setup wizard:
@@ -392,6 +394,8 @@ Agents can use the `my_tool` function to perform actions.
 **Built-in Hands** are automatically loaded when the daemon starts. These are the predefined capability packages (like Researcher, Lead, Collector, etc.).
 
 **External Skills** are loaded on-demand when an Agent uses them. When an Agent specifies skills in its configuration, those skills are automatically loaded from `~/.fangclaw-go/skills/{skillID}/` directory when the Agent first runs.
+
+> **Important Note**: Skills are configured per-Agent, not in the global `~/.fangclaw-go/config.toml`. You cannot set `skills = ["..."]` in the global config file. See the example below for how to configure skills in an Agent's configuration.
 
 ##### Example: Using an External GitHub Skill
 

@@ -16,19 +16,19 @@ import (
 type Action string
 
 const (
-	ActionAgentSpawn    Action = "agent.spawn"
+	ActionAgentSpawn   Action = "agent.spawn"
 	ActionAgentKill    Action = "agent.kill"
 	ActionAgentMessage Action = "agent.message"
 	ActionToolCall     Action = "tool.call"
 	ActionConfigChange Action = "config.change"
 	ActionAuthAttempt  Action = "auth.attempt"
-	ActionAPIKeyUse   Action = "apikey.use"
-	ActionChannelSend Action = "channel.send"
-	ActionBudgetAlert Action = "budget.alert"
-	ActionApproval    Action = "approval"
-	ActionShutdown    Action = "system.shutdown"
-	ActionLogin      Action = "auth.login"
-	ActionLogout     Action = "auth.logout"
+	ActionAPIKeyUse    Action = "apikey.use"
+	ActionChannelSend  Action = "channel.send"
+	ActionBudgetAlert  Action = "budget.alert"
+	ActionApproval     Action = "approval"
+	ActionShutdown     Action = "system.shutdown"
+	ActionLogin        Action = "auth.login"
+	ActionLogout       Action = "auth.logout"
 )
 
 // Entry represents a single audit log entry.
@@ -64,24 +64,24 @@ func NewAuditLog() *AuditLog {
 func (al *AuditLog) Record(actor, target string, action Action, details, result string) {
 	al.mu.Lock()
 	defer al.mu.Unlock()
-	
+
 	entry := &Entry{
 		ID:        uuid.New().String(),
 		Timestamp: time.Now(),
 		Action:    action,
-		Actor:    actor,
-		Target:   target,
-		Details:  details,
-		Result:   result,
-		PrevHash: hex.EncodeToString(al.chain),
+		Actor:     actor,
+		Target:    target,
+		Details:   details,
+		Result:    result,
+		PrevHash:  hex.EncodeToString(al.chain),
 	}
-	
+
 	// Compute hash
 	entry.Hash = al.computeHash(entry)
-	
+
 	// Update chain
 	al.chain = []byte(entry.Hash)
-	
+
 	al.entries = append(al.entries, entry)
 }
 
@@ -89,7 +89,7 @@ func (al *AuditLog) Record(actor, target string, action Action, details, result 
 func (al *AuditLog) GetEntries(limit int, action Action) []*Entry {
 	al.mu.RLock()
 	defer al.mu.RUnlock()
-	
+
 	entries := al.entries
 	if action != "" {
 		var filtered []*Entry
@@ -100,11 +100,11 @@ func (al *AuditLog) GetEntries(limit int, action Action) []*Entry {
 		}
 		entries = filtered
 	}
-	
+
 	if limit > 0 && limit < len(entries) {
 		return entries[len(entries)-limit:]
 	}
-	
+
 	return entries
 }
 
@@ -112,24 +112,24 @@ func (al *AuditLog) GetEntries(limit int, action Action) []*Entry {
 func (al *AuditLog) Verify() (bool, error) {
 	al.mu.RLock()
 	defer al.mu.RUnlock()
-	
+
 	var prevHash string
-	
+
 	for i, entry := range al.entries {
 		// Verify previous hash link
 		if entry.PrevHash != prevHash {
 			return false, fmt.Errorf("chain broken at entry %d", i)
 		}
-		
+
 		// Verify entry hash
 		expectedHash := al.computeHash(entry)
 		if entry.Hash != expectedHash {
 			return false, fmt.Errorf("hash mismatch at entry %d", i)
 		}
-		
+
 		prevHash = entry.Hash
 	}
-	
+
 	return true, nil
 }
 
@@ -137,7 +137,7 @@ func (al *AuditLog) Verify() (bool, error) {
 func (al *AuditLog) GetChainHash() string {
 	al.mu.RLock()
 	defer al.mu.RUnlock()
-	
+
 	return hex.EncodeToString(al.chain)
 }
 
@@ -145,7 +145,7 @@ func (al *AuditLog) GetChainHash() string {
 func (al *AuditLog) Count() int {
 	al.mu.RLock()
 	defer al.mu.RUnlock()
-	
+
 	return len(al.entries)
 }
 
@@ -161,7 +161,7 @@ func (al *AuditLog) computeHash(entry *Entry) string {
 		entry.Result,
 		entry.PrevHash,
 	)
-	
+
 	hash := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(hash[:])
 }
@@ -176,20 +176,20 @@ type SearchResult struct {
 func (al *AuditLog) Search(query string, limit int) *SearchResult {
 	al.mu.RLock()
 	defer al.mu.RUnlock()
-	
+
 	var results []*Entry
-	
+
 	for _, e := range al.entries {
 		if contains(e.Actor, query) || contains(e.Target, query) ||
 			contains(e.Details, query) || contains(e.Result, query) {
 			results = append(results, e)
 		}
 	}
-	
+
 	if limit > 0 && len(results) > limit {
 		results = results[len(results)-limit:]
 	}
-	
+
 	return &SearchResult{
 		Entries: results,
 		Total:   len(results),
@@ -200,16 +200,16 @@ func (al *AuditLog) Search(query string, limit int) *SearchResult {
 func (al *AuditLog) FilterByTimeRange(start, end time.Time) []*Entry {
 	al.mu.RLock()
 	defer al.mu.RUnlock()
-	
+
 	var results []*Entry
-	
+
 	for _, e := range al.entries {
 		if (start.IsZero() || e.Timestamp.After(start)) &&
 			(end.IsZero() || e.Timestamp.Before(end)) {
 			results = append(results, e)
 		}
 	}
-	
+
 	return results
 }
 
@@ -217,15 +217,15 @@ func (al *AuditLog) FilterByTimeRange(start, end time.Time) []*Entry {
 func (al *AuditLog) FilterByActor(actor string) []*Entry {
 	al.mu.RLock()
 	defer al.mu.RUnlock()
-	
+
 	var results []*Entry
-	
+
 	for _, e := range al.entries {
 		if e.Actor == actor {
 			results = append(results, e)
 		}
 	}
-	
+
 	return results
 }
 
@@ -233,11 +233,11 @@ func (al *AuditLog) FilterByActor(actor string) []*Entry {
 func (al *AuditLog) GetRecent(count int) []*Entry {
 	al.mu.RLock()
 	defer al.mu.RUnlock()
-	
+
 	if count > len(al.entries) {
 		count = len(al.entries)
 	}
-	
+
 	start := len(al.entries) - count
 	return al.entries[start:]
 }
@@ -256,13 +256,10 @@ func containsAt(s, substr string) bool {
 }
 
 // MarshalJSON implements custom JSON marshaling.
-// MarshalJSON implements custom JSON marshaling.
-
-// MarshalJSON implements custom JSON marshaling.
 func (e *Entry) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]interface{}{
 		"id":        e.ID,
-		"timestamp":  e.Timestamp.Format(time.RFC3339),
+		"timestamp": e.Timestamp.Format(time.RFC3339),
 		"action":    e.Action,
 		"actor":     e.Actor,
 		"target":    e.Target,

@@ -474,6 +474,23 @@ func (m *WSManager) Broadcast(agentID string, message []byte) {
 	}
 }
 
+// BroadcastToAll sends a message to all connected clients.
+func (m *WSManager) BroadcastToAll(message []byte) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for agentID := range m.clients {
+		clients := m.clients[agentID]["default"]
+		for _, client := range clients {
+			select {
+			case <-client.Done:
+				continue
+			case client.Send <- message:
+			}
+		}
+	}
+}
+
 // WSHandler handles WebSocket connections.
 func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -8,17 +8,20 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
 // Config represents the OpenFang configuration.
 type Config struct {
-	APIListen    string           `toml:"api_listen"`
-	DefaultModel ModelSettings    `toml:"default_model"`
-	DefaultAgent string           `toml:"default_agent"`
-	Memory       MemorySettings   `toml:"memory"`
-	Security     SecuritySettings `toml:"security"`
-	Log          LogSettings      `toml:"log"`
-	Channels     ChannelsConfig   `toml:"channels"`
+	APIListen    string                  `toml:"api_listen"`
+	DefaultModel ModelSettings           `toml:"default_model"`
+	DefaultAgent string                  `toml:"default_agent"`
+	Memory       MemorySettings          `toml:"memory"`
+	Security     SecuritySettings        `toml:"security"`
+	Log          LogSettings             `toml:"log"`
+	Channels     ChannelsConfig          `toml:"channels"`
+	McpServers   []types.McpServerConfig `toml:"mcp_servers,omitempty"`
 }
 
 // ChannelsConfig contains configuration for all channel adapters.

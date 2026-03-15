@@ -173,7 +173,8 @@ function overviewPage() {
     },
 
     // ── Setup Checklist ──
-    checklistDismissed: localStorage.getItem('of-checklist-dismissed') === 'true',
+    //always show setup wizard
+    checklistDismissed: false, //localStorage.getItem('of-checklist-dismissed') === 'true',
 
     get setupChecklist() {
       return [

@@ -279,7 +279,7 @@ func Connect(ctx context.Context, config types.McpServerConfig) (*McpConnection,
 
 	timeout := time.Duration(config.TimeoutSecs) * time.Second
 	if timeout == 0 {
-		timeout = 30 * time.Second
+		timeout = 120 * time.Second
 	}
 
 	initCtx, initCancel := context.WithTimeout(ctx, timeout)

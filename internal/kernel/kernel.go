@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
+	"github.com/penzhan8451/fangclaw-go/internal/audit"
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/configreload"
@@ -63,6 +64,7 @@ type Kernel struct {
 	agentRuntime    *agent.Runtime
 	mcpConnections  sync.Map
 	mcpTools        sync.Map
+	auditLog        *audit.AuditLog
 	mu              sync.RWMutex
 	started         bool
 	startTime       time.Time
@@ -177,6 +179,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		deliveryReg:     deliveryReg,
 		pairingManager:  pairingManager,
 		workflowEngine:  workflowEngine,
+		auditLog:        audit.NewAuditLog(),
 		startTime:       time.Now(),
 		stopping:        make(chan struct{}),
 	}
@@ -191,7 +194,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		CallMcpTool: k.CallMcpTool,
 	}
 
-	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, mcpCallbacks)
+	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, mcpCallbacks, approvalMgr)
 
 	kernelConfig.DataDir = dataDir
 	k.config = kernelConfig
@@ -259,7 +262,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 			} else {
 				fmt.Printf("Registered agent from disk: %s (ID: %s)\n", agentEntry.Name, agentEntry.ID.String())
 			}
-		}
+		} //_for loop for agent in _agentRegistry
 
 		// Restore hand instances from agents
 		fmt.Printf("Restoring hand instances from %d agents...\n", len(agents))
@@ -391,91 +394,91 @@ func (k *Kernel) Start(ctx context.Context) error {
 								}
 							}
 						}
-						// case types.CronActionKindExecuteShell:
-						// 	log.Info().Str("job", jobName).Msg("Cron: firing execute shell")
-						// 	if job.Action.Command != nil {
-						// 		command := *job.Action.Command
-						// 		args := job.Action.Args
-						// 		log.Info().Str("job", jobName).Str("command", command).Strs("args", args).Msg("Cron: executing shell command")
+					case types.CronActionKindExecuteShell:
+						log.Info().Str("job", jobName).Msg("Cron: firing execute shell")
+						if job.Action.Command != nil {
+							command := *job.Action.Command
+							args := job.Action.Args
+							log.Info().Str("job", jobName).Str("command", command).Strs("args", args).Msg("Cron: executing shell command")
 
-						// 		if err := ValidateShellCommand(command, args, k.config.CronShellSecurity); err != nil {
-						// 			errMsg := fmt.Sprintf("security validation failed: %v", err)
-						// 			log.Warn().Str("job", jobName).Err(err).Msg("Cron job blocked by security")
-						// 			k.cronScheduler.RecordFailure(jobID, errMsg)
-						// 			continue
-						// 		}
+							if err := ValidateShellCommand(command, args, k.config.CronShellSecurity); err != nil {
+								errMsg := fmt.Sprintf("security validation failed: %v", err)
+								log.Warn().Str("job", jobName).Err(err).Msg("Cron job blocked by security")
+								k.cronScheduler.RecordFailure(jobID, errMsg)
+								continue
+							}
 
-						// 		timeoutSecs := uint64(60)
-						// 		if job.Action.TimeoutSecs != nil {
-						// 			timeoutSecs = *job.Action.TimeoutSecs
-						// 		}
-						// 		timeout := time.Duration(timeoutSecs) * time.Second
-						// 		ctxTimeout, cancel := context.WithTimeout(context.Background(), timeout)
-						// 		defer cancel()
+							timeoutSecs := uint64(60)
+							if job.Action.TimeoutSecs != nil {
+								timeoutSecs = *job.Action.TimeoutSecs
+							}
+							timeout := time.Duration(timeoutSecs) * time.Second
+							ctxTimeout, cancel := context.WithTimeout(context.Background(), timeout)
+							defer cancel()
 
-						// 		delivery := job.Delivery
-						// 		resultChan := make(chan struct {
-						// 			stdout string
-						// 			stderr string
-						// 			err    error
-						// 		}, 1)
+							delivery := job.Delivery
+							resultChan := make(chan struct {
+								stdout string
+								stderr string
+								err    error
+							}, 1)
 
-						// 		go func() {
-						// 			cmd := exec.CommandContext(ctxTimeout, command, args...)
-						// 			var stdoutBuf, stderrBuf bytes.Buffer
-						// 			cmd.Stdout = &stdoutBuf
-						// 			cmd.Stderr = &stderrBuf
+							go func() {
+								cmd := exec.CommandContext(ctxTimeout, command, args...)
+								var stdoutBuf, stderrBuf bytes.Buffer
+								cmd.Stdout = &stdoutBuf
+								cmd.Stderr = &stderrBuf
 
-						// 			log.Info().Str("job", jobName).Msg("Cron: starting command execution")
-						// 			err := cmd.Run()
-						// 			stdout := stdoutBuf.String()
-						// 			stderr := stderrBuf.String()
+								log.Info().Str("job", jobName).Msg("Cron: starting command execution")
+								err := cmd.Run()
+								stdout := stdoutBuf.String()
+								stderr := stderrBuf.String()
 
-						// 			log.Info().Str("job", jobName).Str("stdout", stdout).Str("stderr", stderr).Err(err).Msg("Cron: command execution finished")
-						// 			resultChan <- struct {
-						// 				stdout string
-						// 				stderr string
-						// 				err    error
-						// 			}{stdout, stderr, err}
-						// 		}()
+								log.Info().Str("job", jobName).Str("stdout", stdout).Str("stderr", stderr).Err(err).Msg("Cron: command execution finished")
+								resultChan <- struct {
+									stdout string
+									stderr string
+									err    error
+								}{stdout, stderr, err}
+							}()
 
-						// 		select {
-						// 		case <-ctxTimeout.Done():
-						// 			log.Warn().Str("job", jobName).Uint64("timeout_s", timeoutSecs).Msg("Cron job timed out")
-						// 			k.cronScheduler.RecordFailure(jobID, fmt.Sprintf("timed out after %ds", timeoutSecs))
-						// 		case res := <-resultChan:
-						// 			if res.err != nil {
-						// 				errMsg := fmt.Sprintf("command failed: %v, stderr: %s", res.err, res.stderr)
-						// 				log.Warn().Str("job", jobName).Err(res.err).Str("stderr", res.stderr).Msg("Cron job failed")
-						// 				k.cronScheduler.RecordFailure(jobID, errMsg)
-						// 				var fullResult string
-						// 				if res.stdout != "" && res.stderr != "" {
-						// 					fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.stderr, res.err)
-						// 				} else if res.stdout != "" {
-						// 					fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.err)
-						// 				} else if res.stderr != "" {
-						// 					fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stderr, res.err)
-						// 				} else {
-						// 					fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.err)
-						// 				}
-						// 				k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
-						// 			} else {
-						// 				log.Info().Str("job", jobName).Str("stdout", res.stdout).Msg("Cron job completed successfully")
-						// 				k.cronScheduler.RecordSuccess(jobID)
-						// 				var fullResult string
-						// 				if res.stdout != "" && res.stderr != "" {
-						// 					fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stdout, res.stderr)
-						// 				} else if res.stdout != "" {
-						// 					fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s", command, strings.Join(args, " "), res.stdout)
-						// 				} else if res.stderr != "" {
-						// 					fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stderr)
-						// 				} else {
-						// 					fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n(无输出)", command, strings.Join(args, " "))
-						// 				}
-						// 				k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
-						// 			}
-						// 		}
-						// 	}
+							select {
+							case <-ctxTimeout.Done():
+								log.Warn().Str("job", jobName).Uint64("timeout_s", timeoutSecs).Msg("Cron job timed out")
+								k.cronScheduler.RecordFailure(jobID, fmt.Sprintf("timed out after %ds", timeoutSecs))
+							case res := <-resultChan:
+								if res.err != nil {
+									errMsg := fmt.Sprintf("command failed: %v, stderr: %s", res.err, res.stderr)
+									log.Warn().Str("job", jobName).Err(res.err).Str("stderr", res.stderr).Msg("Cron job failed")
+									k.cronScheduler.RecordFailure(jobID, errMsg)
+									var fullResult string
+									if res.stdout != "" && res.stderr != "" {
+										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.stderr, res.err)
+									} else if res.stdout != "" {
+										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.err)
+									} else if res.stderr != "" {
+										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stderr, res.err)
+									} else {
+										fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.err)
+									}
+									k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
+								} else {
+									log.Info().Str("job", jobName).Str("stdout", res.stdout).Msg("Cron job completed successfully")
+									k.cronScheduler.RecordSuccess(jobID)
+									var fullResult string
+									if res.stdout != "" && res.stderr != "" {
+										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stdout, res.stderr)
+									} else if res.stdout != "" {
+										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s", command, strings.Join(args, " "), res.stdout)
+									} else if res.stderr != "" {
+										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stderr)
+									} else {
+										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n(无输出)", command, strings.Join(args, " "))
+									}
+									k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
+								}
+							}
+						}
 					}
 				}
 
@@ -610,6 +613,10 @@ func (k *Kernel) PairingManager() *pairing.PairingManager {
 
 func (k *Kernel) CronScheduler() *cron.CronScheduler {
 	return k.cronScheduler
+}
+
+func (k *Kernel) AuditLog() *audit.AuditLog {
+	return k.auditLog
 }
 
 func (k *Kernel) ModelCatalog() *model_catalog.ModelCatalog {
@@ -753,8 +760,14 @@ func Boot(dataDir string) (*Kernel, error) {
 		dataDir = "~/.fangclaw-go"
 	}
 
+	cfg, err := config.Load("")
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
 	config := types.KernelConfig{
-		DataDir: dataDir,
+		DataDir:    dataDir,
+		McpServers: cfg.McpServers,
 	}
 
 	return NewKernel(config)
@@ -940,8 +953,10 @@ func (k *Kernel) SendMessage(ctx context.Context, agentID string, message string
 	runner := agent.NewAgentRunner(k.agentRuntime)
 	result, err := runner.RunAgent(ctx, agentID, message, nil, nil)
 	if err != nil {
+		k.auditLog.Record("system", agentID, audit.ActionAgentMessage, "agent loop failed", fmt.Sprintf("error: %v", err))
 		return "", err
 	}
+	k.auditLog.Record("system", agentID, audit.ActionAgentMessage, fmt.Sprintf("tokens_in=%d, tokens_out=%d", result.TotalUsage.PromptTokens, result.TotalUsage.CompletionTokens), "ok")
 	return result.Response, nil
 }
 
@@ -950,8 +965,10 @@ func (k *Kernel) SendMessageWithUsage(ctx context.Context, agentID string, messa
 	runner := agent.NewAgentRunner(k.agentRuntime)
 	result, err := runner.RunAgent(ctx, agentID, message, nil, nil)
 	if err != nil {
+		k.auditLog.Record("system", agentID, audit.ActionAgentMessage, "agent loop failed", fmt.Sprintf("error: %v", err))
 		return "", 0, 0, err
 	}
+	k.auditLog.Record("system", agentID, audit.ActionAgentMessage, fmt.Sprintf("tokens_in=%d, tokens_out=%d", result.TotalUsage.PromptTokens, result.TotalUsage.CompletionTokens), "ok")
 	return result.Response, uint64(result.TotalUsage.PromptTokens), uint64(result.TotalUsage.CompletionTokens), nil
 }
 
@@ -1084,6 +1101,8 @@ func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error
 		return "", "", fmt.Errorf("failed to register agent in runtime: %w", err)
 	}
 
+	k.auditLog.Record("system", agentID.String(), audit.ActionAgentSpawn, fmt.Sprintf("name=%s", agentName), "ok")
+
 	return agentID.String(), agentName, nil
 }
 
@@ -1205,23 +1224,52 @@ func (k *Kernel) CloseMcpConnections() {
 }
 
 type McpServerInfo struct {
-	Name      string `json:"name"`
-	Connected bool   `json:"connected"`
+	Name      string                 `json:"name"`
+	Connected bool                   `json:"connected"`
+	Tools     []types.ToolDefinition `json:"tools,omitempty"`
+	Transport types.McpTransport     `json:"transport,omitempty"`
+	Env       []string               `json:"env,omitempty"`
 }
 
 // GetMcpServers returns all MCP servers.
-func (k *Kernel) GetMcpServers() []McpServerInfo {
-	var servers []McpServerInfo
-	k.mcpConnections.Range(func(key, value interface{}) bool {
-		if name, ok := key.(string); ok {
-			servers = append(servers, McpServerInfo{
-				Name:      name,
-				Connected: true,
+func (k *Kernel) GetMcpServers() map[string]interface{} {
+	var connected []map[string]interface{}
+	var configured []map[string]interface{}
+
+	for _, serverConfig := range k.config.McpServers {
+		// Check if connected
+		var isConnected bool
+		var tools []types.ToolDefinition
+		if connValue, ok := k.mcpConnections.Load(serverConfig.Name); ok {
+			if _, ok := connValue.(*mcp.McpConnection); ok {
+				isConnected = true
+				if toolsValue, ok := k.mcpTools.Load(serverConfig.Name); ok {
+					tools, _ = toolsValue.([]types.ToolDefinition)
+				}
+			}
+		}
+
+		if isConnected {
+			connected = append(connected, map[string]interface{}{
+				"name":        serverConfig.Name,
+				"tools_count": len(tools),
+				"tools":       tools,
 			})
 		}
-		return true
-	})
-	return servers
+
+		configured = append(configured, map[string]interface{}{
+			"name":      serverConfig.Name,
+			"transport": serverConfig.Transport,
+			"env":       serverConfig.Env,
+		})
+	}
+
+	return map[string]interface{}{
+		"total_configured": len(configured),
+		"total_connected":  len(connected),
+		"connected":        connected,
+		"configured":       configured,
+	}
 }
 
 // cronDeliverResponse delivers the response from an agent turn to the configured destination.

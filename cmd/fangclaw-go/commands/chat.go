@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/embedding"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
@@ -177,8 +178,12 @@ func runChatLocal(agentID string) error {
 	modelCatalogPath := filepath.Join(dbDir, "model_catalog.json")
 	modelCatalog := model_catalog.NewModelCatalog(modelCatalogPath)
 
+	// 2.8. Create approval manager
+	approvalPolicy := approvals.DefaultApprovalPolicy()
+	approvalMgr := approvals.NewApprovalManager(approvalPolicy)
+
 	// 3. Create Agent Runtime
-	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, nil)
+	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, nil, approvalMgr)
 
 	// 4. Get LLM driver
 	driver, err := getLLMDriver()

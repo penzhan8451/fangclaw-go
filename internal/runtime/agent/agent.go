@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/embedding"
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
@@ -113,6 +114,7 @@ type Runtime struct {
 	modelCatalog    *model_catalog.ModelCatalog
 	getMcpTools     func() []types.ToolDefinition
 	callMcpTool     func(ctx context.Context, toolName string, args map[string]interface{}) (string, error)
+	approvalMgr     *approvals.ApprovalManager
 }
 
 type McpCallbacks struct {
@@ -120,7 +122,7 @@ type McpCallbacks struct {
 	CallMcpTool func(ctx context.Context, toolName string, args map[string]interface{}) (string, error)
 }
 
-func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader, embeddingDriver *embedding.EmbeddingDriver, modelCatalog *model_catalog.ModelCatalog, mcpCallbacks *McpCallbacks) *Runtime {
+func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader, embeddingDriver *embedding.EmbeddingDriver, modelCatalog *model_catalog.ModelCatalog, mcpCallbacks *McpCallbacks, approvalMgr *approvals.ApprovalManager) *Runtime {
 	r := &Runtime{
 		drivers:         make(map[string]llm.Driver),
 		tools:           NewToolRegistry(),
@@ -132,6 +134,7 @@ func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, k
 		skills:          skills,
 		embeddingDriver: embeddingDriver,
 		modelCatalog:    modelCatalog,
+		approvalMgr:     approvalMgr,
 	}
 	if mcpCallbacks != nil {
 		r.getMcpTools = mcpCallbacks.GetMcpTools
@@ -222,6 +225,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 	}
 
 	// Build system prompt with memories and skills
+	fmt.Printf("------------ Current Agent Skills: %s---------------\n", agentCtx.Skills)
 	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills, agentCtx.SkillPromptContext)
 
 	// Find user message from context
@@ -275,6 +279,11 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 
 	// Get available tools for this agent
 	availableTools := r.getAvailableTools(agentCtx.Tools, agentCtx.Skills)
+	fmt.Println("\n------Available tools------")
+	for _, tool := range availableTools {
+		fmt.Printf("  - %s\n", tool.Name())
+	}
+	fmt.Println("---------------------------")
 	toolSchemas := make([]map[string]interface{}, len(availableTools))
 	for i, tool := range availableTools {
 		toolSchemas[i] = tool.Schema()
@@ -287,7 +296,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 		}
 		record := &types.UsageRecord{
 			AgentID:   agentCtx.AgentID,
-			SessionID: agentCtx.SessionID,
+			SessionID: agentCtx.SessionID, // ?
 			Model:     agentCtx.Model,
 			Provider:  agentCtx.Provider,
 			Usage:     usage,
@@ -358,7 +367,8 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			totalUsage.ToolCalls += len(toolCalls)
 			var toolResults []string
 			for _, tc := range toolCalls {
-				result, err := r.executeTool(ctx, tc.Name, tc.Input)
+				fmt.Printf("===Agent Loop Iteration: [ --iteration %d-- ] Executing tool name <%s> with <input> %s\n", iteration, tc.Name, tc.Input)
+				result, err := r.executeTool(ctx, agentCtx, tc.Name, tc.Input)
 				if err != nil {
 					toolResults = append(toolResults, fmt.Sprintf("Error executing %s: %v", tc.Name, err))
 				} else {
@@ -425,6 +435,11 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 					log.Printf("Warning: failed to save session: %v", err)
 				}
 
+				// Remember this interaction
+				if err := r.rememberInteraction(ctx, agentCtx, userMessage, finalResponse); err != nil {
+					log.Printf("Warning: failed to remember interaction: %v", err)
+				}
+
 				if onPhase != nil {
 					onPhase(PhaseDone)
 				}
@@ -458,6 +473,11 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 				log.Printf("Warning: failed to save session: %v", err)
 			}
 
+			// Remember this interaction
+			if err := r.rememberInteraction(ctx, agentCtx, userMessage, finalResponse); err != nil {
+				log.Printf("Warning: failed to remember interaction: %v", err)
+			}
+
 			if onPhase != nil {
 				onPhase(PhaseDone)
 			}
@@ -479,11 +499,22 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 		onPhase(PhaseError)
 	}
 
+	// Save session
+	if err := r.saveSession(ctx, agentCtx); err != nil {
+		log.Printf("Warning: failed to save session: %v", err)
+	}
+
+	// Remember this interaction (even though it maxed out iterations)
+	finalResponse = "Max iterations exceeded. Please try again with a more specific request."
+	if err := r.rememberInteraction(ctx, agentCtx, userMessage, finalResponse); err != nil {
+		log.Printf("Warning: failed to remember interaction: %v", err)
+	}
+
 	// Record usage
 	recordUsage(totalUsage, uint32(maxIterations))
 
 	return &AgentLoopResult{
-		Response:   "Max iterations exceeded. Please try again with a more specific request.",
+		Response:   finalResponse,
 		TotalUsage: totalUsage,
 		Iterations: uint32(maxIterations),
 		Silent:     false,
@@ -835,7 +866,71 @@ func (t *mcpToolWrapper) Schema() map[string]interface{} {
 
 // executeTool executes a tool.
 // It first tries built-in tools, then skill tools, then MCP tools.
-func (r *Runtime) executeTool(ctx context.Context, name string, args map[string]interface{}) (string, error) {
+func (r *Runtime) executeTool(ctx context.Context, agentCtx *AgentContext, name string, args map[string]interface{}) (string, error) {
+	if r.approvalMgr != nil {
+		if r.approvalMgr.RequiresApproval(name) {
+			fmt.Printf("------Approval required for tool------: %s\n", name)
+			reqID := fmt.Sprintf("approval-%s-%d", name, time.Now().UnixNano())
+			inputJSON, _ := json.Marshal(args)
+			summary := fmt.Sprintf("%s: %s", name, truncateString(string(inputJSON), 200))
+
+			agentID := "unknown"
+			agentName := "unknown"
+			modelProvider := "?"
+			modelName := "?"
+			sessionID := types.NewSessionID()
+			if agentCtx != nil {
+				agentID = agentCtx.AgentID.String()
+				agentName = agentCtx.Name
+				modelProvider = agentCtx.Provider
+				modelName = agentCtx.Model
+				sessionID = agentCtx.SessionID
+			}
+
+			// Save session before waiting for approval, so user can see conversation history
+			// if err := r.saveSession(ctx, agentCtx); err != nil {
+			// 	log.Printf("Warning: failed to save session before approval: %v", err)
+			// }
+
+			req := &approvals.ApprovalRequest{
+				ID:            reqID,
+				AgentID:       agentID,
+				AgentName:     agentName,
+				ModelProvider: modelProvider,
+				ModelName:     modelName,
+				SessionID:     sessionID.String(),
+				ToolName:      name,
+				Description:   summary,
+				ActionSummary: summary,
+				Action:        name,
+				Details:       string(inputJSON),
+				RiskLevel:     r.approvalMgr.GetRiskLevel(name),
+				TimeoutSecs:   60,
+				CreatedAt:     time.Now(),
+				RequestedAt:   time.Now(),
+			}
+
+			fmt.Printf("------Approval request submitted, waiting for approval------: %s\n", reqID)
+			decisionCh, err := r.approvalMgr.RequestApproval(req)
+			if err != nil {
+				return "", fmt.Errorf("approval system error: %w", err)
+			}
+
+			select {
+			case decision := <-decisionCh:
+				if decision != approvals.ApprovalDecisionApproved {
+					return "", fmt.Errorf(
+						"execution denied: '%s' requires human approval and was %s. The operation was not performed.",
+						name,
+						decision,
+					)
+				}
+			case <-ctx.Done():
+				return "", fmt.Errorf("approval cancelled: %w", ctx.Err())
+			}
+		}
+	}
+
 	// First, try to find a built-in tool
 	if tool, ok := r.tools.Get(name); ok {
 		// Create a timeout context
@@ -887,6 +982,13 @@ func (r *Runtime) executeTool(ctx context.Context, name string, args map[string]
 	}
 
 	return "", fmt.Errorf("tool not found: %s", name)
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 // saveSession saves the agent session.

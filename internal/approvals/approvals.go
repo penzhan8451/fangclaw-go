@@ -2,6 +2,7 @@
 package approvals
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -20,30 +21,101 @@ const (
 
 // ApprovalPolicy defines which operations require approval.
 type ApprovalPolicy struct {
-	RequireApproval []string `json:"require_approval"` // Tool names requiring approval
-	AutoApproveLow  bool     `json:"auto_approve_low"` // Auto-approve low risk
+	RequireApproval       []string `json:"require_approval"`        // Tool names requiring approval
+	AutoApproveLow        bool     `json:"auto_approve_low"`        // Auto-approve low risk
+	TimeoutSecs           int      `json:"timeout_secs"`            // Timeout in seconds before auto-deny
+	AutoApproveAutonomous bool     `json:"auto_approve_autonomous"` // Auto-approve in autonomous mode
+	AutoApprove           bool     `json:"auto_approve"`            // Alias: if true, clears require list
 }
 
 // DefaultApprovalPolicy returns the default approval policy.
 func DefaultApprovalPolicy() ApprovalPolicy {
-	return ApprovalPolicy{
+	policy := ApprovalPolicy{
 		RequireApproval: []string{
 			"shell",
+			"shell_exec",
 			"write_file",
+			"file_write",
+			// "read_file",
+			// "file_read",
+			// "list_dir",
+			// "file_list",
 			"delete",
 			"exec",
 			"browser",
 			"purchase",
 			"send_message",
 		},
-		AutoApproveLow: true,
+		AutoApproveLow:        true,
+		TimeoutSecs:           60 * 5, // Default 5 min timeout
+		AutoApproveAutonomous: false,
+		AutoApprove:           false,
 	}
+
+	// Apply shorthands: if auto_approve is true, clear require list
+	if policy.AutoApprove {
+		policy.RequireApproval = []string{}
+	}
+
+	return policy
+}
+
+// NormalizeToolName normalizes tool names for consistency across versions.
+func NormalizeToolName(name string) string {
+	// Check if it's an MCP tool
+	if strings.HasPrefix(name, "mcp_") {
+		parts := strings.SplitN(name, "_", 3)
+		if len(parts) == 3 {
+			// Extract the actual tool name part
+			toolPart := parts[2]
+			// Map MCP tool names to standard names
+			mcpNameMap := map[string]string{
+				"read_file":                 "file_read",
+				"read_text_file":            "file_read",
+				"read_media_file":           "file_read",
+				"read_multiple_files":       "file_read",
+				"write_file":                "file_write",
+				"edit_file":                 "file_write",
+				"create_directory":          "file_write",
+				"list_directory":            "file_list",
+				"list_directory_with_sizes": "file_list",
+				"directory_tree":            "file_list",
+				"move_file":                 "delete",
+				"search_files":              "file_read",
+				"get_file_info":             "file_read",
+				"list_allowed_directories":  "file_read",
+			}
+			if normalized, ok := mcpNameMap[toolPart]; ok {
+				return normalized
+			}
+			return toolPart
+		}
+	}
+
+	nameMap := map[string]string{
+		"shell":      "shell_exec",
+		"write_file": "file_write",
+		"read_file":  "file_read",
+		"list_dir":   "file_list",
+		"shell_exec": "shell_exec",
+		"file_write": "file_write",
+		"file_read":  "file_read",
+		"file_list":  "file_list",
+	}
+	if normalized, ok := nameMap[name]; ok {
+		return normalized
+	}
+	return name
 }
 
 // ApprovalRequest represents an approval request.
 type ApprovalRequest struct {
 	ID            string    `json:"id"`
 	AgentID       string    `json:"agent_id"`
+	AgentName     string    `json:"agent_name"`
+	ModelProvider string    `json:"model_provider,omitempty"`
+	ModelName     string    `json:"model_name,omitempty"`
+	SessionID     string    `json:"session_id,omitempty"`
 	ToolName      string    `json:"tool_name"`
 	Description   string    `json:"description"`
 	ActionSummary string    `json:"action_summary"`
@@ -55,12 +127,38 @@ type ApprovalRequest struct {
 	TimeoutSecs   int       `json:"timeout_secs"`
 }
 
-// NewApprovalRequest creates a new approval request.
+// NewApprovalRequest creates a new approval request (backward compatible version).
 func NewApprovalRequest(agentID, toolName, description, actionSummary, action, details string, riskLevel RiskLevel) *ApprovalRequest {
 	now := time.Now()
 	return &ApprovalRequest{
 		ID:            uuid.New().String(),
 		AgentID:       agentID,
+		AgentName:     agentID,
+		ModelProvider: "?",
+		ModelName:     "?",
+		SessionID:     "",
+		ToolName:      toolName,
+		Description:   description,
+		ActionSummary: actionSummary,
+		Action:        action,
+		Details:       details,
+		RiskLevel:     riskLevel,
+		RequestedAt:   now,
+		CreatedAt:     now,
+		TimeoutSecs:   300, // 5 minutes default
+	}
+}
+
+// NewApprovalRequestWithDetails creates a new approval request with all details.
+func NewApprovalRequestWithDetails(agentID, agentName, modelProvider, modelName, sessionID, toolName, description, actionSummary, action, details string, riskLevel RiskLevel) *ApprovalRequest {
+	now := time.Now()
+	return &ApprovalRequest{
+		ID:            uuid.New().String(),
+		AgentID:       agentID,
+		AgentName:     agentName,
+		ModelProvider: modelProvider,
+		ModelName:     modelName,
+		SessionID:     sessionID,
 		ToolName:      toolName,
 		Description:   description,
 		ActionSummary: actionSummary,
@@ -98,11 +196,13 @@ type PendingRequest struct {
 
 // ApprovalManager manages approval requests.
 type ApprovalManager struct {
-	mu         sync.RWMutex
-	pending    map[string]*PendingRequest
-	policy     ApprovalPolicy
-	history    []ApprovalResponse
-	maxPending int
+	mu           sync.RWMutex
+	pending      map[string]*PendingRequest
+	policy       ApprovalPolicy
+	history      []ApprovalResponse
+	maxPending   int
+	onNewRequest func(req *ApprovalRequest)
+	onResolve    func(req *ApprovalRequest, decision ApprovalDecision, reason string)
 }
 
 // NewApprovalManager creates a new approval manager.
@@ -115,10 +215,25 @@ func NewApprovalManager(policy ApprovalPolicy) *ApprovalManager {
 	}
 }
 
+// SetOnNewRequest sets the callback for new approval requests.
+func (m *ApprovalManager) SetOnNewRequest(fn func(req *ApprovalRequest)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onNewRequest = fn
+}
+
+// SetOnResolve sets the callback for when an approval request is resolved.
+func (m *ApprovalManager) SetOnResolve(fn func(req *ApprovalRequest, decision ApprovalDecision, reason string)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onResolve = fn
+}
+
 // RequiresApproval checks if a tool requires approval based on current policy.
 func (m *ApprovalManager) RequiresApproval(toolName string) bool {
+	normalizedName := NormalizeToolName(toolName)
 	for _, t := range m.policy.RequireApproval {
-		if t == toolName {
+		if t == toolName || t == normalizedName {
 			return true
 		}
 	}
@@ -127,23 +242,31 @@ func (m *ApprovalManager) RequiresApproval(toolName string) bool {
 
 // GetRiskLevel determines the risk level of an operation.
 func (m *ApprovalManager) GetRiskLevel(toolName string) RiskLevel {
+	normalizedName := NormalizeToolName(toolName)
 	highRisk := map[string]bool{
 		"shell":      true,
+		"shell_exec": true,
 		"exec":       true,
+		"rm":         true,
 		"delete":     true,
 		"purchase":   true,
 		"send_money": true,
 	}
 	mediumRisk := map[string]bool{
 		"write_file":   true,
+		"file_write":   true,
+		"read_file":    true,
+		"file_read":    true,
+		"list_dir":     true,
+		"file_list":    true,
 		"browser":      true,
 		"send_message": true,
 	}
 
-	if highRisk[toolName] {
+	if highRisk[toolName] || highRisk[normalizedName] {
 		return RiskLevelHigh
 	}
-	if mediumRisk[toolName] {
+	if mediumRisk[toolName] || mediumRisk[normalizedName] {
 		return RiskLevelMedium
 	}
 	return RiskLevelLow
@@ -152,10 +275,10 @@ func (m *ApprovalManager) GetRiskLevel(toolName string) RiskLevel {
 // RequestApproval submits an approval request.
 func (m *ApprovalManager) RequestApproval(req *ApprovalRequest) (<-chan ApprovalDecision, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	// Check if this tool requires approval
 	if !m.RequiresApproval(req.ToolName) {
+		m.mu.Unlock()
 		ch := make(chan ApprovalDecision, 1)
 		ch <- ApprovalDecisionApproved
 		close(ch)
@@ -164,6 +287,7 @@ func (m *ApprovalManager) RequestApproval(req *ApprovalRequest) (<-chan Approval
 
 	// Check auto-approve for low risk
 	if m.policy.AutoApproveLow && req.RiskLevel == RiskLevelLow {
+		m.mu.Unlock()
 		ch := make(chan ApprovalDecision, 1)
 		ch <- ApprovalDecisionApproved
 		close(ch)
@@ -178,6 +302,7 @@ func (m *ApprovalManager) RequestApproval(req *ApprovalRequest) (<-chan Approval
 		}
 	}
 	if pendingCount >= m.maxPending {
+		m.mu.Unlock()
 		ch := make(chan ApprovalDecision, 1)
 		ch <- ApprovalDecisionDenied
 		close(ch)
@@ -191,18 +316,70 @@ func (m *ApprovalManager) RequestApproval(req *ApprovalRequest) (<-chan Approval
 		ResultCh: resultCh,
 	}
 
+	// Get timeout from policy or use request timeout
+	timeoutSecs := m.policy.TimeoutSecs
+	if timeoutSecs <= 0 {
+		timeoutSecs = req.TimeoutSecs
+	}
+	if timeoutSecs <= 0 {
+		timeoutSecs = 60 // Default 60 seconds
+	}
+
+	// Save callback reference before unlocking
+	var callback func(req *ApprovalRequest)
+	if m.onNewRequest != nil {
+		callback = m.onNewRequest
+	}
+
+	m.mu.Unlock()
+
+	// Trigger callback outside the lock
+	if callback != nil {
+		callback(req) // notify the approval manager that a new request is pending
+	}
+
+	// Start timeout goroutine
+	go func(requestID string, timeout time.Duration) {
+		time.Sleep(timeout)
+
+		m.mu.Lock()
+		defer m.mu.Unlock()
+
+		// Check if request still exists
+		if pending, ok := m.pending[requestID]; ok {
+			// Try to send timed out decision
+			select {
+			case pending.ResultCh <- ApprovalDecisionTimedOut:
+				// Record in history
+				m.history = append(m.history, ApprovalResponse{
+					RequestID:  requestID,
+					Decision:   ApprovalDecisionTimedOut,
+					Reason:     "timeout",
+					ResolvedAt: time.Now(),
+				})
+				// Remove from pending
+				delete(m.pending, requestID)
+			default:
+				// Channel already received a decision, do nothing
+			}
+		}
+	}(req.ID, time.Duration(timeoutSecs)*time.Second)
+
 	return resultCh, nil
 }
 
 // Resolve resolves a pending approval request.
 func (m *ApprovalManager) Resolve(requestID string, decision ApprovalDecision, reason string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	pending, ok := m.pending[requestID]
 	if !ok {
+		m.mu.Unlock()
 		return &ApprovalError{Message: "request not found"}
 	}
+
+	// Make a copy of the request before removing it
+	reqCopy := pending.Request
 
 	// Send decision
 	select {
@@ -220,6 +397,19 @@ func (m *ApprovalManager) Resolve(requestID string, decision ApprovalDecision, r
 
 	// Remove from pending
 	delete(m.pending, requestID)
+
+	// Save callback reference before unlocking
+	var callback func(req *ApprovalRequest, decision ApprovalDecision, reason string)
+	if m.onResolve != nil {
+		callback = m.onResolve
+	}
+
+	m.mu.Unlock()
+
+	// Trigger callback outside the lock
+	if callback != nil {
+		callback(&reqCopy, decision, reason)
+	}
 
 	return nil
 }

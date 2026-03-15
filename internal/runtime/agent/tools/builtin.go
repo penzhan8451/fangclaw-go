@@ -420,6 +420,45 @@ func (t *ShellTool) Execute(ctx context.Context, args map[string]interface{}) (s
 	return string(output), nil
 }
 
+// ============ Shell Exec Tool (Alias for shell) ============
+
+type ShellExecTool struct{}
+
+func NewShellExecTool() *ShellExecTool { return &ShellExecTool{} }
+
+func (t *ShellExecTool) Name() string        { return "shell_exec" }
+func (t *ShellExecTool) Description() string { return "Execute shell command" }
+
+func (t *ShellExecTool) Schema() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "function",
+		"function": map[string]interface{}{
+			"name":        "shell_exec",
+			"description": "Execute a shell command",
+			"parameters": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string", "description": "Command to execute"},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+}
+
+func (t *ShellExecTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
+	command, _ := args["command"].(string)
+	if command == "" {
+		return "", fmt.Errorf("command required")
+	}
+	cmd := exec.Command("sh", "-c", command)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), err
+	}
+	return string(output), nil
+}
+
 // ============ URL Parse Tool ============
 
 type URLParseTool struct{}
@@ -684,6 +723,7 @@ func RegisterAllTools(reg ToolRegistry) {
 	reg.RegisterTool(NewFileWriteTool())
 	reg.RegisterTool(NewListDirTool())
 	reg.RegisterTool(NewShellTool())
+	reg.RegisterTool(NewShellExecTool())
 	reg.RegisterTool(NewURLParseTool())
 	reg.RegisterTool(NewJSONTool())
 	reg.RegisterTool(NewHashTool())
