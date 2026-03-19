@@ -18,6 +18,7 @@ type AgentEntry struct {
 	Mode       string              `json:"mode"`
 	Tags       []string            `json:"tags"`
 	Manifest   types.AgentManifest `json:"manifest"`
+	Metadata   map[string]string   `json:"metadata,omitempty"`
 	CreatedAt  time.Time           `json:"created_at"`
 	LastActive time.Time           `json:"last_active"`
 	Children   []types.AgentID     `json:"children"`
@@ -182,6 +183,49 @@ func (r *AgentRegistry) AddChild(parentID, childID types.AgentID) {
 		entry.Children = append(entry.Children, childID)
 		r.saveToDisk()
 	}
+}
+
+func (r *AgentRegistry) Save() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.saveToDisk()
+}
+
+func (r *AgentRegistry) UpdateSystemPrompt(id types.AgentID, systemPrompt string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entry, exists := r.agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	entry.Manifest.SystemPrompt = systemPrompt
+	entry.LastActive = time.Now()
+	r.saveToDisk()
+	return nil
+}
+
+func (r *AgentRegistry) UpdateIdentity(id types.AgentID, identity map[string]string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entry, exists := r.agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	if entry.Metadata == nil {
+		entry.Metadata = make(map[string]string)
+	}
+	for k, v := range identity {
+		if v != "" {
+			entry.Metadata[k] = v
+		}
+	}
+	entry.LastActive = time.Now()
+	r.saveToDisk()
+	return nil
 }
 
 func (r *AgentRegistry) saveToDisk() {

@@ -249,7 +249,13 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		os.Exit(0)
 	}()
 
-	if err := api.RunServer(k, nil); err != nil {
+	// Create API server config from config file
+	fmt.Printf("Configured Listen Address:%s\n", cfg.APIListen)
+	apiCfg := &api.ServerConfig{
+		ListenAddr: cfg.APIListen,
+	}
+
+	if err := api.RunServer(k, apiCfg, defaultAgentID); err != nil {
 		return fmt.Errorf("server error: %w", err)
 	}
 

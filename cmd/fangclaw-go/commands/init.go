@@ -49,8 +49,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Write default config if not exists
 	configPath := filepath.Join(fangclawGoDir, "config.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		defaultConfig := `# OpenFang Agent OS configuration
-# See https://github.com/RightNow-AI/fangclaw for documentation
+		defaultConfig := `# FangClaw Agent OS configuration
+# See https://github.com/penzhan8451/fangclaw-go for documentation
 
 api_listen = "127.0.0.1:4200"
 

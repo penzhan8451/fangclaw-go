@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/penzhan8451/fangclaw-go/internal/a2a"
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/audit"
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
@@ -65,6 +66,9 @@ type Kernel struct {
 	mcpConnections  sync.Map
 	mcpTools        sync.Map
 	auditLog        *audit.AuditLog
+	a2aTaskStore    *a2a.A2ATaskStore
+	a2aClient       *a2a.A2AClient
+	a2aEventStore   *a2a.A2AEventStore
 	mu              sync.RWMutex
 	started         bool
 	startTime       time.Time
@@ -180,9 +184,17 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		pairingManager:  pairingManager,
 		workflowEngine:  workflowEngine,
 		auditLog:        audit.NewAuditLog(),
+		a2aTaskStore:    a2a.NewA2ATaskStore(1000),
+		a2aClient:       a2a.NewA2AClient(),
+		a2aEventStore:   a2a.NewA2AEventStore(1000),
 		startTime:       time.Now(),
 		stopping:        make(chan struct{}),
 	}
+
+	// Link event store to A2A components
+	k.a2aTaskStore.SetEventStore(k.a2aEventStore)
+	k.a2aClient.SetEventStore(k.a2aEventStore)
+	k.a2aClient.SetTaskStore(k.a2aTaskStore)
 
 	k.workflowEngine.SetChannelSender(func(channelName, recipient, message string) error {
 		_, err := channels.SendMessageToChannelName(k.registry, channelName, recipient, message, nil)
@@ -629,6 +641,18 @@ func (k *Kernel) AgentTemplates() *agent_templates.AgentTemplates {
 
 func (k *Kernel) WorkflowEngine() *WorkflowEngine {
 	return k.workflowEngine
+}
+
+func (k *Kernel) A2ATaskStore() *a2a.A2ATaskStore {
+	return k.a2aTaskStore
+}
+
+func (k *Kernel) A2AClient() *a2a.A2AClient {
+	return k.a2aClient
+}
+
+func (k *Kernel) A2AEventStore() *a2a.A2AEventStore {
+	return k.a2aEventStore
 }
 
 // ExecuteWorkflow executes a workflow by ID with the given input.

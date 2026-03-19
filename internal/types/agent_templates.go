@@ -15,6 +15,21 @@ type AgentTemplate struct {
 	McpServers   []string `json:"mcp_servers"`
 }
 
+func (t *AgentTemplate) ToAgentManifest() AgentManifest {
+	return AgentManifest{
+		Name:         t.Name,
+		Description:  t.Description,
+		SystemPrompt: t.SystemPrompt,
+		Model: ModelConfig{
+			Provider: t.Provider,
+			Model:    t.Model,
+		},
+		Tools:      t.Tools,
+		Skills:     t.Skills,
+		McpServers: t.McpServers,
+	}
+}
+
 func GetDefaultAgentTemplates() []AgentTemplate {
 	return []AgentTemplate{
 		{

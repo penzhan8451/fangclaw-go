@@ -15,10 +15,11 @@ function agentsPage() {
     filterState: 'all',
     loading: true,
     loadError: '',
+    spawnProviders: [],
     spawnForm: {
       name: '',
-      provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      provider: '',
+      model: '',
       systemPrompt: 'You are a helpful assistant.',
       profile: 'full',
       caps: { memory_read: true, memory_write: true, network: false, shell: false, agent_spawn: false }
@@ -269,7 +270,7 @@ function agentsPage() {
     },
 
     // ── Multi-step wizard navigation ──
-    openSpawnWizard() {
+    async openSpawnWizard() {
       this.showSpawnModal = true;
       this.spawnStep = 1;
       this.spawnMode = 'wizard';
@@ -279,6 +280,26 @@ function agentsPage() {
       this.spawnForm.name = '';
       this.spawnForm.systemPrompt = 'You are a helpful assistant.';
       this.spawnForm.profile = 'full';
+      
+      var self = this;
+      try {
+        var data = await FangClawGoAPI.get('/api/providers');
+        self.spawnProviders = data.providers || [];
+        
+        if (self.spawnProviders.length > 0) {
+          var configured = self.spawnProviders.find(function(p) { return p.auth_status === 'configured'; });
+          if (configured) {
+            self.spawnForm.provider = configured.id;
+            if (configured.default_model) {
+              self.spawnForm.model = configured.default_model;
+            }
+          } else {
+            self.spawnForm.provider = self.spawnProviders[0].id;
+          }
+        }
+      } catch(e) {
+        self.spawnProviders = [];
+      }
     },
 
     nextStep() {
@@ -352,7 +373,10 @@ function agentsPage() {
           if (this.spawnIdentity.color) patchBody.color = this.spawnIdentity.color;
           if (this.spawnIdentity.archetype) patchBody.archetype = this.spawnIdentity.archetype;
           if (this.selectedPreset) patchBody.vibe = this.selectedPreset;
-
+          // Merge system prompt with soul content
+          if (this.spawnForm.systemPrompt) patchBody.system_prompt = this.spawnForm.systemPrompt;
+          if(this.soulContent.trim()) patchBody.system_prompt += '\n# Soul\n' + this.soulContent.trim() + '\n';
+          
           if (Object.keys(patchBody).length) {
             FangClawGoAPI.patch('/api/agents/' + res.agent_id + '/config', patchBody).catch(function(e) { console.warn('Post-spawn config patch failed:', e.message); });
           }
@@ -454,16 +478,21 @@ function agentsPage() {
     },
 
     // -- Template methods --
-    async spawnFromTemplate(name) {
+    async spawnFromTemplate(name) { 
       try {
-        var data = await FangClawGoAPI.get('/api/templates/' + encodeURIComponent(name));
-        if (data.manifest_toml) {
-          var res = await FangClawGoAPI.post('/api/agents', { manifest_toml: data.manifest_toml });
-          if (res.agent_id) {
-            FangClawGoToast.success('Agent "' + (res.name || name) + '" spawned from template');
-            await Alpine.store('app').refreshAgents();
-            this.chatWithAgent({ id: res.agent_id, name: res.name || name, model_provider: '?', model_name: '?' });
+        console.log('Spawning from template id:', name);
+        var res = await FangClawGoAPI.post('/api/templates/' + encodeURIComponent(name) + '/spawn');
+        if (res.agent_id) {
+          FangClawGoToast.success('Agent "' + (res.name || name) + '" spawned from template');
+          await Alpine.store('app').refreshAgents();
+          var agents = Alpine.store('app').agents;
+          var agent = agents.find(a => a.id === res.agent_id);
+          var provider, model;
+          if (agent) {
+            provider = agent.model_provider || '?';
+            model = agent.model_name || '?';
           }
+          this.chatWithAgent({ id: res.agent_id, name: res.name || name, model_provider: provider || '?', model_name: model || '?' });
         }
       } catch(e) {
         FangClawGoToast.error('Failed to spawn from template: ' + e.message);
@@ -471,33 +500,35 @@ function agentsPage() {
     },
 
     async spawnBuiltin(t) {
-      var toml = 'name = "' + t.name + '"\n';
-      toml += 'description = "' + t.description.replace(/"/g, '\\"') + '"\n';
-      toml += 'module = "builtin:chat"\n';
-      toml += 'profile = "' + t.profile + '"\n\n';
-      toml += '[model]\nprovider = "' + t.provider + '"\nmodel = "' + t.model + '"\n';
-      toml += 'system_prompt = """\n' + t.system_prompt + '\n"""\n';
+      // Spawn from template instead of toml
+      await this.spawnFromTemplate(t.id);
+    //   var toml = 'name = "' + t.name + '"\n';
+    //   toml += 'description = "' + t.description.replace(/"/g, '\\"') + '"\n';
+    //   toml += 'module = "builtin:chat"\n';
+    //   toml += 'profile = "' + t.profile + '"\n\n';
+    //   toml += '[model]\nprovider = "' + t.provider + '"\nmodel = "' + t.model + '"\n';
+    //   toml += 'system_prompt = """\n' + t.system_prompt + '\n"""\n';
       
-      if (t.tools && t.tools.length > 0) {
-        toml += 'tools = ' + JSON.stringify(t.tools) + '\n';
-      }
-      if (t.skills && t.skills.length > 0) {
-        toml += 'skills = ' + JSON.stringify(t.skills) + '\n';
-      }
-      if (t.mcp_servers && t.mcp_servers.length > 0) {
-        toml += 'mcp_servers = ' + JSON.stringify(t.mcp_servers) + '\n';
-      }
+    //   if (t.tools && t.tools.length > 0) {
+    //     toml += 'tools = ' + JSON.stringify(t.tools) + '\n';
+    //   }
+    //   if (t.skills && t.skills.length > 0) {
+    //     toml += 'skills = ' + JSON.stringify(t.skills) + '\n';
+    //   }
+    //   if (t.mcp_servers && t.mcp_servers.length > 0) {
+    //     toml += 'mcp_servers = ' + JSON.stringify(t.mcp_servers) + '\n';
+    //   }
 
-      try {
-        var res = await FangClawGoAPI.post('/api/agents', { manifest_toml: toml });
-        if (res.agent_id) {
-          FangClawGoToast.success('Agent "' + t.name + '" spawned');
-          await Alpine.store('app').refreshAgents();
-          this.chatWithAgent({ id: res.agent_id, name: t.name, model_provider: t.provider, model_name: t.model });
-        }
-      } catch(e) {
-        FangClawGoToast.error('Failed to spawn agent: ' + e.message);
-      }
+    //   try {
+    //     var res = await FangClawGoAPI.post('/api/agents', { manifest_toml: toml });
+    //     if (res.agent_id) {
+    //       FangClawGoToast.success('Agent "' + t.name + '" spawned');
+    //       await Alpine.store('app').refreshAgents();
+    //       this.chatWithAgent({ id: res.agent_id, name: t.name, model_provider: t.provider, model_name: t.model });
+    //     }
+    //   } catch(e) {
+    //     FangClawGoToast.error('Failed to spawn agent: ' + e.message);
+    //   }
     }
   };
 }

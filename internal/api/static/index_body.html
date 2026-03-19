@@ -96,6 +96,10 @@
               <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
               <span class="nav-label">Approvals</span>
             </a>
+            <a class="nav-item" :class="{ active: page === 'a2a' }" @click="navigate('a2a')" :aria-current="page === 'a2a' ? 'page' : false">
+              <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></svg></span>
+              <span class="nav-label">A2A</span>
+            </a>
           </div>
         </template>
       </div>
@@ -903,7 +907,7 @@
                 <!-- Wizard / TOML toggle -->
                 <div class="tabs" style="margin-bottom:12px">
                   <div class="tab" :class="{ active: spawnMode === 'wizard' }" @click="spawnMode = 'wizard'">Wizard</div>
-                  <div class="tab" :class="{ active: spawnMode === 'toml' }" @click="spawnMode = 'toml'">Raw TOML</div>
+                  <!-- comment on Raw Toml tab --><!--div class="tab" :class="{ active: spawnMode === 'toml' }" @click="spawnMode = 'toml'">Raw TOML</div-->  
                 </div>
 
                 <!-- Raw TOML mode (unchanged) -->
@@ -960,12 +964,9 @@
                     <div class="form-group">
                       <label>Provider</label>
                       <select class="form-select" x-model="spawnForm.provider">
-                        <option value="anthropic">Anthropic</option><option value="openai">OpenAI</option>
-                        <option value="groq">Groq</option><option value="ollama">Ollama</option>
-                        <option value="google">Google</option><option value="mistral">Mistral</option>
-                        <option value="xai">xAI</option><option value="deepseek">DeepSeek</option>
-                        <option value="cerebras">Cerebras</option><option value="sambanova">SambaNova</option>
-                        <option value="together">Together</option>
+                        <template x-for="p in spawnProviders" :key="p.id">
+                          <option :value="p.id" x-text="p.display_name || p.id"></option>
+                        </template>
                       </select>
                     </div>
                     <div class="form-group">
@@ -4027,6 +4028,317 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
               <h4>No audit entries yet</h4>
               <p class="hint">Activity will appear here as agents operate.</p>
             </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Page: A2A -->
+    <template x-if="page === 'a2a'">
+      <div x-data="a2aPage" x-init="loadData()" @page-leave.window="stopSSE()">
+        <div class="page-header">
+          <h2>A2A (Agent-to-Agent)</h2>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-primary btn-sm" @click="openSendModal()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+              Send Message
+            </button>
+            <button class="btn btn-ghost btn-sm" @click="openTaskModal()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+              Post Task
+            </button>
+            <button class="btn btn-ghost btn-sm" @click="openDiscoverModal()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              Discover Agent
+            </button>
+            <button class="btn btn-ghost btn-sm" @click="loadData()" title="Refresh">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="page-body">
+          <!-- Loading -->
+          <div x-show="loading" style="animation:fadeIn 0.2s">
+            <div class="card mb-4"><div class="skeleton skeleton-text" style="width:160px;margin-bottom:8px"></div><div class="skeleton skeleton-card" style="height:120px"></div></div>
+            <div class="card"><div class="skeleton skeleton-text" style="width:120px;margin-bottom:8px"></div><div class="skeleton skeleton-card" style="height:200px"></div></div>
+          </div>
+          <!-- Error -->
+          <div x-show="!loading && loadError" class="error-state" style="animation:fadeIn 0.3s">
+            <h3 style="color:var(--error)">Connection Error</h3>
+            <p class="text-xs text-dim" x-text="loadError"></p>
+            <button class="btn btn-primary btn-sm" @click="loadData()" style="margin-top:8px">Retry</button>
+          </div>
+          <!-- Content -->
+          <div x-show="!loading && !loadError" style="animation:fadeIn 0.3s">
+            <!-- Topology -->
+            <div class="card mb-4">
+              <div class="card-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;margin-right:4px;vertical-align:-2px"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></svg>
+                Agent Topology
+                <span class="badge badge-dim" style="margin-left:8px;font-weight:400" x-text="topology.nodes.length + ' agents'"></span>
+              </div>
+              <div style="padding:8px 0;font-family:var(--font-mono);font-size:12px;line-height:1.8">
+                <template x-if="topology.nodes.length === 0">
+                  <div class="text-dim" style="text-align:center;padding:24px">No agents running</div>
+                </template>
+                <template x-for="root in rootNodes()" :key="root.id">
+                  <div class="comms-topo-tree">
+                    <div class="comms-topo-node" :title="root.id">
+                      <span :class="stateBadgeClass(root.state)" style="font-size:10px;padding:1px 6px" x-text="root.state"></span>
+                      <strong x-text="root.name" style="margin:0 4px"></strong>
+                      <span class="text-dim" x-text="root.model"></span>
+                      <template x-if="root.type === 'external' && root.url">
+                        <span class="text-dim" style="margin-left:8px;font-size:11px" x-text="'(' + root.url + ')'"></span>
+                      </template>
+                      <template x-for="peer in peersOf(root.id)" :key="peer.id">
+                        <span class="text-dim" style="margin-left:8px" x-text="'\u2194 ' + peer.name"></span>
+                      </template>
+                    </div>
+                    <template x-for="(child, ci) in childrenOf(root.id)" :key="child.id">
+                      <div class="comms-topo-child">
+                        <span class="comms-topo-branch" x-text="ci < childrenOf(root.id).length - 1 ? '\u251c\u2500\u2500 ' : '\u2514\u2500\u2500 '"></span>
+                        <span :class="stateBadgeClass(child.state)" style="font-size:10px;padding:1px 6px" x-text="child.state"></span>
+                        <strong x-text="child.name" style="margin:0 4px"></strong>
+                        <span class="text-dim" x-text="child.model"></span>
+                        <template x-if="child.type === 'external' && child.url">
+                          <span class="text-dim" style="margin-left:8px;font-size:11px" x-text="'(' + child.url + ')'"></span>
+                        </template>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Live Event Feed -->
+            <div class="card mb-4">
+              <div class="card-header flex justify-between items-center">
+                <div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;margin-right:4px;vertical-align:-2px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                  Live Event Feed
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="badge badge-success" style="font-size:9px;padding:2px 6px;animation:pulse-ring 2s infinite">LIVE</span>
+                  <span class="text-xs text-dim" x-text="events.length + ' events'"></span>
+                </div>
+              </div>
+              <div style="max-height:400px;overflow-y:auto">
+                <template x-if="events.length === 0">
+                  <div class="text-dim" style="text-align:center;padding:24px">No inter-agent events yet</div>
+                </template>
+                <template x-for="ev, index in events" :key="ev.id || index">
+                  <div class="comms-event-row">
+                    <span class="comms-event-time text-xs text-dim" x-text="timeAgo(ev.timestamp)"></span>
+                    <span :class="eventBadgeClass(ev.kind)" style="font-size:10px;padding:1px 6px;min-width:70px;text-align:center" x-text="eventLabel(ev.kind)"></span>
+                    <span style="font-weight:600;font-size:12px" x-text="ev.sourceName"></span>
+                    <span class="text-dim" x-show="ev.targetName" x-text="'\u2192 ' + ev.targetName"></span>
+                    <span class="comms-event-detail text-dim text-xs" x-text="ev.detail" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Tasks List -->
+            <div class="card">
+              <div class="card-header flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;margin-right:4px;vertical-align:-2px"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                  <span>Tasks</span>
+                  <!-- 排序控件 -->
+                  <div class="flex items-center gap-1 text-xs">
+                    <button @click="setSort('createdAt')" class="sort-btn" :class="{ 'active': sortField === 'createdAt' }">
+                      Time <span x-text="getSortIcon('createdAt')"></span>
+                    </button>
+                    <button @click="setSort('status')" class="sort-btn" :class="{ 'active': sortField === 'status' }">
+                      Status <span x-text="getSortIcon('status')"></span>
+                    </button>
+                    <button @click="setSort('agent')" class="sort-btn" :class="{ 'active': sortField === 'agent' }">
+                      Agent <span x-text="getSortIcon('agent')"></span>
+                    </button>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="badge badge-dim" x-text="tasks.length + ' tasks'"></span>
+                  <button @click="timeDisplayMode = timeDisplayMode === 'relative' ? 'absolute' : 'relative'" 
+                          class="btn btn-ghost btn-xs">
+                    <span x-text="timeDisplayMode === 'relative' ? 'Absolute Time' : 'Relative Time'"></span>
+                  </button>
+                </div>
+              </div>
+              <div style="max-height:500px;overflow-y:auto">
+                <template x-if="tasks.length === 0">
+                  <div class="text-dim" style="text-align:center;padding:24px">No tasks yet</div>
+                </template>
+                <template x-for="task in tasks" :key="task.id">
+                  <div class="comms-event-row" style="cursor:pointer" @click="openTaskDetail(task)">
+                    <span class="comms-event-time text-xs text-dim" x-text="formatTaskTime(task)"></span>
+                    <span :class="taskStatusBadgeClass(task.status.state)" style="font-size:10px;padding:1px 6px;min-width:70px;text-align:center;text-transform:capitalize" x-text="task.status.state"></span>
+                    <span style="font-weight:600;font-size:12px" x-text="task.agentName || task.agentId"></span>
+                    <span class="text-dim" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="getTaskMessageText(task.messages[0])"></span>
+                    <span class="text-xs text-dim" x-text="formatDateTime(task.updatedAt)"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <!-- Send Message Modal -->
+          <div x-show="showSendModal" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px)" @click.self="showSendModal=false" x-transition>
+            <div class="card" style="width:420px;max-width:90vw" @click.stop>
+              <div class="card-header">Send Agent Message</div>
+              <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
+                <div>
+                  <label class="text-xs text-dim" style="display:block;margin-bottom:4px">From Agent</label>
+                  <select x-model="sendFrom" class="input" style="width:100%">
+                    <option value="">Select agent...</option>
+                    <template x-for="n in topology.nodes" :key="n.id">
+                      <option :value="n.id" x-text="n.name + ' (' + n.state + ')'"></option>
+                    </template>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs text-dim" style="display:block;margin-bottom:4px">To Agent</label>
+                  <select x-model="sendTo" class="input" style="width:100%">
+                    <option value="">Select agent...</option>
+                    <template x-for="n in topology.nodes" :key="n.id">
+                      <option :value="n.id" x-text="n.name + ' (' + n.state + ')'"></option>
+                    </template>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs text-dim" style="display:block;margin-bottom:4px">Message</label>
+                  <textarea x-model="sendMsg" class="input" rows="3" placeholder="Type a message..." style="width:100%;resize:vertical"></textarea>
+                </div>
+                <div class="flex gap-2" style="justify-content:flex-end">
+                  <button class="btn btn-ghost btn-sm" @click="showSendModal=false">Cancel</button>
+                  <button class="btn btn-primary btn-sm" @click="submitSend()" :disabled="sendLoading || !sendFrom || !sendTo || !sendMsg.trim()">
+                    <span x-show="sendLoading">Sending...</span>
+                    <span x-show="!sendLoading">Send</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Post Task Modal -->
+          <div x-show="showTaskModal" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px)" @click.self="showTaskModal=false" x-transition>
+            <div class="card" style="width:420px;max-width:90vw" @click.stop>
+              <div class="card-header">Post Task</div>
+              <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
+                <div>
+                  <label class="text-xs text-dim" style="display:block;margin-bottom:4px">Title</label>
+                  <input type="text" x-model="taskTitle" class="input" placeholder="Task title..." style="width:100%">
+                </div>
+                <div>
+                  <label class="text-xs text-dim" style="display:block;margin-bottom:4px">Description</label>
+                  <textarea x-model="taskDesc" class="input" rows="3" placeholder="Task description..." style="width:100%;resize:vertical"></textarea>
+                </div>
+                <div>
+                  <label class="text-xs text-dim" style="display:block;margin-bottom:4px">Assign To (optional)</label>
+                  <select x-model="taskAssign" class="input" style="width:100%">
+                    <option value="">Unassigned</option>
+                    <template x-for="n in topology.nodes" :key="n.id">
+                      <option :value="n.id" x-text="n.name"></option>
+                    </template>
+                  </select>
+                </div>
+                <div class="flex gap-2" style="justify-content:flex-end">
+                  <button class="btn btn-ghost btn-sm" @click="showTaskModal=false">Cancel</button>
+                  <button class="btn btn-primary btn-sm" @click="submitTask()" :disabled="taskLoading || !taskTitle.trim()">
+                    <span x-show="taskLoading">Posting...</span>
+                    <span x-show="!taskLoading">Post Task</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Discover Agent Modal -->
+          <div x-show="showDiscoverModal" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px)" @click.self="showDiscoverModal=false" x-transition>
+            <div class="card" style="width:420px;max-width:90vw" @click.stop>
+              <div class="card-header">Discover External Agent</div>
+              <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
+                <div>
+                  <label class="text-xs text-dim" style="display:block;margin-bottom:4px">Agent URL</label>
+                  <input type="text" x-model="discoverUrl" class="input" placeholder="https://example.com/agent" style="width:100%">
+                </div>
+                <div class="flex gap-2" style="justify-content:flex-end">
+                  <button class="btn btn-ghost btn-sm" @click="showDiscoverModal=false">Cancel</button>
+                  <button class="btn btn-primary btn-sm" @click="submitDiscover()" :disabled="discoverLoading || !discoverUrl.trim()">
+                    <span x-show="discoverLoading">Discovering...</span>
+                    <span x-show="!discoverLoading">Discover</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Task Detail Modal -->
+          <div x-show="showTaskDetailModal" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px)" @click.self="closeTaskDetail()" x-transition>
+            <div class="card" style="width:600px;max-width:90vw;max-height:80vh;overflow-y:auto" @click.stop>
+              <div class="card-header flex justify-between items-center">
+                <span>Task Detail</span>
+                <button class="btn btn-ghost btn-sm" @click="closeTaskDetail()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <template x-if="selectedTask">
+                <div style="margin-top:12px">
+                  <div class="detail-row">
+                    <span class="detail-label">Task ID</span>
+                    <span class="detail-value font-mono text-xs" x-text="selectedTask.id"></span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Agent</span>
+                    <span class="detail-value" x-text="selectedTask.agentName || selectedTask.agentId"></span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Status</span>
+                    <span :class="taskStatusBadgeClass(selectedTask.status.state)" style="text-transform:capitalize" x-text="selectedTask.status.state"></span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Created</span>
+                    <span class="detail-value text-xs" x-text="formatDateTime(selectedTask.createdAt)"></span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Updated</span>
+                    <span class="detail-value text-xs" x-text="formatDateTime(selectedTask.updatedAt)"></span>
+                  </div>
+
+                  <template x-if="selectedTask.messages && selectedTask.messages.length > 0">
+                    <div style="margin-top:16px">
+                      <div class="card-header" style="margin:0 0 8px 0">Messages</div>
+                      <div style="display:flex;flex-direction:column;gap:8px">
+                        <template x-for="(msg, index) in selectedTask.messages" :key="index">
+                          <div class="card" style="padding:12px">
+                            <div class="flex justify-between items-center mb-2">
+                              <span class="badge" :class="msg.role === 'user' ? 'badge-info' : 'badge-success'" style="text-transform:capitalize" x-text="msg.role"></span>
+                            </div>
+                            <div style="white-space:pre-wrap;word-break:break-word" x-text="getTaskMessageText(msg)"></div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="selectedTask.artifacts && selectedTask.artifacts.length > 0">
+                    <div style="margin-top:16px">
+                      <div class="card-header" style="margin:0 0 8px 0">Artifacts</div>
+                      <div style="display:flex;flex-direction:column;gap:8px">
+                        <template x-for="(artifact, index) in selectedTask.artifacts" :key="index">
+                          <div class="card" style="padding:12px">
+                            <div class="flex justify-between items-center mb-2">
+                              <span class="badge badge-dim" x-text="artifact.name || 'Artifact'"></span>
+                            </div>
+                            <div style="white-space:pre-wrap;word-break:break-word" x-text="getTaskMessageText({parts: artifact.parts})"></div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </template>
             </div>
           </div>
         </div>

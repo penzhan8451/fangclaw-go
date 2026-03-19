@@ -15,7 +15,9 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/google/uuid"
+	"github.com/penzhan8451/fangclaw-go/internal/a2a"
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
+	"github.com/penzhan8451/fangclaw-go/internal/audit"
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
 	"github.com/penzhan8451/fangclaw-go/internal/clawhub"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
@@ -310,7 +312,8 @@ func sharedMemoryAgentID() string {
 
 // Router manages API routes.
 type Router struct {
-	kernel *kernel.Kernel
+	kernel       *kernel.Kernel
+	defaultAgent string
 }
 
 // NewRouter creates a new API router.
@@ -382,8 +385,45 @@ func NewRouter(k *kernel.Kernel) *Router {
 	return r
 }
 
+// SetDefault sets the default agent for A2A tasks.
+func (r *Router) SetDefault(agentID string) {
+	r.defaultAgent = agentID
+}
+
 // RegisterRoutes registers all API routes.
 func (r *Router) RegisterRoutes(mux *http.ServeMux) {
+	// A2A Standard protocol endpoints (standard, no /api prefix)
+	mux.HandleFunc("GET /.well-known/agent.json", r.handleA2AAgentCard)
+	mux.HandleFunc("GET /a2a/agents", r.handleA2AListAgents)
+	// called through JSON-RPC2.0 format by external A2A Agent
+	mux.HandleFunc("POST /a2a/tasks/send", r.handleA2ASendTask)
+	mux.HandleFunc("GET /a2a/tasks/{id}", r.handleA2AGetTask)
+	mux.HandleFunc("POST /a2a/tasks/{id}/cancel", r.handleA2ACancelTask)
+
+	// A2A protocol endpoints (with /api prefix for frontend compatibility)
+	mux.HandleFunc("POST /api/a2a/tasks/send", r.handleA2ASendTask)
+	mux.HandleFunc("GET /api/a2a/tasks/{id}", r.handleA2AGetTask)
+	mux.HandleFunc("POST /api/a2a/tasks/{id}/cancel", r.handleA2ACancelTask)
+
+	// A2A external agent management endpoints (internal API)
+	mux.HandleFunc("GET /api/a2a/agents", r.handleA2AListAgents)
+	mux.HandleFunc("POST /api/a2a/discover", r.handleA2ADiscoverExternal)
+	mux.HandleFunc("POST /api/a2a/send", r.handleA2ASendExternal)
+	mux.HandleFunc("GET /api/a2a/tasks/{id}/status", r.handleA2AExternalTaskStatus)
+	mux.HandleFunc("GET /api/a2a/topology", r.handleA2ATopology)
+	mux.HandleFunc("GET /api/a2a/events", r.handleA2AEvents)
+	mux.HandleFunc("GET /api/a2a/events/stream", r.handleA2AEventsStream)
+
+	// Comms endpoints (local agent communication)
+	mux.HandleFunc("GET /api/comms/topology", r.handleA2ATopology) // Reuse topology handler
+	//-- Send a message from one local agent to another
+	mux.HandleFunc("POST /api/comms/send", r.handleCommsSend)
+	//-- Publish a task to an agent's task queue (local agent, no A2A protocol)
+	mux.HandleFunc("POST /api/comms/task", r.handleCommsTask)
+	//-- Task management endpoints
+	mux.HandleFunc("GET /api/tasks", r.handleListTasks)
+	mux.HandleFunc("GET /api/tasks/{id}", r.handleGetTask)
+
 	// Health and status endpoints
 	mux.HandleFunc("GET /api/health", r.handleHealth)
 	mux.HandleFunc("GET /api/status", r.handleStatus)
@@ -501,7 +541,6 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/budget", r.handleBudget)
 	mux.HandleFunc("GET /api/budget/agents", r.handleBudgetAgents)
 	mux.HandleFunc("GET /api/network/status", r.handleNetworkStatus)
-	mux.HandleFunc("GET /api/a2a/agents", r.handleA2AAgents)
 	mux.HandleFunc("GET /api/tools", r.handleTools)
 	mux.HandleFunc("GET /api/usage/summary", r.handleUsageSummary)
 	mux.HandleFunc("GET /api/usage/by-model", r.handleUsageByModel)
@@ -516,6 +555,11 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/providers/{name}/url", r.handleSetProviderURL)
 	mux.HandleFunc("GET /api/mcp/servers", r.handleMcpServers)
 	mux.HandleFunc("POST /api/mcp/servers/:id/reconnect", r.handleMcpServerReconnect)
+	mux.HandleFunc("GET /api/profiles", r.handleProfiles)
+	mux.HandleFunc("PATCH /api/agents/{id}/config", r.handlePatchAgentConfig)
+	mux.HandleFunc("GET /api/agents/{id}/files", r.handleListAgentFiles)
+	mux.HandleFunc("GET /api/agents/{id}/files/{filename}", r.handleGetAgentFile)
+	mux.HandleFunc("PUT /api/agents/{id}/files/{filename}", r.handleSetAgentFile)
 
 	// Agent session endpoints
 	mux.HandleFunc("GET /api/agents/{id}/session", r.handleGetAgentSession)
@@ -564,6 +608,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	// Agent templates endpoints
 	mux.HandleFunc("GET /api/agent-templates", r.handleListAgentTemplates)
 	mux.HandleFunc("GET /api/agent-templates/{id}", r.handleGetAgentTemplate)
+	mux.HandleFunc("POST /api/templates/{id}/spawn", r.handleSpawnAgentFromTemplate)
 
 	// Shutdown endpoint
 	mux.HandleFunc("POST /api/shutdown", r.handleShutdown)
@@ -1665,6 +1710,690 @@ func (r *Router) handleA2AAgents(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
+// handleA2AAgentCard handles GET /.well-known/agent.json — A2A Agent Card
+func (r *Router) handleA2AAgentCard(w http.ResponseWriter, req *http.Request) {
+	agents := r.kernel.AgentRegistry().List()
+	baseURL := fmt.Sprintf("http://%s", req.Host)
+
+	if len(agents) > 0 {
+		card := a2a.BuildAgentCard(baseURL)
+		respondJSON(w, http.StatusOK, card)
+	} else {
+		card := map[string]interface{}{
+			"name":               "fangclaw-go",
+			"description":        "FangClaw-go Agent — no agents spawned yet",
+			"url":                baseURL + "/a2a",
+			"version":            "0.1.0",
+			"capabilities":       map[string]bool{"streaming": true},
+			"skills":             []interface{}{},
+			"defaultInputModes":  []string{"text"},
+			"defaultOutputModes": []string{"text"},
+		}
+		respondJSON(w, http.StatusOK, card)
+	}
+}
+
+// handleA2AListAgents handles GET /a2a/agents — List all discovered external A2A agents
+func (r *Router) handleA2AListAgents(w http.ResponseWriter, req *http.Request) {
+	var cards []interface{} = make([]interface{}, 0)
+
+	if r.kernel.A2AClient() != nil {
+		externalAgents := r.kernel.A2AClient().ListExternalAgents()
+		for _, extAgent := range externalAgents {
+			cards = append(cards, extAgent.Card)
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"agents": cards,
+		"total":  len(cards),
+	})
+}
+
+// handleA2ASendTask handles POST /a2a/tasks/send — Submit a task to a local agent
+func (r *Router) handleA2ASendTask(w http.ResponseWriter, req *http.Request) {
+	var request map[string]interface{}
+	if err := json.NewDecoder(req.Body).Decode(&request); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	messageText := "No message provided"
+	if params, ok := request["params"].(map[string]interface{}); ok {
+		if message, ok := params["message"].(map[string]interface{}); ok {
+			if parts, ok := message["parts"].([]interface{}); ok {
+				for _, part := range parts {
+					if p, ok := part.(map[string]interface{}); ok {
+						if p["type"] == "text" {
+							if text, ok := p["text"].(string); ok {
+								messageText = text
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	agentRuntime := r.kernel.AgentRuntime()
+
+	var actualAgentID string
+
+	if r.defaultAgent != "" {
+		if _, ok := agentRuntime.GetAgent(r.defaultAgent); ok {
+			actualAgentID = r.defaultAgent
+		} else if agentCtx, ok := agentRuntime.FindAgentByName(r.defaultAgent); ok {
+			actualAgentID = agentCtx.ID
+		} else if agentEntry := r.kernel.AgentRegistry().FindByName(r.defaultAgent); agentEntry != nil {
+			actualAgentID = agentEntry.ID.String()
+		}
+	}
+
+	var actualAgentName string
+	if actualAgentID == "" {
+		if agentCtx, ok := agentRuntime.GetFirstAgent(); ok {
+			actualAgentID = agentCtx.ID
+			actualAgentName = agentCtx.Name
+		} else {
+			agents := r.kernel.AgentRegistry().List()
+			if len(agents) == 0 {
+				respondError(w, http.StatusNotFound, "No agents available")
+				return
+			}
+			actualAgentID = agents[0].ID.String()
+			actualAgentName = agents[0].Name
+		}
+	} else {
+		if aid, err := uuid.Parse(actualAgentID); err == nil {
+			agentEntry := r.kernel.AgentRegistry().Get(aid)
+			if agentEntry != nil {
+				actualAgentName = agentEntry.Name
+			}
+		}
+		if agentCtx, ok := agentRuntime.GetAgent(actualAgentID); ok {
+			actualAgentName = agentCtx.Name
+		}
+	}
+
+	var sessionID *string
+	if params, ok := request["params"].(map[string]interface{}); ok {
+		if sid, ok := params["sessionId"].(string); ok && sid != "" {
+			sessionID = &sid
+		}
+	}
+
+	if r.kernel.A2ATaskStore() == nil {
+		respondError(w, http.StatusInternalServerError, "A2A not configured")
+		return
+	}
+
+	messages := []a2a.A2aMessage{
+		{
+			Role: "user",
+			Parts: []a2a.A2aPart{
+				{
+					Type: "text",
+					Text: messageText,
+				},
+			},
+		},
+	}
+	task := r.kernel.A2ATaskStore().CreateTask(actualAgentID, actualAgentName, messages, sessionID)
+	task.Status.State = a2a.A2aTaskStatusWorking
+	r.kernel.A2ATaskStore().UpdateTaskStatus(task.ID, a2a.A2aTaskStatusWorking)
+
+	r.kernel.AuditLog().Record("a2a", actualAgentID, audit.ActionA2ATaskCreated, fmt.Sprintf("task_id=%s", task.ID), "submitted")
+
+	go func() {
+		result, err := r.kernel.SendMessage(context.Background(), actualAgentID, messageText)
+		if err != nil {
+			errorMsg := a2a.A2aMessage{
+				Role: "agent",
+				Parts: []a2a.A2aPart{
+					{
+						Type: "text",
+						Text: fmt.Sprintf("Error: %v", err),
+					},
+				},
+			}
+			r.kernel.A2ATaskStore().FailTask(task.ID, errorMsg)
+			r.kernel.AuditLog().Record("a2a", actualAgentID, audit.ActionA2ATaskFailed, fmt.Sprintf("task_id=%s, error=%v", task.ID, err), "failed")
+		} else {
+			responseMsg := a2a.A2aMessage{
+				Role: "agent",
+				Parts: []a2a.A2aPart{
+					{
+						Type: "text",
+						Text: result,
+					},
+				},
+			}
+			r.kernel.A2ATaskStore().CompleteTask(task.ID, responseMsg, []a2a.A2aArtifact{})
+			r.kernel.AuditLog().Record("a2a", actualAgentID, audit.ActionA2ATaskCompleted, fmt.Sprintf("task_id=%s", task.ID), "completed")
+		}
+	}()
+
+	if completedTask, ok := r.kernel.A2ATaskStore().GetTask(task.ID); ok {
+		respondJSON(w, http.StatusOK, completedTask)
+	} else {
+		respondError(w, http.StatusInternalServerError, "Task disappeared after submission")
+	}
+}
+
+// handleA2AGetTask handles GET /a2a/tasks/{id} — Get task status
+func (r *Router) handleA2AGetTask(w http.ResponseWriter, req *http.Request) {
+	taskID := req.PathValue("id")
+	if r.kernel.A2ATaskStore() == nil {
+		respondError(w, http.StatusInternalServerError, "A2A not configured")
+		return
+	}
+
+	if task, ok := r.kernel.A2ATaskStore().GetTask(taskID); ok {
+		respondJSON(w, http.StatusOK, task)
+	} else {
+		respondError(w, http.StatusNotFound, fmt.Sprintf("Task '%s' not found", taskID))
+	}
+}
+
+// handleA2ACancelTask handles POST /a2a/tasks/{id}/cancel — Cancel a task
+func (r *Router) handleA2ACancelTask(w http.ResponseWriter, req *http.Request) {
+	taskID := req.PathValue("id")
+	if r.kernel.A2ATaskStore() == nil {
+		respondError(w, http.StatusInternalServerError, "A2A not configured")
+		return
+	}
+
+	if task, ok := r.kernel.A2ATaskStore().GetTask(taskID); ok {
+		if r.kernel.A2ATaskStore().CancelTask(taskID) {
+			var sessionIDStr string
+			if task.SessionID != nil {
+				sessionIDStr = *task.SessionID
+			} else {
+				sessionIDStr = "default"
+			}
+			r.kernel.AuditLog().Record("a2a", sessionIDStr, audit.ActionA2ATaskCancelled, fmt.Sprintf("task_id=%s", taskID), "cancelled")
+			if updatedTask, ok := r.kernel.A2ATaskStore().GetTask(taskID); ok {
+				respondJSON(w, http.StatusOK, updatedTask)
+			} else {
+				respondError(w, http.StatusInternalServerError, "Task disappeared after cancellation")
+			}
+		} else {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("Task '%s' cannot be cancelled", taskID))
+		}
+	} else {
+		respondError(w, http.StatusNotFound, fmt.Sprintf("Task '%s' not found", taskID))
+	}
+}
+
+// handleA2ADiscoverExternal handles POST /api/a2a/discover — Discover an external A2A agent
+func (r *Router) handleA2ADiscoverExternal(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Missing 'url' field")
+		return
+	}
+
+	if r.kernel.A2AClient() == nil {
+		respondError(w, http.StatusInternalServerError, "A2A not configured")
+		return
+	}
+
+	card, err := r.kernel.A2AClient().DiscoverAgent(body.URL)
+	if err != nil {
+		r.kernel.AuditLog().Record("a2a", body.URL, audit.ActionA2AAgentDiscovered, fmt.Sprintf("url=%s, error=%v", body.URL, err), "failed")
+		respondError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	r.kernel.AuditLog().Record("a2a", body.URL, audit.ActionA2AAgentDiscovered, fmt.Sprintf("url=%s, agent=%s", body.URL, card.Name), "success")
+
+	// Record A2A event
+	r.kernel.A2AClient().RecordAgentDiscoveredEvent(r.kernel.A2AEventStore(), card, body.URL)
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"url":   body.URL,
+		"agent": card,
+	})
+}
+
+// handleA2ATopology handles GET /api/a2a/topology — Get agent topology (local + external)
+func (r *Router) handleA2ATopology(w http.ResponseWriter, req *http.Request) {
+	var topology a2a.Topology
+
+	// Add local agents
+	localAgents := r.kernel.AgentRegistry().List()
+	for _, agent := range localAgents {
+		topology.Nodes = append(topology.Nodes, &a2a.TopoNode{
+			ID:    agent.ID.String(),
+			Name:  agent.Name,
+			Type:  "local",
+			State: string(agent.State),
+		})
+	}
+
+	// Add external agents
+	if r.kernel.A2AClient() != nil {
+		externalAgents := r.kernel.A2AClient().ListExternalAgents()
+		for _, extAgent := range externalAgents {
+			topology.Nodes = append(topology.Nodes, &a2a.TopoNode{
+				ID:    extAgent.Card.Name,
+				Name:  extAgent.Card.Name,
+				Type:  "external",
+				URL:   extAgent.URL,
+				State: "discovered",
+			})
+		}
+	}
+
+	// No edges for now - can add later if needed
+	topology.Edges = []*a2a.TopoEdge{}
+
+	respondJSON(w, http.StatusOK, topology)
+}
+
+// handleA2AEvents handles GET /api/a2a/events — Get A2A events
+func (r *Router) handleA2AEvents(w http.ResponseWriter, req *http.Request) {
+	if r.kernel.A2AEventStore() == nil {
+		respondJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+
+	// Get limit from query parameter, default 200
+	limitStr := req.URL.Query().Get("limit")
+	limit := 200
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	events := r.kernel.A2AEventStore().ListEvents(limit)
+	respondJSON(w, http.StatusOK, events)
+}
+
+// handleCommsSend handles POST /api/comms/send — Send a message from one agent to another (local or external)
+func (r *Router) handleCommsSend(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		FromAgentID   string `json:"fromAgentId"`
+		FromAgentName string `json:"fromAgentName"`
+		ToAgentID     string `json:"toAgentId"`
+		ToAgentName   string `json:"toAgentName"`
+		Message       string `json:"message"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if body.ToAgentID == "" {
+		respondError(w, http.StatusBadRequest, "Missing 'toAgentId' field")
+		return
+	}
+	if body.Message == "" {
+		respondError(w, http.StatusBadRequest, "Missing 'message' field")
+		return
+	}
+
+	// Check if agent is external agent
+	var externalAgent *a2a.ExternalAgent
+	if r.kernel.A2AClient() != nil {
+		externalAgents := r.kernel.A2AClient().ListExternalAgents()
+		for _, extAgent := range externalAgents {
+			if extAgent.Card.Name == body.ToAgentID {
+				externalAgent = extAgent
+				if body.ToAgentName == "" {
+					body.ToAgentName = extAgent.Card.Name
+				}
+				break
+			}
+		}
+	}
+
+	if externalAgent != nil {
+		// Send to external agent first
+		externalTask, err := r.kernel.A2AClient().SendTask(externalAgent.URL, body.Message, nil)
+		if err != nil {
+			r.kernel.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("message=%s, error=%v", body.Message, err), "failed")
+			respondError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+
+		// Create task in store with external task ID
+		externalTask.AgentName = body.ToAgentName
+		r.kernel.A2ATaskStore().AddTask(externalTask)
+		r.kernel.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("message=%s, task_id=%s", body.Message, externalTask.ID), "success")
+
+		if r.kernel.A2AEventStore() != nil {
+			event := &a2a.A2AEvent{
+				ID:         uuid.New().String(),
+				Timestamp:  time.Now(),
+				Kind:       "agent_message",
+				SourceID:   body.FromAgentID,
+				SourceName: body.FromAgentName,
+				TargetID:   body.ToAgentID,
+				TargetName: body.ToAgentName,
+				Detail:     body.Message,
+				Payload:    map[string]interface{}{"task": externalTask},
+			}
+			r.kernel.A2AEventStore().AddEvent(event)
+		}
+
+		// If task is already completed/failed/cancelled, just update status (messages and artifacts are already in the task)
+		if externalTask.Status.State == a2a.A2aTaskStatusCompleted ||
+			externalTask.Status.State == a2a.A2aTaskStatusFailed ||
+			externalTask.Status.State == a2a.A2aTaskStatusCancelled {
+			r.kernel.A2ATaskStore().UpdateTaskStatus(externalTask.ID, externalTask.Status.State)
+		} else {
+			// Start polling for status
+			r.kernel.A2AClient().StartPolling(externalTask.ID, externalAgent.URL, 2*time.Second)
+		}
+
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"task": externalTask,
+		})
+		return
+	}
+
+	// Create task for local agent
+	messages := []a2a.A2aMessage{
+		{
+			Role: "user",
+			Parts: []a2a.A2aPart{
+				{Type: "text", Text: body.Message},
+			},
+		},
+	}
+	task := r.kernel.A2ATaskStore().CreateTask(body.ToAgentID, body.ToAgentName, messages, nil)
+
+	// Execute task asynchronously
+	go func() {
+		ctx := context.Background()
+		r.kernel.A2ATaskStore().UpdateTaskStatus(task.ID, a2a.A2aTaskStatusWorking)
+
+		response, err := r.kernel.SendMessage(ctx, body.ToAgentID, body.Message)
+		if err != nil {
+			r.kernel.AuditLog().Record("comms", body.ToAgentID, audit.ActionAgentMessage, fmt.Sprintf("to=%s, error=%v", body.ToAgentID, err), "failed")
+			r.kernel.A2ATaskStore().FailTask(task.ID, a2a.A2aMessage{
+				Role: "assistant",
+				Parts: []a2a.A2aPart{
+					{Type: "text", Text: fmt.Sprintf("Error: %v", err)},
+				},
+			})
+			return
+		}
+
+		r.kernel.AuditLog().Record("comms", body.ToAgentID, audit.ActionAgentMessage, fmt.Sprintf("from=%s, to=%s", body.FromAgentID, body.ToAgentID), "success")
+
+		// Complete task with response
+		r.kernel.A2ATaskStore().CompleteTask(task.ID, a2a.A2aMessage{
+			Role: "assistant",
+			Parts: []a2a.A2aPart{
+				{Type: "text", Text: response},
+			},
+		}, nil)
+	}()
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"task": task,
+	})
+}
+
+// handleCommsTask handles POST /api/comms/task — Publish a task to an agent's task queue
+func (r *Router) handleCommsTask(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		AgentID    string `json:"agentId"`
+		AssignedTo string `json:"assignedTo"`
+		AgentName  string `json:"agentName"`
+		Title      string `json:"title"`
+		Desc       string `json:"description"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if body.Title == "" {
+		respondError(w, http.StatusBadRequest, "Missing 'title' field")
+		return
+	}
+
+	// Determine which agent to use
+	agentID := body.AgentID
+	if agentID == "" {
+		agentID = body.AssignedTo
+	}
+
+	// If no agent specified, use the first available local agent
+	if agentID == "" {
+		localAgents := r.kernel.AgentRegistry().List()
+		if len(localAgents) == 0 {
+			respondError(w, http.StatusBadRequest, "No agents available")
+			return
+		}
+		agentID = localAgents[0].ID.String()
+		if body.AgentName == "" {
+			body.AgentName = localAgents[0].Name
+		}
+	}
+
+	// Check if agent is external agent
+	var externalAgent *a2a.ExternalAgent
+	if r.kernel.A2AClient() != nil {
+		externalAgents := r.kernel.A2AClient().ListExternalAgents()
+		for _, extAgent := range externalAgents {
+			if extAgent.Card.Name == agentID {
+				externalAgent = extAgent
+				if body.AgentName == "" {
+					body.AgentName = extAgent.Card.Name
+				}
+				break
+			}
+		}
+	}
+
+	message := fmt.Sprintf("Task: %s\n\n%s", body.Title, body.Desc)
+
+	if externalAgent != nil {
+		// Send to external agent
+		if r.kernel.A2AClient() == nil {
+			respondError(w, http.StatusInternalServerError, "A2A not configured")
+			return
+		}
+
+		// Send to external agent first
+		externalTask, err := r.kernel.A2AClient().SendTask(externalAgent.URL, message, nil)
+		if err != nil {
+			r.kernel.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("task=%s, error=%v", body.Title, err), "failed")
+			respondError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+
+		// Create task in store with external task ID
+		externalTask.AgentName = body.AgentName
+		r.kernel.A2ATaskStore().AddTask(externalTask)
+		r.kernel.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("task=%s, task_id=%s", body.Title, externalTask.ID), "success")
+
+		if r.kernel.A2AEventStore() != nil {
+			event := &a2a.A2AEvent{
+				ID:         uuid.New().String(),
+				Timestamp:  time.Now(),
+				Kind:       "agent_task",
+				SourceID:   "system",
+				SourceName: "System",
+				TargetID:   agentID,
+				TargetName: body.AgentName,
+				Detail:     body.Title,
+				Payload:    map[string]interface{}{"description": body.Desc, "task": externalTask},
+			}
+			r.kernel.A2AEventStore().AddEvent(event)
+		}
+
+		// If task is already completed/failed/cancelled, just update status (messages and artifacts are already in the task)
+		if externalTask.Status.State == a2a.A2aTaskStatusCompleted ||
+			externalTask.Status.State == a2a.A2aTaskStatusFailed ||
+			externalTask.Status.State == a2a.A2aTaskStatusCancelled {
+			r.kernel.A2ATaskStore().UpdateTaskStatus(externalTask.ID, externalTask.Status.State)
+		} else {
+			// Start polling for status
+			r.kernel.A2AClient().StartPolling(externalTask.ID, externalAgent.URL, 2*time.Second)
+		}
+
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"task": externalTask,
+		})
+		return
+	}
+
+	// If agentName not provided, try to get it from registry
+	if body.AgentName == "" {
+		if aid, err := uuid.Parse(agentID); err == nil {
+			agentEntry := r.kernel.AgentRegistry().Get(aid)
+			if agentEntry != nil {
+				body.AgentName = agentEntry.Name
+			}
+		}
+	}
+
+	// Create task for local agent
+	messages := []a2a.A2aMessage{
+		{
+			Role: "user",
+			Parts: []a2a.A2aPart{
+				{Type: "text", Text: message},
+			},
+		},
+	}
+	task := r.kernel.A2ATaskStore().CreateTask(agentID, body.AgentName, messages, nil)
+
+	// Execute task asynchronously
+	go func() {
+		ctx := context.Background()
+		r.kernel.A2ATaskStore().UpdateTaskStatus(task.ID, a2a.A2aTaskStatusWorking)
+
+		response, err := r.kernel.SendMessage(ctx, agentID, message)
+		if err != nil {
+			r.kernel.AuditLog().Record("comms", agentID, audit.ActionAgentMessage, fmt.Sprintf("task=%s, error=%v", body.Title, err), "failed")
+			r.kernel.A2ATaskStore().FailTask(task.ID, a2a.A2aMessage{
+				Role: "assistant",
+				Parts: []a2a.A2aPart{
+					{Type: "text", Text: fmt.Sprintf("Error: %v", err)},
+				},
+			})
+			return
+		}
+
+		r.kernel.AuditLog().Record("comms", agentID, audit.ActionAgentMessage, fmt.Sprintf("task=%s, agent=%s", body.Title, agentID), "success")
+
+		// Complete task with response
+		r.kernel.A2ATaskStore().CompleteTask(task.ID, a2a.A2aMessage{
+			Role: "assistant",
+			Parts: []a2a.A2aPart{
+				{Type: "text", Text: response},
+			},
+		}, nil)
+	}()
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"task": task,
+	})
+}
+
+// handleListTasks handles GET /api/tasks — List all tasks
+func (r *Router) handleListTasks(w http.ResponseWriter, req *http.Request) {
+	if r.kernel.A2ATaskStore() == nil {
+		respondError(w, http.StatusInternalServerError, "Task store not available")
+		return
+	}
+	tasks := r.kernel.A2ATaskStore().ListTasks()
+	respondJSON(w, http.StatusOK, tasks)
+}
+
+// handleGetTask handles GET /api/tasks/{id} — Get a specific task by ID
+func (r *Router) handleGetTask(w http.ResponseWriter, req *http.Request) {
+	taskID := req.PathValue("id")
+	if taskID == "" {
+		respondError(w, http.StatusBadRequest, "Missing task ID")
+		return
+	}
+
+	if r.kernel.A2ATaskStore() == nil {
+		respondError(w, http.StatusInternalServerError, "Task store not available")
+		return
+	}
+
+	task, ok := r.kernel.A2ATaskStore().GetTask(taskID)
+	if !ok {
+		respondError(w, http.StatusNotFound, "Task not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, task)
+}
+
+// handleA2ASendExternal handles POST /api/a2a/send — Send task to an external A2A agent
+func (r *Router) handleA2ASendExternal(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		URL       string  `json:"url"`
+		Message   string  `json:"message"`
+		SessionID *string `json:"session_id,omitempty"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if body.URL == "" {
+		respondError(w, http.StatusBadRequest, "Missing 'url' field")
+		return
+	}
+	if body.Message == "" {
+		respondError(w, http.StatusBadRequest, "Missing 'message' field")
+		return
+	}
+
+	if r.kernel.A2AClient() == nil {
+		respondError(w, http.StatusInternalServerError, "A2A not configured")
+		return
+	}
+
+	task, err := r.kernel.A2AClient().SendTask(body.URL, body.Message, body.SessionID)
+	if err != nil {
+		r.kernel.AuditLog().Record("a2a", body.URL, audit.ActionA2ATaskSent, fmt.Sprintf("url=%s, error=%v", body.URL, err), "failed")
+		respondError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	r.kernel.AuditLog().Record("a2a", body.URL, audit.ActionA2ATaskSent, fmt.Sprintf("url=%s, task_id=%s", body.URL, task.ID), "success")
+
+	respondJSON(w, http.StatusOK, task)
+}
+
+// handleA2AExternalTaskStatus handles GET /api/a2a/tasks/{id}/status — Get external task status
+func (r *Router) handleA2AExternalTaskStatus(w http.ResponseWriter, req *http.Request) {
+	taskID := req.PathValue("id")
+	url := req.URL.Query().Get("url")
+	if url == "" {
+		respondError(w, http.StatusBadRequest, "Missing 'url' query parameter")
+		return
+	}
+
+	if r.kernel.A2AClient() == nil {
+		respondError(w, http.StatusInternalServerError, "A2A not configured")
+		return
+	}
+
+	task, err := r.kernel.A2AClient().GetTaskStatus(url, taskID)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, task)
+}
+
 func (r *Router) handleGetAgentSession(w http.ResponseWriter, req *http.Request) {
 	agentIDStr := req.PathValue("id")
 	if agentIDStr == "" {
@@ -2064,6 +2793,187 @@ func (r *Router) handleMcpServerReconnect(w http.ResponseWriter, req *http.Reque
 	})
 }
 
+func (r *Router) handleProfiles(w http.ResponseWriter, req *http.Request) {
+	profiles := []types.Profile{
+		{Name: string(types.ToolProfileMinimal), Tools: types.ToolProfileMinimal.Tools()},
+		{Name: string(types.ToolProfileCoding), Tools: types.ToolProfileCoding.Tools()},
+		{Name: string(types.ToolProfileResearch), Tools: types.ToolProfileResearch.Tools()},
+		{Name: string(types.ToolProfileMessaging), Tools: types.ToolProfileMessaging.Tools()},
+		{Name: string(types.ToolProfileAutomation), Tools: types.ToolProfileAutomation.Tools()},
+		{Name: string(types.ToolProfileFull), Tools: types.ToolProfileFull.Tools()},
+		{Name: string(types.ToolProfileCustom), Tools: types.ToolProfileCustom.Tools()},
+	}
+	respondJSON(w, http.StatusOK, types.ProfilesResponse{Profiles: profiles})
+}
+
+type PatchAgentConfigRequest struct {
+	Name          *string `json:"name,omitempty"`
+	Description   *string `json:"description,omitempty"`
+	SystemPrompt  *string `json:"system_prompt,omitempty"`
+	Emoji         *string `json:"emoji,omitempty"`
+	AvatarURL     *string `json:"avatar_url,omitempty"`
+	Color         *string `json:"color,omitempty"`
+	Archetype     *string `json:"archetype,omitempty"`
+	Vibe          *string `json:"vibe,omitempty"`
+	GreetingStyle *string `json:"greeting_style,omitempty"`
+	Model         *string `json:"model,omitempty"`
+	Provider      *string `json:"provider,omitempty"`
+}
+
+func (r *Router) handlePatchAgentConfig(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	agentID, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent ID")
+		return
+	}
+
+	var reqBody PatchAgentConfigRequest
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if r.kernel.AgentRegistry().Get(agentID) == nil {
+		respondError(w, http.StatusNotFound, "agent not found")
+		return
+	}
+
+	const MAX_PROMPT_LEN = 65536
+	if reqBody.SystemPrompt != nil && len(*reqBody.SystemPrompt) > MAX_PROMPT_LEN {
+		respondError(w, http.StatusRequestEntityTooLarge, "system prompt exceeds max length")
+		return
+	}
+
+	if reqBody.Color != nil && *reqBody.Color != "" && !strings.HasPrefix(*reqBody.Color, "#") {
+		respondError(w, http.StatusBadRequest, "color must be a hex code starting with '#'")
+		return
+	}
+
+	if reqBody.SystemPrompt != nil {
+		if err := r.kernel.AgentRegistry().UpdateSystemPrompt(agentID, *reqBody.SystemPrompt); err != nil {
+			respondError(w, http.StatusNotFound, "agent not found")
+			return
+		}
+	}
+
+	identity := make(map[string]string)
+	if reqBody.Emoji != nil {
+		identity["emoji"] = *reqBody.Emoji
+	}
+	if reqBody.Color != nil {
+		identity["color"] = *reqBody.Color
+	}
+	if reqBody.Archetype != nil {
+		identity["archetype"] = *reqBody.Archetype
+	}
+	if reqBody.Vibe != nil {
+		identity["vibe"] = *reqBody.Vibe
+	}
+	if reqBody.GreetingStyle != nil {
+		identity["greeting_style"] = *reqBody.GreetingStyle
+	}
+	if reqBody.AvatarURL != nil {
+		identity["avatar_url"] = *reqBody.AvatarURL
+	}
+
+	if len(identity) > 0 {
+		if err := r.kernel.AgentRegistry().UpdateIdentity(agentID, identity); err != nil {
+			respondError(w, http.StatusNotFound, "agent not found")
+			return
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+var KNOWN_IDENTITY_FILES = []string{"SOUL.md", "SKILL.md", "README.md", "PROMPT.md"}
+
+func (r *Router) handleListAgentFiles(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	_, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent ID")
+		return
+	}
+
+	files := make([]map[string]interface{}, 0)
+	for _, name := range KNOWN_IDENTITY_FILES {
+		files = append(files, map[string]interface{}{
+			"name":       name,
+			"exists":     false,
+			"size_bytes": 0,
+		})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"files": files})
+}
+
+func (r *Router) handleGetAgentFile(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	_, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent ID")
+		return
+	}
+
+	filename := req.PathValue("filename")
+	found := false
+	for _, name := range KNOWN_IDENTITY_FILES {
+		if name == filename {
+			found = true
+			break
+		}
+	}
+	if !found {
+		respondError(w, http.StatusBadRequest, "file not in whitelist")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"name":       filename,
+		"content":    "",
+		"size_bytes": 0,
+	})
+}
+
+type SetAgentFileRequest struct {
+	Content string `json:"content"`
+}
+
+func (r *Router) handleSetAgentFile(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	_, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent ID")
+		return
+	}
+
+	filename := req.PathValue("filename")
+	found := false
+	for _, name := range KNOWN_IDENTITY_FILES {
+		if name == filename {
+			found = true
+			break
+		}
+	}
+	if !found {
+		respondError(w, http.StatusBadRequest, "file not in whitelist")
+		return
+	}
+
+	var reqBody SetAgentFileRequest
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success":    true,
+		"name":       filename,
+		"size_bytes": len(reqBody.Content),
+	})
+}
+
 func (r *Router) handleConfig(w http.ResponseWriter, req *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"theme":             "system",
@@ -2169,6 +3079,84 @@ func classifyAuditLevel(action string) string {
 		return "warn"
 	}
 	return "info"
+}
+
+func (r *Router) handleA2AEventsStream(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	ctx := req.Context()
+
+	var lastEventID string
+	firstPoll := true
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	heartbeatTicker := time.NewTicker(15 * time.Second)
+	defer heartbeatTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-heartbeatTicker.C:
+			fmt.Fprintf(w, ": ping\n\n")
+			flusher.Flush()
+		case <-ticker.C:
+			events := r.kernel.A2AEventStore().ListEvents(200)
+
+			if firstPoll {
+				if len(events) > 0 {
+					lastEventID = events[len(events)-1].ID
+				}
+				firstPoll = false
+				continue
+			}
+
+			foundLastEvent := false
+			for _, event := range events {
+				if !foundLastEvent {
+					if event.ID == lastEventID {
+						foundLastEvent = true
+					}
+					continue
+				}
+
+				jsonData := map[string]interface{}{
+					"id":         event.ID,
+					"timestamp":  event.Timestamp.Format(time.RFC3339),
+					"kind":       event.Kind,
+					"sourceId":   event.SourceID,
+					"sourceName": event.SourceName,
+					"targetId":   event.TargetID,
+					"targetName": event.TargetName,
+					"detail":     event.Detail,
+					"payload":    event.Payload,
+				}
+
+				dataBytes, err := json.Marshal(jsonData)
+				if err != nil {
+					continue
+				}
+
+				fmt.Fprintf(w, "data: %s\n\n", dataBytes)
+				flusher.Flush()
+			}
+
+			if len(events) > 0 {
+				lastEventID = events[len(events)-1].ID
+			}
+		}
+	}
 }
 
 func (r *Router) handleUsageSummary(w http.ResponseWriter, req *http.Request) {

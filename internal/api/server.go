@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/penzhan8451/fangclaw-go/internal/a2a"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
@@ -65,6 +66,7 @@ type Server struct {
 	*http.Server
 	Kernel *kernel.Kernel
 	Config *ServerConfig
+	router *Router
 }
 
 // ServerConfig holds server configuration.
@@ -106,6 +108,7 @@ func NewServer(k *kernel.Kernel, cfg *ServerConfig) *Server {
 
 	// Register new router
 	router := NewRouter(k)
+	server.router = router
 	router.RegisterRoutes(mux)
 
 	// Register OpenAI-compatible routes
@@ -114,6 +117,37 @@ func NewServer(k *kernel.Kernel, cfg *ServerConfig) *Server {
 
 	// Register stream routes
 	RegisterStreamRoutes(mux, k)
+
+	// Set up A2A task status change callback to broadcast via WebSocket
+	a2aTaskStore := k.A2ATaskStore()
+	a2aTaskStore.SetStatusCallback(func(task *a2a.A2aTask, oldStatus a2a.A2aTaskStatus, newStatus a2a.A2aTaskStatus) {
+		// Prepare A2A event data
+		type A2ATaskEventData struct {
+			TaskID    string            `json:"task_id"`
+			AgentID   string            `json:"agent_id"`
+			OldStatus a2a.A2aTaskStatus `json:"old_status"`
+			NewStatus a2a.A2aTaskStatus `json:"new_status"`
+			Task      *a2a.A2aTask      `json:"task"`
+		}
+		eventData := A2ATaskEventData{
+			TaskID:    task.ID,
+			AgentID:   task.AgentID,
+			OldStatus: oldStatus,
+			NewStatus: newStatus,
+			Task:      task,
+		}
+		eventDataBytes, _ := json.Marshal(eventData)
+
+		// Create WebSocket message
+		wsMsg := WSMessage{
+			Type: "a2a.task_status_changed",
+			Data: eventDataBytes,
+		}
+		wsMsgBytes, _ := json.Marshal(wsMsg)
+
+		// Broadcast to subscribed clients
+		wsManager.BroadcastA2AEvent(task.ID, task.AgentID, wsMsgBytes)
+	})
 
 	// Serve static files for Web dashboard
 	staticDir := findStaticDir()
@@ -194,9 +228,20 @@ func ParseJSON(r *http.Request, v interface{}) error {
 	return json.NewDecoder(r.Body).Decode(v)
 }
 
+// SetDefaultAgent sets the default agent for A2A tasks.
+func (s *Server) SetDefaultAgent(agentID string) {
+	if s.router != nil {
+		s.router.SetDefault(agentID)
+	}
+}
+
 // RunServer runs the API server with signal handling.
-func RunServer(k *kernel.Kernel, cfg *ServerConfig) error {
+func RunServer(k *kernel.Kernel, cfg *ServerConfig, defaultAgentID string) error {
 	server := NewServer(k, cfg)
+
+	if defaultAgentID != "" {
+		server.SetDefaultAgent(defaultAgentID)
+	}
 
 	// Handle shutdown signals
 	ctx, cancel := context.WithCancel(context.Background())
@@ -403,11 +448,13 @@ type WSMessage struct {
 
 // WSClient represents a WebSocket client.
 type WSClient struct {
-	ID      string
-	AgentID string
-	Conn    *websocket.Conn
-	Send    chan []byte
-	Done    chan struct{}
+	ID                    string
+	AgentID               string
+	Conn                  *websocket.Conn
+	Send                  chan []byte
+	Done                  chan struct{}
+	SubscribedA2ATaskIDs  map[string]bool
+	SubscribedA2AAgentIDs map[string]bool
 }
 
 // WSManager manages WebSocket connections.
@@ -423,11 +470,13 @@ var wsManager = &WSManager{
 // AddClient adds a new WebSocket client.
 func (m *WSManager) AddClient(agentID, clientID string, conn *websocket.Conn) *WSClient {
 	client := &WSClient{
-		ID:      clientID,
-		AgentID: agentID,
-		Conn:    conn,
-		Send:    make(chan []byte, 256),
-		Done:    make(chan struct{}),
+		ID:                    clientID,
+		AgentID:               agentID,
+		Conn:                  conn,
+		Send:                  make(chan []byte, 256),
+		Done:                  make(chan struct{}),
+		SubscribedA2ATaskIDs:  make(map[string]bool),
+		SubscribedA2AAgentIDs: make(map[string]bool),
 	}
 
 	m.mu.Lock()
@@ -488,6 +537,273 @@ func (m *WSManager) BroadcastToAll(message []byte) {
 			case client.Send <- message:
 			}
 		}
+	}
+}
+
+// SubscribeA2ATask subscribes a client to a specific A2A task.
+func (m *WSManager) SubscribeA2ATask(clientID, taskID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for agentID := range m.clients {
+		for _, clients := range m.clients[agentID] {
+			for _, client := range clients {
+				if client.ID == clientID {
+					client.SubscribedA2ATaskIDs[taskID] = true
+					return
+				}
+			}
+		}
+	}
+}
+
+// UnsubscribeA2ATask unsubscribes a client from a specific A2A task.
+func (m *WSManager) UnsubscribeA2ATask(clientID, taskID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for agentID := range m.clients {
+		for _, clients := range m.clients[agentID] {
+			for _, client := range clients {
+				if client.ID == clientID {
+					delete(client.SubscribedA2ATaskIDs, taskID)
+					return
+				}
+			}
+		}
+	}
+}
+
+// SubscribeA2AAgent subscribes a client to all A2A tasks from a specific agent.
+func (m *WSManager) SubscribeA2AAgent(clientID, agentID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for aID := range m.clients {
+		for _, clients := range m.clients[aID] {
+			for _, client := range clients {
+				if client.ID == clientID {
+					client.SubscribedA2AAgentIDs[agentID] = true
+					return
+				}
+			}
+		}
+	}
+}
+
+// UnsubscribeA2AAgent unsubscribes a client from all A2A tasks from a specific agent.
+func (m *WSManager) UnsubscribeA2AAgent(clientID, agentID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for aID := range m.clients {
+		for _, clients := range m.clients[aID] {
+			for _, client := range clients {
+				if client.ID == clientID {
+					delete(client.SubscribedA2AAgentIDs, agentID)
+					return
+				}
+			}
+		}
+	}
+}
+
+// BroadcastA2AEvent sends an A2A event to subscribed clients.
+func (m *WSManager) BroadcastA2AEvent(taskID string, agentID string, message []byte) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for aID := range m.clients {
+		for _, clients := range m.clients[aID] {
+			for _, client := range clients {
+				shouldSend := false
+
+				// Check if subscribed to the specific task
+				if client.SubscribedA2ATaskIDs[taskID] {
+					shouldSend = true
+				}
+
+				// Check if subscribed to the agent
+				if !shouldSend && client.SubscribedA2AAgentIDs[agentID] {
+					shouldSend = true
+				}
+
+				if shouldSend {
+					select {
+					case <-client.Done:
+						continue
+					case client.Send <- message:
+					}
+				}
+			}
+		}
+	}
+}
+
+// A2AWSHandler handles A2A WebSocket connections for task status updates.
+func A2AWSHandler(k *kernel.Kernel) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Get subscription parameters from query
+		taskID := r.URL.Query().Get("taskId")
+		agentID := r.URL.Query().Get("agentId")
+
+		// Use a special agent ID for A2A connections
+		a2aAgentID := "a2a"
+
+		// Upgrade connection
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "A2A WebSocket upgrade error: %v\n", err)
+			return
+		}
+		defer conn.Close()
+
+		// Create client
+		clientID := fmt.Sprintf("a2a-ws-%d", time.Now().UnixNano())
+		client := wsManager.AddClient(a2aAgentID, clientID, conn)
+		defer wsManager.RemoveClient(a2aAgentID, clientID)
+
+		// Auto-subscribe based on query parameters
+		if taskID != "" {
+			wsManager.SubscribeA2ATask(clientID, taskID)
+			fmt.Printf("[A2A WS] Client %s subscribed to task %s\n", clientID, taskID)
+		}
+		if agentID != "" {
+			wsManager.SubscribeA2AAgent(clientID, agentID)
+			fmt.Printf("[A2A WS] Client %s subscribed to agent %s\n", clientID, agentID)
+		}
+
+		// Send welcome message
+		welcomeData := map[string]interface{}{
+			"client_id":           clientID,
+			"subscribed_task_id":  taskID,
+			"subscribed_agent_id": agentID,
+		}
+		welcomeDataBytes, _ := json.Marshal(welcomeData)
+		welcome := WSMessage{Type: "connected", Data: welcomeDataBytes}
+		welcomeBytes, _ := json.Marshal(welcome)
+		client.Send <- welcomeBytes
+
+		// Handle messages in both directions
+		_, cancel := context.WithCancel(r.Context())
+		defer cancel()
+
+		// Read loop
+		go func() {
+			for {
+				_, message, err := conn.ReadMessage()
+				if err != nil {
+					if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+						fmt.Fprintf(os.Stderr, "[A2A WS] Read error: %v\n", err)
+					}
+					select {
+					case <-client.Done:
+					default:
+						close(client.Done)
+					}
+					return
+				}
+
+				// Parse message
+				var msg WSMessage
+				if err := json.Unmarshal(message, &msg); err != nil {
+					fmt.Fprintf(os.Stderr, "[A2A WS] Parse error: %v\n", err)
+					type ErrorData struct {
+						Error string `json:"error"`
+					}
+					errorData := ErrorData{Error: err.Error()}
+					errorDataBytes, _ := json.Marshal(errorData)
+					errorResp, _ := json.Marshal(WSMessage{Type: "error", Data: errorDataBytes})
+					client.Send <- errorResp
+					continue
+				}
+
+				// Handle A2A subscription messages
+				switch msg.Type {
+				case "ping":
+					pong, _ := json.Marshal(WSMessage{Type: "pong"})
+					client.Send <- pong
+
+				case "a2a.subscribe_task":
+					type SubscribeTaskData struct {
+						TaskID string `json:"task_id"`
+					}
+					var data SubscribeTaskData
+					if err := json.Unmarshal(msg.Data, &data); err == nil && data.TaskID != "" {
+						wsManager.SubscribeA2ATask(clientID, data.TaskID)
+						ack, _ := json.Marshal(WSMessage{Type: "a2a.subscribed", Data: json.RawMessage(fmt.Sprintf(`{"task_id":"%s","type":"task"}`, data.TaskID))})
+						client.Send <- ack
+						fmt.Printf("[A2A WS] Client %s subscribed to task %s\n", clientID, data.TaskID)
+					}
+
+				case "a2a.unsubscribe_task":
+					type UnsubscribeTaskData struct {
+						TaskID string `json:"task_id"`
+					}
+					var data UnsubscribeTaskData
+					if err := json.Unmarshal(msg.Data, &data); err == nil && data.TaskID != "" {
+						wsManager.UnsubscribeA2ATask(clientID, data.TaskID)
+						ack, _ := json.Marshal(WSMessage{Type: "a2a.unsubscribed", Data: json.RawMessage(fmt.Sprintf(`{"task_id":"%s","type":"task"}`, data.TaskID))})
+						client.Send <- ack
+						fmt.Printf("[A2A WS] Client %s unsubscribed from task %s\n", clientID, data.TaskID)
+					}
+
+				case "a2a.subscribe_agent":
+					type SubscribeAgentData struct {
+						AgentID string `json:"agent_id"`
+					}
+					var data SubscribeAgentData
+					if err := json.Unmarshal(msg.Data, &data); err == nil && data.AgentID != "" {
+						wsManager.SubscribeA2AAgent(clientID, data.AgentID)
+						ack, _ := json.Marshal(WSMessage{Type: "a2a.subscribed", Data: json.RawMessage(fmt.Sprintf(`{"agent_id":"%s","type":"agent"}`, data.AgentID))})
+						client.Send <- ack
+						fmt.Printf("[A2A WS] Client %s subscribed to agent %s\n", clientID, data.AgentID)
+					}
+
+				case "a2a.unsubscribe_agent":
+					type UnsubscribeAgentData struct {
+						AgentID string `json:"agent_id"`
+					}
+					var data UnsubscribeAgentData
+					if err := json.Unmarshal(msg.Data, &data); err == nil && data.AgentID != "" {
+						wsManager.UnsubscribeA2AAgent(clientID, data.AgentID)
+						ack, _ := json.Marshal(WSMessage{Type: "a2a.unsubscribed", Data: json.RawMessage(fmt.Sprintf(`{"agent_id":"%s","type":"agent"}`, data.AgentID))})
+						client.Send <- ack
+						fmt.Printf("[A2A WS] Client %s unsubscribed from agent %s\n", clientID, data.AgentID)
+					}
+
+				default:
+					errorResp, _ := json.Marshal(WSMessage{Type: "error", Data: json.RawMessage(`{"content":"unknown message type for A2A WebSocket"}`)})
+					client.Send <- errorResp
+				}
+			}
+		}()
+
+		// Write loop
+		go func() {
+			defer func() {
+				select {
+				case <-client.Done:
+				default:
+					close(client.Done)
+				}
+				cancel()
+			}()
+
+			for {
+				select {
+				case <-client.Done:
+					return
+				case message := <-client.Send:
+					if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+						fmt.Fprintf(os.Stderr, "[A2A WS] Write error: %v\n", err)
+						return
+					}
+				}
+			}
+		}()
+
+		<-client.Done
 	}
 }
 
@@ -691,6 +1007,50 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 					pong, _ := json.Marshal(WSMessage{Type: "pong"})
 					client.Send <- pong
 
+				case "a2a.subscribe_task":
+					type SubscribeTaskData struct {
+						TaskID string `json:"task_id"`
+					}
+					var data SubscribeTaskData
+					if err := json.Unmarshal(msg.Data, &data); err == nil && data.TaskID != "" {
+						wsManager.SubscribeA2ATask(clientID, data.TaskID)
+						ack, _ := json.Marshal(WSMessage{Type: "a2a.subscribed", Data: json.RawMessage(fmt.Sprintf(`{"task_id":"%s","type":"task"}`, data.TaskID))})
+						client.Send <- ack
+					}
+
+				case "a2a.unsubscribe_task":
+					type UnsubscribeTaskData struct {
+						TaskID string `json:"task_id"`
+					}
+					var data UnsubscribeTaskData
+					if err := json.Unmarshal(msg.Data, &data); err == nil && data.TaskID != "" {
+						wsManager.UnsubscribeA2ATask(clientID, data.TaskID)
+						ack, _ := json.Marshal(WSMessage{Type: "a2a.unsubscribed", Data: json.RawMessage(fmt.Sprintf(`{"task_id":"%s","type":"task"}`, data.TaskID))})
+						client.Send <- ack
+					}
+
+				case "a2a.subscribe_agent":
+					type SubscribeAgentData struct {
+						AgentID string `json:"agent_id"`
+					}
+					var data SubscribeAgentData
+					if err := json.Unmarshal(msg.Data, &data); err == nil && data.AgentID != "" {
+						wsManager.SubscribeA2AAgent(clientID, data.AgentID)
+						ack, _ := json.Marshal(WSMessage{Type: "a2a.subscribed", Data: json.RawMessage(fmt.Sprintf(`{"agent_id":"%s","type":"agent"}`, data.AgentID))})
+						client.Send <- ack
+					}
+
+				case "a2a.unsubscribe_agent":
+					type UnsubscribeAgentData struct {
+						AgentID string `json:"agent_id"`
+					}
+					var data UnsubscribeAgentData
+					if err := json.Unmarshal(msg.Data, &data); err == nil && data.AgentID != "" {
+						wsManager.UnsubscribeA2AAgent(clientID, data.AgentID)
+						ack, _ := json.Marshal(WSMessage{Type: "a2a.unsubscribed", Data: json.RawMessage(fmt.Sprintf(`{"agent_id":"%s","type":"agent"}`, data.AgentID))})
+						client.Send <- ack
+					}
+
 				default:
 					errorResp, _ := json.Marshal(WSMessage{Type: "error", Data: json.RawMessage(`{"content":"unknown message type"}`)})
 					client.Send <- errorResp
@@ -734,8 +1094,9 @@ func RegisterStreamRoutes(mux *http.ServeMux, k *kernel.Kernel) {
 	mux.HandleFunc("/api/stream/events", loggingMiddleware(corsMiddleware(SSEHandler(k))))
 	mux.HandleFunc("/api/stream/chat", loggingMiddleware(corsMiddleware(SSEChatHandler(k))))
 
-	// WebSocket endpoint
+	// WebSocket endpoints
 	mux.HandleFunc("/api/ws", loggingMiddleware(corsMiddleware(WSHandler(k))))
+	mux.HandleFunc("/ws/a2a/tasks", loggingMiddleware(corsMiddleware(A2AWSHandler(k))))
 }
 
 // StreamEvent represents a streaming event.

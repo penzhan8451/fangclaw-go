@@ -138,3 +138,47 @@ type ChatResponse struct {
 	StopReason string `json:"stop_reason,omitempty"`
 	Error      string `json:"error,omitempty"`
 }
+
+// ToolProfile represents a named tool preset.
+type ToolProfile string
+
+const (
+	ToolProfileMinimal    ToolProfile = "minimal"
+	ToolProfileCoding     ToolProfile = "coding"
+	ToolProfileResearch   ToolProfile = "research"
+	ToolProfileMessaging  ToolProfile = "messaging"
+	ToolProfileAutomation ToolProfile = "automation"
+	ToolProfileFull       ToolProfile = "full"
+	ToolProfileCustom     ToolProfile = "custom"
+)
+
+// Tools returns the list of tool names for this profile.
+func (p ToolProfile) Tools() []string {
+	switch p {
+	case ToolProfileMinimal:
+		return []string{"file_read", "file_list"}
+	case ToolProfileCoding:
+		return []string{"file_read", "file_write", "file_list", "shell_exec", "web_fetch"}
+	case ToolProfileResearch:
+		return []string{"web_fetch", "web_search", "file_read", "file_write"}
+	case ToolProfileMessaging:
+		return []string{"agent_send", "agent_list", "memory_store", "memory_recall"}
+	case ToolProfileAutomation:
+		return []string{"file_read", "file_write", "file_list", "shell_exec", "web_fetch", "web_search", "agent_send", "agent_list", "memory_store", "memory_recall"}
+	case ToolProfileFull, ToolProfileCustom:
+		return []string{"*"}
+	default:
+		return []string{"*"}
+	}
+}
+
+// Profile represents a tool profile for API response.
+type Profile struct {
+	Name  string   `json:"name"`
+	Tools []string `json:"tools"`
+}
+
+// ProfilesResponse is the response for GET /api/profiles.
+type ProfilesResponse struct {
+	Profiles []Profile `json:"profiles"`
+}

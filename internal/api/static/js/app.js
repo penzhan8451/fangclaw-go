@@ -130,12 +130,12 @@ document.addEventListener('alpine:init', function() {
       } catch(e) {
         this.connected = false;
         this.lastError = e.message || 'Unknown error';
-        console.warn('[OpenFang] Status check failed:', e.message);
+        console.warn('[FangClaw-Go] Status check failed:', e.message);
       }
     },
 
     async checkOnboarding() {
-      if (localStorage.getItem('openfang-onboarded')) return;
+      if (localStorage.getItem('fangclawgo-onboarded')) return;
       try {
         var config = await FangClawGoAPI.get('/api/config');
         var apiKey = config && config.api_key;
@@ -219,7 +219,7 @@ function app() {
       });
 
       // Hash routing
-      var validPages = ['overview','agents','sessions','approvals','workflows','scheduler','channels','skills','hands','analytics','logs','settings','wizard'];
+      var validPages = ['overview','agents','sessions','approvals','workflows','scheduler','channels','skills','hands','analytics','logs','settings','wizard','a2a'];
       var pageRedirects = {
         'chat': 'agents',
         'templates': 'agents',

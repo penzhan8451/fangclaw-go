@@ -27,6 +27,7 @@ type KernelConfig struct {
 	Extensions        ExtensionsConfig        `toml:"extensions" json:"extensions"`
 	CronShellSecurity CronShellSecurityConfig `toml:"cron_shell_security" json:"cron_shell_security"`
 	McpServers        []McpServerConfig       `toml:"mcp_servers,omitempty" json:"mcp_servers,omitempty"`
+	A2a               A2aConfig               `toml:"a2a" json:"a2a"`
 	Include           []string                `toml:"include,omitempty" json:"include,omitempty"`
 }
 
@@ -84,6 +85,19 @@ type SkillsConfig struct {
 	AllowedRuntimes    []string `toml:"allowed_runtimes" json:"allowed_runtimes"`
 }
 
+// A2aConfig represents A2A (Agent-to-Agent) protocol configuration.
+type A2aConfig struct {
+	Enabled        bool            `toml:"enabled" json:"enabled"`
+	ListenPath     string          `toml:"listen_path" json:"listen_path"`
+	ExternalAgents []ExternalAgent `toml:"external_agents" json:"external_agents"`
+}
+
+// ExternalAgent represents an external A2A agent configuration.
+type ExternalAgent struct {
+	Name string `toml:"name" json:"name"`
+	URL  string `toml:"url" json:"url"`
+}
+
 // ExtensionsConfig represents extensions configuration.
 type ExtensionsConfig struct {
 	Path               string   `toml:"path" json:"path"`
@@ -139,6 +153,11 @@ func DefaultConfig() KernelConfig {
 			EnableRemoteSkills: true,
 			ClawHubURL:         "https://clawhub.io",
 			AllowedRuntimes:    []string{"python", "node", "wasm", "builtin", "prompt"},
+		},
+		A2a: A2aConfig{
+			Enabled:        false,
+			ListenPath:     "/a2a",
+			ExternalAgents: []ExternalAgent{},
 		},
 		Extensions: ExtensionsConfig{
 			Path:             "~/.fangclaw-go/extensions",
