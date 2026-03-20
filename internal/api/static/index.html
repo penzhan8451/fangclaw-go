@@ -12107,6 +12107,15 @@ function agentsPage() {
       ];
       if (f.profile && f.profile !== 'custom') {
         lines.push('profile = "' + f.profile + '"');
+        var profileMatch = this.spawnProfiles.find(function(p) { return p.name === f.profile; });
+        if (profileMatch && profileMatch.tools && profileMatch.tools.length > 0) {
+          lines.push('', 'tools = [');
+          for (var i = 0; i < profileMatch.tools.length; i++) {
+            var tool = profileMatch.tools[i];
+            lines.push('  "' + tool.replace(/"/g, '\\"') + '"' + (i < profileMatch.tools.length - 1 ? ',' : ''));
+          }
+          lines.push(']');
+        }
       }
       lines.push('', '[model]');
       lines.push('provider = "' + f.provider + '"');
@@ -12154,13 +12163,13 @@ function agentsPage() {
           if (this.selectedPreset) patchBody.vibe = this.selectedPreset;
           // Merge system prompt with soul content
           if (this.spawnForm.systemPrompt) patchBody.system_prompt = this.spawnForm.systemPrompt;
-          if(this.soulContent.trim()) patchBody.system_prompt += '\n# Soul\n' + this.soulContent.trim() + '\n';
+          if(this.soulContent.trim()) patchBody.system_prompt += '\n\n## Soul\n' + this.soulContent.trim() + '\n';
           
           if (Object.keys(patchBody).length) {
             FangClawGoAPI.patch('/api/agents/' + res.agent_id + '/config', patchBody).catch(function(e) { console.warn('Post-spawn config patch failed:', e.message); });
           }
           if (this.soulContent.trim()) {
-            FangClawGoAPI.put('/api/agents/' + res.agent_id + '/files/SOUL.md', { content: '# Soul\n' + this.soulContent }).catch(function(e) { console.warn('SOUL.md write failed:', e.message); });
+            FangClawGoAPI.put('/api/agents/' + res.agent_id + '/files/SOUL.md', { content: '## Soul\n' + this.soulContent }).catch(function(e) { console.warn('SOUL.md write failed:', e.message); });
           }
 
           this.showSpawnModal = false;

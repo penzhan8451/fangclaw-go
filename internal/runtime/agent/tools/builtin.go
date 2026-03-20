@@ -1,12 +1,14 @@
-// Package tools provides built-in tools for agents.
 package tools
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,15 +16,12 @@ import (
 	"time"
 )
 
-// Tool is the interface for agent tools.
 type Tool interface {
 	Name() string
 	Description() string
 	Execute(ctx context.Context, args map[string]interface{}) (string, error)
 	Schema() map[string]interface{}
 }
-
-// ============ Calculator Tool ============
 
 type CalculatorTool struct{}
 
@@ -100,8 +99,6 @@ func evaluateExpression(expr string) float64 {
 	return n
 }
 
-// ============ DateTime Tool ============
-
 type DateTimeTool struct{}
 
 func NewDateTimeTool() *DateTimeTool { return &DateTimeTool{} }
@@ -147,8 +144,6 @@ func (t *DateTimeTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 }
 
-// ============ Weather Tool ============
-
 type WeatherTool struct{}
 
 func NewWeatherTool() *WeatherTool { return &WeatherTool{} }
@@ -181,8 +176,6 @@ func (t *WeatherTool) Execute(ctx context.Context, args map[string]interface{}) 
 	return fmt.Sprintf("Weather in %s: Partly Cloudy, 22°C, Humidity: 65%%", location), nil
 }
 
-// ============ Search Tool ============
-
 type SearchTool struct{}
 
 func NewSearchTool() *SearchTool { return &SearchTool{} }
@@ -212,10 +205,178 @@ func (t *SearchTool) Execute(ctx context.Context, args map[string]interface{}) (
 	if query == "" {
 		return "", fmt.Errorf("query required")
 	}
-	return fmt.Sprintf("Search results for '%s':\n1. Example result A\n2. Example result B\n3. Example result C", query), nil
+
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://html.duckduckgo.com/html/", nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	q := req.URL.Query()
+	q.Add("q", query)
+	req.URL.RawQuery = q.Encode()
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; FangClawGOAgent/0.1)")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("search request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("search returned status: %d", resp.StatusCode)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+	body := string(bodyBytes)
+
+	results := parseDuckDuckGoResults(body, 5)
+	if len(results) == 0 {
+		return fmt.Sprintf("No results found for '%s'.", query), nil
+	}
+
+	var output strings.Builder
+	output.WriteString(fmt.Sprintf("Search results for '%s':\n\n", query))
+	for i, r := range results {
+		output.WriteString(fmt.Sprintf("%d. %s\n   URL: %s\n   %s\n\n", i+1, r.title, r.url, r.snippet))
+	}
+
+	return output.String(), nil
 }
 
-// ============ Fetch Tool ============
+type searchResult struct {
+	title   string
+	url     string
+	snippet string
+}
+
+func parseDuckDuckGoResults(html string, max int) []searchResult {
+	var results []searchResult
+
+	chunks := strings.Split(html, "class=\"result__a\"")
+	for _, chunk := range chunks[1:] {
+		if len(results) >= max {
+			break
+		}
+
+		url := extractBetween(chunk, "href=\"", "\"")
+		if url == "" {
+			continue
+		}
+
+		actualURL := url
+		if strings.Contains(url, "uddg=") {
+			parts := strings.SplitN(url, "uddg=", 2)
+			if len(parts) > 1 {
+				encodedURL := strings.SplitN(parts[1], "&", 2)[0]
+				actualURL = urlDecode(encodedURL)
+			}
+		}
+
+		title := stripHTMLTags(extractBetween(chunk, ">", "</a>"))
+		snippet := ""
+		if snipStart := strings.Index(chunk, "class=\"result__snippet\""); snipStart >= 0 {
+			after := chunk[snipStart:]
+			if snippetPart := extractBetween(after, ">", "</a>"); snippetPart != "" {
+				snippet = stripHTMLTags(snippetPart)
+			} else if snippetPart := extractBetween(after, ">", "</"); snippetPart != "" {
+				snippet = stripHTMLTags(snippetPart)
+			}
+		}
+
+		if title != "" && actualURL != "" {
+			results = append(results, searchResult{
+				title:   title,
+				url:     actualURL,
+				snippet: snippet,
+			})
+		}
+	}
+
+	return results
+}
+
+func extractBetween(text, start, end string) string {
+	startIdx := strings.Index(text, start)
+	if startIdx == -1 {
+		return ""
+	}
+	remaining := text[startIdx+len(start):]
+	endIdx := strings.Index(remaining, end)
+	if endIdx == -1 {
+		return ""
+	}
+	return remaining[:endIdx]
+}
+
+func stripHTMLTags(s string) string {
+	var result strings.Builder
+	inTag := false
+	for _, ch := range s {
+		switch ch {
+		case '<':
+			inTag = true
+		case '>':
+			inTag = false
+		default:
+			if !inTag {
+				result.WriteRune(ch)
+			}
+		}
+	}
+	resultStr := result.String()
+	resultStr = strings.ReplaceAll(resultStr, "&amp;", "&")
+	resultStr = strings.ReplaceAll(resultStr, "&lt;", "<")
+	resultStr = strings.ReplaceAll(resultStr, "&gt;", ">")
+	resultStr = strings.ReplaceAll(resultStr, "&quot;", "\"")
+	resultStr = strings.ReplaceAll(resultStr, "&#x27;", "'")
+	resultStr = strings.ReplaceAll(resultStr, "&nbsp;", " ")
+	resultStr = strings.ReplaceAll(resultStr, "&#39;", "'")
+	return resultStr
+}
+
+func urlDecode(s string) string {
+	var result strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '%' && i+2 < len(s) {
+			hex := s[i+1 : i+3]
+			if val, err := hexToByte(hex); err == nil {
+				result.WriteByte(val)
+				i += 2
+			} else {
+				result.WriteByte('%')
+			}
+		} else if s[i] == '+' {
+			result.WriteByte(' ')
+		} else {
+			result.WriteByte(s[i])
+		}
+	}
+	return result.String()
+}
+
+func hexToByte(hex string) (byte, error) {
+	var result byte
+	for i := 0; i < 2; i++ {
+		result <<= 4
+		if hex[i] >= '0' && hex[i] <= '9' {
+			result |= hex[i] - '0'
+		} else if hex[i] >= 'a' && hex[i] <= 'f' {
+			result |= hex[i] - 'a' + 10
+		} else if hex[i] >= 'A' && hex[i] <= 'F' {
+			result |= hex[i] - 'A' + 10
+		} else {
+			return 0, fmt.Errorf("invalid hex char")
+		}
+	}
+	return result, nil
+}
 
 type FetchTool struct{}
 
@@ -242,19 +403,174 @@ func (t *FetchTool) Schema() map[string]interface{} {
 }
 
 func (t *FetchTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
-	url, _ := args["url"].(string)
-	if url == "" {
+	urlStr, _ := args["url"].(string)
+	if urlStr == "" {
 		return "", fmt.Errorf("url required")
 	}
-	resp, err := http.Get(url)
+
+	if err := checkSSRF(urlStr); err != nil {
+		return "", err
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; FangClawGOAgent/0.1)")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("fetch failed: %w", err)
 	}
 	defer resp.Body.Close()
-	return fmt.Sprintf("Fetched %d bytes from %s", resp.ContentLength, url), nil
+
+	maxResponseBytes := 10 * 1024 * 1024
+	if resp.ContentLength > int64(maxResponseBytes) {
+		return "", fmt.Errorf("response too large: %d bytes (max 10MB)", resp.ContentLength)
+	}
+
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxResponseBytes)))
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	var processed string
+	if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/xhtml") {
+		processed = extractTextFromHTML(string(bodyBytes))
+	} else {
+		processed = string(bodyBytes)
+	}
+
+	maxChars := 50000
+	if len(processed) > maxChars {
+		processed = safeTruncate(processed, maxChars)
+		processed = fmt.Sprintf("%s... [truncated, %d total chars]", processed, len(processed))
+	}
+
+	result := fmt.Sprintf("HTTP %d\n\n%s", resp.StatusCode, wrapExternalContent(urlStr, processed))
+	return result, nil
 }
 
-// ============ File Read Tool ============
+func checkSSRF(urlStr string) error {
+	if !strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://") {
+		return fmt.Errorf("only http:// and https:// URLs are allowed")
+	}
+
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	hostname := parsedURL.Hostname()
+
+	blockedHostnames := map[string]bool{
+		"localhost":                true,
+		"ip6-localhost":            true,
+		"metadata.google.internal": true,
+		"metadata.aws.internal":    true,
+		"instance-data":            true,
+		"169.254.169.254":          true,
+		"100.100.100.200":          true,
+		"192.0.0.192":              true,
+		"0.0.0.0":                  true,
+		"::1":                      true,
+	}
+	if blockedHostnames[hostname] {
+		return fmt.Errorf("SSRF blocked: %s is a restricted hostname", hostname)
+	}
+
+	addrs, err := net.LookupHost(hostname)
+	if err == nil {
+		for _, addr := range addrs {
+			ip := net.ParseIP(addr)
+			if ip != nil {
+				if ip.IsLoopback() || ip.IsUnspecified() || isPrivateIP(ip) {
+					return fmt.Errorf("SSRF blocked: %s resolves to private IP %s", hostname, ip)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func isPrivateIP(ip net.IP) bool {
+	if ip4 := ip.To4(); ip4 != nil {
+		return (ip4[0] == 10) ||
+			(ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31) ||
+			(ip4[0] == 192 && ip4[1] == 168) ||
+			(ip4[0] == 169 && ip4[1] == 254)
+	}
+
+	if ip6 := ip.To16(); ip6 != nil {
+		return (ip6[0] == 0xfc && ip6[1] == 0x00) || (ip6[0] == 0xfe && ip6[1] == 0x80)
+	}
+
+	return false
+}
+
+func extractTextFromHTML(html string) string {
+	var result strings.Builder
+	inTag := false
+	inScript := false
+	inStyle := false
+	for i := 0; i < len(html); i++ {
+		switch html[i] {
+		case '<':
+			if i+6 < len(html) && strings.EqualFold(html[i:i+6], "<style") {
+				inStyle = true
+			} else if i+7 < len(html) && strings.EqualFold(html[i:i+7], "<script") {
+				inScript = true
+			}
+			inTag = true
+		case '>':
+			if i-7 >= 0 && strings.EqualFold(html[i-7:i+1], "</style>") {
+				inStyle = false
+			} else if i-8 >= 0 && strings.EqualFold(html[i-8:i+1], "</script>") {
+				inScript = false
+			}
+			inTag = false
+		default:
+			if !inTag && !inScript && !inStyle {
+				result.WriteByte(html[i])
+			}
+		}
+	}
+
+	text := result.String()
+	lines := strings.Split(text, "\n")
+	var filteredLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			filteredLines = append(filteredLines, trimmed)
+		}
+	}
+	return strings.Join(filteredLines, "\n")
+}
+
+func safeTruncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+
+	end := max
+	for end > 0 && (s[end]&0xC0) == 0x80 {
+		end--
+	}
+	return s[:end]
+}
+
+func wrapExternalContent(url, content string) string {
+	return fmt.Sprintf("--- EXTERNAL CONTENT START ---\nURL: %s\n---\n%s\n--- EXTERNAL CONTENT END ---", url, content)
+}
 
 type FileReadTool struct{}
 
@@ -291,8 +607,6 @@ func (t *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 	return string(content), nil
 }
-
-// ============ File Write Tool ============
 
 type FileWriteTool struct{}
 
@@ -334,8 +648,6 @@ func (t *FileWriteTool) Execute(ctx context.Context, args map[string]interface{}
 	}
 	return fmt.Sprintf("Written %d bytes to %s", len(content), path), nil
 }
-
-// ============ List Directory Tool ============
 
 type ListDirTool struct{}
 
@@ -381,8 +693,6 @@ func (t *ListDirTool) Execute(ctx context.Context, args map[string]interface{}) 
 	return result, nil
 }
 
-// ============ Shell Execute Tool ============
-
 type ShellTool struct{}
 
 func NewShellTool() *ShellTool { return &ShellTool{} }
@@ -420,8 +730,6 @@ func (t *ShellTool) Execute(ctx context.Context, args map[string]interface{}) (s
 	return string(output), nil
 }
 
-// ============ Shell Exec Tool (Alias for shell) ============
-
 type ShellExecTool struct{}
 
 func NewShellExecTool() *ShellExecTool { return &ShellExecTool{} }
@@ -458,8 +766,6 @@ func (t *ShellExecTool) Execute(ctx context.Context, args map[string]interface{}
 	}
 	return string(output), nil
 }
-
-// ============ URL Parse Tool ============
 
 type URLParseTool struct{}
 
@@ -504,8 +810,6 @@ func (t *URLParseTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 	return fmt.Sprintf("Scheme: %s, Host: %s, Path: %s", scheme, host, path), nil
 }
-
-// ============ JSON Tool ============
 
 type JSONTool struct{}
 
@@ -557,8 +861,6 @@ func (t *JSONTool) Execute(ctx context.Context, args map[string]interface{}) (st
 	}
 }
 
-// ============ Hash Tool ============
-
 type HashTool struct{}
 
 func NewHashTool() *HashTool { return &HashTool{} }
@@ -609,8 +911,6 @@ func (t *HashTool) Execute(ctx context.Context, args map[string]interface{}) (st
 	}
 }
 
-// ============ Random Tool ============
-
 type RandomTool struct{}
 
 func NewRandomTool() *RandomTool { return &RandomTool{} }
@@ -645,8 +945,6 @@ func (t *RandomTool) Execute(ctx context.Context, args map[string]interface{}) (
 	result := int(min) + int(now)%int(max-min+1)
 	return fmt.Sprintf("Random: %d", result), nil
 }
-
-// ============ Timezone Tool ============
 
 type TimezoneTool struct{}
 
@@ -684,8 +982,6 @@ func (t *TimezoneTool) Execute(ctx context.Context, args map[string]interface{})
 	return time.Now().In(loc).Format("2006-01-02 15:04:05 MST"), nil
 }
 
-// ============ User Info Tool ============
-
 type UserInfoTool struct{}
 
 func NewUserInfoTool() *UserInfoTool { return &UserInfoTool{} }
@@ -709,8 +1005,6 @@ func (t *UserInfoTool) Execute(ctx context.Context, args map[string]interface{})
 	return fmt.Sprintf("Home: %s", home), nil
 }
 
-// ============ Register All Tools ============
-
 type ToolRegistry interface{ RegisterTool(tool Tool) }
 
 func RegisterAllTools(reg ToolRegistry) {
@@ -730,4 +1024,28 @@ func RegisterAllTools(reg ToolRegistry) {
 	reg.RegisterTool(NewRandomTool())
 	reg.RegisterTool(NewTimezoneTool())
 	reg.RegisterTool(NewUserInfoTool())
+	RegisterHandTools(reg)
+}
+
+func RegisterHandTools(reg ToolRegistry) {
+	// researcher tools
+	reg.RegisterTool(NewWebSearchTool())
+	reg.RegisterTool(NewWebScrapeTool())
+	reg.RegisterTool(NewCitationGeneratorTool())
+	reg.RegisterTool(NewPDFExtractTool())
+	// lead tools
+	reg.RegisterTool(NewCSVExportTool())
+	// collector tools
+	reg.RegisterTool(NewRSSFeedTool())
+	reg.RegisterTool(NewSentimentAnalyzerTool())
+	reg.RegisterTool(NewWebMonitorTool())
+	reg.RegisterTool(NewKnowledgeGraphTool())
+	// clip tools
+	reg.RegisterTool(NewVideoEditorTool())
+	reg.RegisterTool(NewTranscribeTool())
+	reg.RegisterTool(NewHighlightDetectionTool())
+	reg.RegisterTool(NewCaptionGeneratorTool())
+	// prediction tools
+	reg.RegisterTool(NewBrierScorerTool())
+	reg.RegisterTool(NewPredictionTrackerTool())
 }

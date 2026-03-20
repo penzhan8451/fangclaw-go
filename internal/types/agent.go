@@ -156,15 +156,15 @@ const (
 func (p ToolProfile) Tools() []string {
 	switch p {
 	case ToolProfileMinimal:
-		return []string{"file_read", "file_list"}
+		return []string{"read_file", "list_dir"}
 	case ToolProfileCoding:
-		return []string{"file_read", "file_write", "file_list", "shell_exec", "web_fetch"}
+		return []string{"read_file", "write_file", "list_dir", "shell_exec", "fetch"}
 	case ToolProfileResearch:
-		return []string{"web_fetch", "web_search", "file_read", "file_write"}
+		return []string{"fetch", "search", "read_file", "write_file"}
 	case ToolProfileMessaging:
 		return []string{"agent_send", "agent_list", "memory_store", "memory_recall"}
 	case ToolProfileAutomation:
-		return []string{"file_read", "file_write", "file_list", "shell_exec", "web_fetch", "web_search", "agent_send", "agent_list", "memory_store", "memory_recall"}
+		return []string{"read_file", "write_file", "list_dir", "shell_exec", "fetch", "search", "agent_send", "agent_list", "memory_store", "memory_recall"}
 	case ToolProfileFull, ToolProfileCustom:
 		return []string{"*"}
 	default:
