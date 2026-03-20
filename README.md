@@ -429,20 +429,27 @@ This skill provides GitHub integration capabilities.
 
 3. **Configure an Agent to Use the GitHub Skill:**
 
-Create `github-agent.toml:
+Create `github-agent.json:
 
-```toml
-name = "GitHub Assistant"
-description = "An agent that helps with GitHub tasks"
-
-system_prompt = "You are a helpful GitHub assistant."
-
-[model]
-provider = "openai"
-model = "gpt-4"
-api_key_env = "OPENAI_API_KEY"
-
-skills = ["github"]  # Specify the skill to use!
+```json
+{
+  "id": "devops",
+  "name": "DevOps Engineer",
+  "description": "A systems-focused agent for CI/CD, infrastructure, Docker, and deployment troubleshooting.",
+  "category": "Development",
+  "icon": "DO",
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "profile": "precise",
+  "system_prompt": "You are a DevOps engineer. Help with CI/CD pipelines, Docker, Kubernetes, infrastructure as code, and deployment. Prioritize reliability and security.",
+  "tools": [
+    "file_read",
+    "web_search",
+    "shell_exec"
+  ],
+  "skills": ["github"],   # Specify the skill to use!
+  "mcp_servers": []
+}
 ```
 
 4. **Create the Agent:**
