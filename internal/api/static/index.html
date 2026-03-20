@@ -10520,7 +10520,14 @@ function overviewPage() {
     async loadMcpServers() {
       try {
         var data = await FangClawGoAPI.get('/api/mcp/servers');
-        this.mcpServers = data.servers || [];
+        // Backend returns data.connected array with connected servers
+        this.mcpServers = (data.connected || []).map(function(server) {
+          return {
+            name: server.name,
+            status: 'connected',
+            tools_count: server.tools_count || 0
+          };
+        });
       } catch(e) { this.mcpServers = []; }
     },
 
