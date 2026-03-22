@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/penzhan8451/fangclaw-go/internal/eventbus"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 	"github.com/rs/zerolog/log"
 )
@@ -21,12 +22,13 @@ const (
 )
 
 type WorkflowEngine struct {
-	mu            sync.RWMutex
-	workflows     map[types.WorkflowID]types.Workflow
-	runs          map[types.WorkflowRunID]types.WorkflowRun
-	templates     map[types.WorkflowTemplateID]types.WorkflowTemplate
-	dataDir       string
-	channelSender func(channelName, recipient, message string) error
+	mu             sync.RWMutex
+	workflows      map[types.WorkflowID]types.Workflow
+	runs           map[types.WorkflowRunID]types.WorkflowRun
+	templates      map[types.WorkflowTemplateID]types.WorkflowTemplate
+	dataDir        string
+	channelSender  func(channelName, recipient, message string) error
+	eventPublisher func(event *eventbus.Event)
 }
 
 func NewWorkflowEngine(dataDir ...string) *WorkflowEngine {
@@ -56,6 +58,21 @@ func (e *WorkflowEngine) SetChannelSender(sender func(channelName, recipient, me
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.channelSender = sender
+}
+
+func (e *WorkflowEngine) SetEventPublisher(publisher func(event *eventbus.Event)) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.eventPublisher = publisher
+}
+
+func (e *WorkflowEngine) publishEvent(event *eventbus.Event) {
+	e.mu.RLock()
+	publisher := e.eventPublisher
+	e.mu.RUnlock()
+	if publisher != nil {
+		publisher(event)
+	}
 }
 
 func (e *WorkflowEngine) loadFromDisk() {
@@ -209,7 +226,7 @@ func (e *WorkflowEngine) deleteRunFromDisk(id types.WorkflowRunID) error {
 	return os.Remove(path)
 }
 
-func uuid() string {
+func generateRunID() string {
 	return fmt.Sprintf("%x", time.Now().UnixNano())
 }
 
@@ -412,6 +429,17 @@ func (e *WorkflowEngine) ExecuteRun(
 	}
 	input := run.Input
 	e.mu.Unlock()
+
+	event := eventbus.NewEvent(
+		eventbus.EventTypeWorkflowStarted,
+		string(runID),
+		eventbus.EventTargetSystem,
+	).WithPayload(map[string]interface{}{
+		"workflow_id":   string(workflow.ID),
+		"workflow_name": workflow.Name,
+		"input":         input,
+	})
+	e.publishEvent(event)
 
 	currentInput := input
 	allOutputs := []string{}
@@ -806,16 +834,31 @@ func (e *WorkflowEngine) failRun(runID types.WorkflowRunID, err string) (string,
 func (e *WorkflowEngine) completeRun(runID types.WorkflowRunID, output string) (string, error) {
 	e.mu.Lock()
 	var runToSave *types.WorkflowRun
+	var workflowID types.WorkflowID
+	var workflowName string
 	if run, ok := e.runs[runID]; ok {
 		run.State = types.WorkflowRunStateCompleted
 		run.Output = &output
 		now := time.Now()
 		run.CompletedAt = &now
 		e.runs[runID] = run
+		workflowID = run.WorkflowID
+		workflowName = run.WorkflowName
 		runCopy := run
 		runToSave = &runCopy
 	}
 	e.mu.Unlock()
+
+	event := eventbus.NewEvent(
+		eventbus.EventTypeWorkflowCompleted,
+		string(runID),
+		eventbus.EventTargetSystem,
+	).WithPayload(map[string]interface{}{
+		"workflow_id":   string(workflowID),
+		"workflow_name": workflowName,
+		"output":        output,
+	})
+	e.publishEvent(event)
 
 	if runToSave != nil {
 		if err := e.saveRunToDisk(*runToSave); err != nil {
@@ -1001,7 +1044,7 @@ func (e *WorkflowEngine) CreateFromTemplate(templateID types.WorkflowTemplateID,
 	}
 
 	wf := template.Workflow
-	wf.ID = types.WorkflowID(fmt.Sprintf("workflow-%s", uuid()))
+	wf.ID = types.WorkflowID(fmt.Sprintf("workflow-%s", generateRunID()))
 	if customName != "" {
 		wf.Name = customName
 	}

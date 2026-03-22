@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/glebarez/sqlite"
@@ -142,6 +143,21 @@ func (db *DB) Migrate() error {
 			FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
 		)`,
 
+		// Trigger history table
+		`CREATE TABLE IF NOT EXISTS trigger_history (
+			id TEXT PRIMARY KEY,
+			trigger_id TEXT NOT NULL,
+			agent_id TEXT NOT NULL,
+			event_type TEXT NOT NULL,
+			event_description TEXT NOT NULL,
+			sent_message TEXT NOT NULL,
+			agent_response TEXT NOT NULL,
+			session_id TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			FOREIGN KEY (trigger_id) REFERENCES triggers(id) ON DELETE CASCADE,
+			FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+		)`,
+
 		// Workflows table
 		`CREATE TABLE IF NOT EXISTS workflows (
 			id TEXT PRIMARY KEY,
@@ -177,6 +193,9 @@ func (db *DB) Migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_memories_deleted ON memories(deleted)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit(timestamp)`,
 		`CREATE INDEX IF NOT EXISTS idx_triggers_agent_id ON triggers(agent_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_trigger_history_trigger_id ON trigger_history(trigger_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_trigger_history_agent_id ON trigger_history(agent_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_trigger_history_created_at ON trigger_history(created_at)`,
 	}
 
 	for _, m := range migrations {
@@ -505,16 +524,22 @@ func (db *DB) SaveTrigger(trigger *TriggerRecord) error {
 func (db *DB) GetTrigger(id string) (*TriggerRecord, error) {
 	var trigger TriggerRecord
 	var enabled int
+	var createdAtStr string
 	err := db.QueryRow(`
 		SELECT id, agent_id, pattern, prompt_template, enabled, created_at, fire_count, max_fires
 		FROM triggers WHERE id = ?
-	`, id).Scan(&trigger.ID, &trigger.AgentID, &trigger.Pattern, &trigger.PromptTemplate, &enabled, &trigger.CreatedAt, &trigger.FireCount, &trigger.MaxFires)
+	`, id).Scan(&trigger.ID, &trigger.AgentID, &trigger.Pattern, &trigger.PromptTemplate, &enabled, &createdAtStr, &trigger.FireCount, &trigger.MaxFires)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+	if err != nil {
+		return nil, err
+	}
+	trigger.CreatedAt = createdAt
 	trigger.Enabled = enabled == 1
 	return &trigger, nil
 }
@@ -534,9 +559,15 @@ func (db *DB) ListTriggers() ([]*TriggerRecord, error) {
 	for rows.Next() {
 		var trigger TriggerRecord
 		var enabled int
-		if err := rows.Scan(&trigger.ID, &trigger.AgentID, &trigger.Pattern, &trigger.PromptTemplate, &enabled, &trigger.CreatedAt, &trigger.FireCount, &trigger.MaxFires); err != nil {
+		var createdAtStr string
+		if err := rows.Scan(&trigger.ID, &trigger.AgentID, &trigger.Pattern, &trigger.PromptTemplate, &enabled, &createdAtStr, &trigger.FireCount, &trigger.MaxFires); err != nil {
 			return nil, err
 		}
+		createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+		if err != nil {
+			return nil, err
+		}
+		trigger.CreatedAt = createdAt
 		trigger.Enabled = enabled == 1
 		triggers = append(triggers, &trigger)
 	}
@@ -548,6 +579,90 @@ func (db *DB) ListTriggers() ([]*TriggerRecord, error) {
 func (db *DB) DeleteTrigger(id string) error {
 	_, err := db.Exec("DELETE FROM triggers WHERE id = ?", id)
 	return err
+}
+
+// Trigger history operations
+
+// TriggerHistoryRecord represents a trigger history record in the database.
+type TriggerHistoryRecord struct {
+	ID               string
+	TriggerID        string
+	AgentID          string
+	EventType        string
+	EventDescription string
+	SentMessage      string
+	AgentResponse    string
+	SessionID        string
+	CreatedAt        time.Time
+}
+
+// SaveTriggerHistory saves a trigger history record.
+func (db *DB) SaveTriggerHistory(record *TriggerHistoryRecord) error {
+	_, err := db.Exec(`
+		INSERT OR REPLACE INTO trigger_history (
+			id, trigger_id, agent_id, event_type, event_description, 
+			sent_message, agent_response, session_id, created_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, record.ID, record.TriggerID, record.AgentID, record.EventType,
+		record.EventDescription, record.SentMessage, record.AgentResponse,
+		record.SessionID, record.CreatedAt.Format(time.RFC3339))
+	return err
+}
+
+// ListTriggerHistory lists trigger history records, optionally filtered by trigger ID or agent ID.
+func (db *DB) ListTriggerHistory(triggerID string, agentID string, limit int) ([]*TriggerHistoryRecord, error) {
+	query := `
+		SELECT id, trigger_id, agent_id, event_type, event_description, 
+		       sent_message, agent_response, session_id, created_at
+		FROM trigger_history
+	`
+	args := []interface{}{}
+	conditions := []string{}
+
+	if triggerID != "" {
+		conditions = append(conditions, "trigger_id = ?")
+		args = append(args, triggerID)
+	}
+	if agentID != "" {
+		conditions = append(conditions, "agent_id = ?")
+		args = append(args, agentID)
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query += " ORDER BY created_at DESC"
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []*TriggerHistoryRecord
+	for rows.Next() {
+		var record TriggerHistoryRecord
+		var createdAtStr string
+		if err := rows.Scan(&record.ID, &record.TriggerID, &record.AgentID,
+			&record.EventType, &record.EventDescription, &record.SentMessage,
+			&record.AgentResponse, &record.SessionID, &createdAtStr); err != nil {
+			return nil, err
+		}
+		createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+		if err != nil {
+			return nil, err
+		}
+		record.CreatedAt = createdAt
+		records = append(records, &record)
+	}
+
+	return records, nil
 }
 
 // Workflow operations

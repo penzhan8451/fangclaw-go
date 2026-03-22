@@ -1466,6 +1466,9 @@
           <div class="tab" :class="{ active: tab === 'history' }" @click="tab = 'history'; loadHistory()">
             Run History
           </div>
+          <div class="tab" :class="{ active: tab === 'trigger-history' }" @click="tab = 'trigger-history'; loadTriggerHistory()">
+            Trigger History
+          </div>
         </div>
         <div class="page-body" x-init="loadData()">
 
@@ -1609,6 +1612,9 @@
 
           <!-- ── TAB: Event Triggers ── -->
           <div x-show="tab === 'triggers'">
+            <div class="flex gap-2 mb-4">
+              <button class="btn btn-primary btn-sm" @click="showCreateTriggerForm = true">+ New Trigger</button>
+            </div>
             <div x-show="trigLoading" class="loading-state"><div class="spinner"></div><span>Loading triggers...</span></div>
             <div x-show="!trigLoading && trigLoadError" class="error-state">
               <span class="error-icon">!</span>
@@ -1619,9 +1625,8 @@
               <div class="card mb-4" style="border-left:3px solid var(--accent)">
                 <div class="font-bold" style="font-size:13px;margin-bottom:4px">Event Triggers</div>
                 <div class="text-sm text-dim" style="line-height:1.6">
-                  Event triggers fire agents in response to system events (agent lifecycle, memory updates, custom events).
-                  Create and manage triggers on the <a href="#workflows" style="color:var(--accent)">Workflows</a> page.
-                  This view shows all active triggers for monitoring.
+                  Event triggers fire agents in response to system events (agent lifecycle, memory updates, custom events, workflow events, etc.).
+                  Create and manage triggers here to respond to any event in the system.
                 </div>
               </div>
               <div class="table-wrap" x-show="triggers.length">
@@ -1631,7 +1636,7 @@
                     <template x-for="t in triggers" :key="t.id">
                       <tr>
                         <td class="font-bold truncate" style="max-width:120px" x-text="agentName(t.agent_id)" :title="t.agent_id"></td>
-                        <td><span class="badge badge-created trigger-type" x-text="triggerType(t.pattern)"></span></td>
+                        <td><span class="badge badge-created trigger-type" x-text="triggerType(t.pattern, t.pattern_type)"></span></td>
                         <td class="truncate text-xs text-dim" style="max-width:180px" x-text="t.prompt_template" :title="t.prompt_template"></td>
                         <td x-text="t.fire_count + (t.max_fires > 0 ? '/' + t.max_fires : '')"></td>
                         <td>
@@ -1648,9 +1653,78 @@
               </div>
               <div class="empty-state" x-show="!triggers.length">
                 <h4>No event triggers</h4>
-                <p class="hint">Create event triggers on the <a href="#workflows" style="color:var(--accent)">Workflows page</a> to fire agents in response to system events.</p>
+                <p class="hint">Create event triggers to fire agents in response to any system events (agent lifecycle, memory updates, workflows, etc.).</p>
               </div>
             </div>
+            
+            <!-- Create Trigger Modal -->
+            <template x-if="showCreateTriggerForm">
+              <div class="modal-overlay" @click.self="showCreateTriggerForm = false" @keydown.escape.window="showCreateTriggerForm = false">
+                <div class="modal" style="max-width:600px">
+                  <div class="modal-header">
+                    <h3>Create Event Trigger</h3>
+                    <button class="btn btn-ghost btn-sm" @click="showCreateTriggerForm = false">&times;</button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="form-group">
+                      <label>Agent</label>
+                      <select class="form-input" x-model="newTrigger.agent_id">
+                        <option value="">Select an agent...</option>
+                        <template x-for="agent in agents" :key="agent.id">
+                          <option :value="agent.id" x-text="agent.name"></option>
+                        </template>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Trigger Pattern Type</label>
+                      <select class="form-input" x-model="newTrigger.pattern_type">
+                        <option value="all">All Events</option>
+                        <option value="lifecycle">Agent Lifecycle</option>
+                        <option value="agent_spawned">Agent Spawned</option>
+                        <option value="agent_terminated">Agent Terminated</option>
+                        <option value="system">System Events</option>
+                        <option value="system_keyword">System Keyword</option>
+                        <option value="memory_update">Memory Updates</option>
+                        <option value="memory_key_pattern">Memory Key Pattern</option>
+                        <option value="content_match">Content Match</option>
+                      </select>
+                    </div>
+                    <div class="form-group" x-show="newTrigger.pattern_type === 'agent_spawned'">
+                      <label>Agent Name Pattern (optional)</label>
+                      <input class="form-input" type="text" x-model="newTrigger.name_pattern" placeholder="e.g., *helper*">
+                    </div>
+                    <div class="form-group" x-show="newTrigger.pattern_type === 'system_keyword'">
+                      <label>Keyword</label>
+                      <input class="form-input" type="text" x-model="newTrigger.keyword" placeholder="Keyword to match">
+                    </div>
+                    <div class="form-group" x-show="newTrigger.pattern_type === 'memory_key_pattern'">
+                      <label>Memory Key Pattern</label>
+                      <input class="form-input" type="text" x-model="newTrigger.key_pattern" placeholder="e.g., *user*">
+                    </div>
+                    <div class="form-group" x-show="newTrigger.pattern_type === 'content_match'">
+                      <label>Content Substring</label>
+                      <input class="form-input" type="text" x-model="newTrigger.substring" placeholder="Substring to match">
+                    </div>
+                    <div class="form-group">
+                      <label>Prompt Template</label>
+                      <textarea class="form-input" x-model="newTrigger.prompt_template" rows="3">Event: {{event}}</textarea>
+                      <div class="hint">Use {{event}} to include the full event payload.</div>
+                    </div>
+                    <div class="form-group">
+                      <label>Max Fires (optional, 0 = unlimited)</label>
+                      <input class="form-input" type="number" x-model.number="newTrigger.max_fires" min="0" value="0">
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button class="btn btn-ghost" @click="showCreateTriggerForm = false">Cancel</button>
+                    <button class="btn btn-primary" @click="createTrigger()" :disabled="creatingTrigger">
+                      <span x-show="!creatingTrigger">Create Trigger</span>
+                      <span x-show="creatingTrigger">Creating...</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
 
           <!-- ── TAB: Run History ── -->
@@ -1682,6 +1756,47 @@
               <div class="empty-state" x-show="!history.length">
                 <h4>No run history yet</h4>
                 <p class="hint">Run history will appear here after scheduled jobs or triggers execute.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── TAB: Trigger History ── -->
+          <div x-show="tab === 'trigger-history'">
+            <div x-show="triggerHistoryLoading" class="loading-state"><div class="spinner"></div><span>Loading trigger history...</span></div>
+            <div x-show="!triggerHistoryLoading">
+              <div class="card mb-4" style="border-left:3px solid var(--accent)">
+                <div class="font-bold" style="font-size:13px;margin-bottom:4px">Trigger History</div>
+                <div class="text-sm text-dim" style="line-height:1.6">
+                  Detailed history of trigger events, including the messages sent to agents and their responses.
+                </div>
+              </div>
+              <div class="table-wrap" x-show="triggerHistory.length">
+                <table>
+                  <thead><tr><th>Time</th><th>Event</th><th>Agent</th><th>Sent Message</th><th>Agent Response</th><th></th></tr></thead>
+                  <tbody>
+                    <template x-for="(h, idx) in triggerHistory" :key="h.id">
+                      <tr>
+                        <td class="text-xs" style="white-space:nowrap" x-text="formatTime(h.created_at)"></td>
+                        <td style="max-width:200px">
+                          <div class="font-bold text-xs" x-text="h.event_type"></div>
+                          <div class="text-xs text-dim truncate" x-text="h.event_description"></div>
+                        </td>
+                        <td class="text-xs" x-text="agentName(h.agent_id)"></td>
+                        <td style="max-width:300px">
+                          <div class="text-xs text-dim line-clamp-2" x-text="h.sent_message"></div>
+                        </td>
+                        <td style="max-width:300px">
+                          <div class="text-xs line-clamp-2" x-text="h.agent_response"></div>
+                        </td>
+                        <td></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+              <div class="empty-state" x-show="!triggerHistory.length">
+                <h4>No trigger history yet</h4>
+                <p class="hint">Trigger history will appear here after event triggers are executed.</p>
               </div>
             </div>
           </div>
@@ -3104,7 +3219,6 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                       <span class="text-xs font-bold" style="color:var(--error)">Protects against:</span>
                       <span class="text-xs" x-text="f.threat"></span>
                     </div>
-                    <div class="text-xs text-dim" style="margin-top:6px;opacity:0.5" x-text="f.impl"></div>
                   </div>
                 </template>
               </div>

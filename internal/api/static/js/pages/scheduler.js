@@ -19,6 +19,10 @@ function schedulerPage() {
     history: [],
     historyLoading: false,
 
+    // -- Trigger History state --
+    triggerHistory: [],
+    triggerHistoryLoading: false,
+
     // -- Create Job form --
     showCreateForm: false,
     newJob: {
@@ -29,6 +33,20 @@ function schedulerPage() {
       enabled: true
     },
     creating: false,
+
+    // -- Create Trigger form --
+    showCreateTriggerForm: false,
+    newTrigger: {
+      agent_id: '',
+      pattern_type: 'all',
+      name_pattern: '',
+      keyword: '',
+      key_pattern: '',
+      substring: '',
+      prompt_template: 'Event: {{event}}',
+      max_fires: 0
+    },
+    creatingTrigger: false,
 
     // -- Run Now state --
     runningJobId: '',
@@ -123,7 +141,7 @@ function schedulerPage() {
           if (t.fire_count > 0) {
             historyItems.push({
               timestamp: t.created_at,
-              name: 'Trigger: ' + this.triggerType(t.pattern),
+              name: 'Trigger: ' + this.triggerType(t.pattern, t.pattern_type),
               type: 'trigger',
               status: 'fired',
               run_count: t.fire_count
@@ -138,6 +156,17 @@ function schedulerPage() {
         this.history = [];
       }
       this.historyLoading = false;
+    },
+
+    async loadTriggerHistory() {
+      this.triggerHistoryLoading = true;
+      try {
+        var data = await FangClawGoAPI.get('/api/trigger-history?limit=100');
+        this.triggerHistory = Array.isArray(data) ? data : [];
+      } catch(e) {
+        this.triggerHistory = [];
+      }
+      this.triggerHistoryLoading = false;
     },
 
     // ── Job CRUD ──
@@ -216,15 +245,10 @@ function schedulerPage() {
 
     // ── Trigger helpers ──
 
-    triggerType(pattern) {
-      if (!pattern) return 'unknown';
-      if (typeof pattern === 'string') return pattern;
-      var keys = Object.keys(pattern);
-      if (keys.length === 0) return 'unknown';
-      var key = keys[0];
+    triggerType(pattern, patternType) {
       var names = {
         lifecycle: 'Lifecycle',
-        agent_spawned: 'Agent Spawned',
+        agent_spawned: 'Agent Spawn',
         agent_terminated: 'Agent Terminated',
         system: 'System',
         system_keyword: 'System Keyword',
@@ -233,6 +257,14 @@ function schedulerPage() {
         all: 'All Events',
         content_match: 'Content Match'
       };
+      if (patternType && names[patternType]) {
+        return names[patternType];
+      }
+      if (!pattern) return 'unknown';
+      if (typeof pattern === 'string') return pattern;
+      var keys = Object.keys(pattern);
+      if (keys.length === 0) return 'unknown';
+      var key = keys[0];
       return names[key] || key.replace(/_/g, ' ');
     },
 
@@ -260,7 +292,59 @@ function schedulerPage() {
       });
     },
 
+    async createTrigger() {
+      if (!this.newTrigger.agent_id.trim()) {
+        FangClawGoToast.warn('Please select an agent');
+        return;
+      }
+      if (!this.newTrigger.prompt_template.trim()) {
+        FangClawGoToast.warn('Please enter a prompt template');
+        return;
+      }
+      this.creatingTrigger = true;
+      try {
+        var pattern = { type: this.newTrigger.pattern_type };
+        if (this.newTrigger.pattern_type === 'agent_spawned' && this.newTrigger.name_pattern) {
+          pattern.name_pattern = this.newTrigger.name_pattern;
+        } else if (this.newTrigger.pattern_type === 'system_keyword' && this.newTrigger.keyword) {
+          pattern.keyword = this.newTrigger.keyword;
+        } else if (this.newTrigger.pattern_type === 'memory_key_pattern' && this.newTrigger.key_pattern) {
+          pattern.key_pattern = this.newTrigger.key_pattern;
+        } else if (this.newTrigger.pattern_type === 'content_match' && this.newTrigger.substring) {
+          pattern.substring = this.newTrigger.substring;
+        }
+        
+        var body = {
+          agent_id: this.newTrigger.agent_id,
+          pattern: pattern,
+          prompt_template: this.newTrigger.prompt_template,
+          max_fires: this.newTrigger.max_fires || 0
+        };
+        await FangClawGoAPI.post('/api/triggers', body);
+        this.showCreateTriggerForm = false;
+        this.newTrigger = {
+          agent_id: '',
+          pattern_type: 'all',
+          name_pattern: '',
+          keyword: '',
+          key_pattern: '',
+          substring: '',
+          prompt_template: 'Event: {{event}}',
+          max_fires: 0
+        };
+        FangClawGoToast.success('Trigger created successfully');
+        await this.loadTriggers();
+      } catch(e) {
+        FangClawGoToast.error('Failed to create trigger: ' + (e.message || e));
+      }
+      this.creatingTrigger = false;
+    },
+
     // ── Utility ──
+
+    get agents() {
+      return Alpine.store('app').agents || [];
+    },
 
     get availableAgents() {
       return Alpine.store('app').agents || [];

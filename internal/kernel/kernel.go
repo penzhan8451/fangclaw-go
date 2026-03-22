@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/penzhan8451/fangclaw-go/internal/a2a"
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/audit"
@@ -33,6 +34,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent_templates"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
+	"github.com/penzhan8451/fangclaw-go/internal/security"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
@@ -138,7 +140,10 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 	agentRegistry := NewAgentRegistry(dataDir)
 	agentRegistry.LoadFromDisk()
 	handRegistry := hands.NewRegistry()
-	triggerEngine := triggers.NewTriggerEngine()
+	triggerEngine := triggers.NewTriggerEngine(db)
+	if err := triggerEngine.LoadFromDB(); err != nil {
+		log.Warn().Err(err).Msg("Failed to load triggers from database")
+	}
 	approvalPolicy := approvals.DefaultApprovalPolicy()
 	approvalMgr := approvals.NewApprovalManager(approvalPolicy)
 	deliveryReg := delivery.NewDeliveryRegistry()
@@ -195,6 +200,11 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 	k.a2aTaskStore.SetEventStore(k.a2aEventStore)
 	k.a2aClient.SetEventStore(k.a2aEventStore)
 	k.a2aClient.SetTaskStore(k.a2aTaskStore)
+
+	// Set event publisher for workflow engine
+	workflowEngine.SetEventPublisher(func(event *eventbus.Event) {
+		k.PublishEvent(event)
+	})
 
 	k.workflowEngine.SetChannelSender(func(channelName, recipient, message string) error {
 		_, err := channels.SendMessageToChannelName(k.registry, channelName, recipient, message, nil)
@@ -436,22 +446,31 @@ func (k *Kernel) Start(ctx context.Context) error {
 							}, 1)
 
 							go func() {
+								env, workDir, prepErr := security.PrepareSecureExec(security.DefaultSecureExecConfig())
+								if prepErr != nil {
+									log.Warn().Str("job", jobName).Err(prepErr).Msg("Cron: failed to prepare secure execution, using default environment")
+								}
+
 								cmd := exec.CommandContext(ctxTimeout, command, args...)
 								var stdoutBuf, stderrBuf bytes.Buffer
 								cmd.Stdout = &stdoutBuf
 								cmd.Stderr = &stderrBuf
+								cmd.Env = env
+								if workDir != "" {
+									cmd.Dir = workDir
+								}
 
 								log.Info().Str("job", jobName).Msg("Cron: starting command execution")
-								err := cmd.Run()
+								execErr := cmd.Run()
 								stdout := stdoutBuf.String()
 								stderr := stderrBuf.String()
 
-								log.Info().Str("job", jobName).Str("stdout", stdout).Str("stderr", stderr).Err(err).Msg("Cron: command execution finished")
+								log.Info().Str("job", jobName).Str("stdout", stdout).Str("stderr", stderr).Err(execErr).Msg("Cron: command execution finished")
 								resultChan <- struct {
 									stdout string
 									stderr string
 									err    error
-								}{stdout, stderr, err}
+								}{stdout, stderr, execErr}
 							}()
 
 							select {
@@ -1127,6 +1146,24 @@ func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error
 
 	k.auditLog.Record("system", agentID.String(), audit.ActionAgentSpawn, fmt.Sprintf("name=%s", agentName), "ok")
 
+	event := eventbus.NewEvent(
+		eventbus.EventTypeAgentCreated,
+		agentID.String(),
+		eventbus.EventTargetAgent,
+	).WithPayload(map[string]interface{}{
+		"name": agentName,
+	})
+	k.PublishEvent(event)
+
+	event = eventbus.NewEvent(
+		eventbus.EventTypeAgentStarted,
+		agentID.String(),
+		eventbus.EventTargetAgent,
+	).WithPayload(map[string]interface{}{
+		"name": agentName,
+	})
+	k.PublishEvent(event)
+
 	return agentID.String(), agentName, nil
 }
 
@@ -1142,7 +1179,12 @@ func (k *Kernel) DeleteAgent(agentIDStr string) error {
 		return err
 	}
 
+	var agentName string
 	k.mu.Lock()
+	entry := k.agentRegistry.Get(id)
+	if entry != nil {
+		agentName = entry.Name
+	}
 	_, err = k.agentRegistry.Remove(id)
 	k.mu.Unlock()
 
@@ -1152,6 +1194,15 @@ func (k *Kernel) DeleteAgent(agentIDStr string) error {
 
 	// Also delete agent from AgentRuntime
 	k.agentRuntime.DeleteAgent(agentIDStr)
+
+	event := eventbus.NewEvent(
+		eventbus.EventTypeAgentDeleted,
+		agentIDStr,
+		eventbus.EventTargetAgent,
+	).WithPayload(map[string]interface{}{
+		"name": agentName,
+	})
+	k.PublishEvent(event)
 
 	return nil
 }
@@ -1484,4 +1535,116 @@ func ValidateShellCommand(command string, args []string, config types.CronShellS
 
 	log.Info().Str("command", command).Msg("Cron: shell command validation passed")
 	return nil
+}
+
+// describeEventForHistory generates a human-readable description of an event.
+func describeEventForHistory(event *eventbus.Event) string {
+	switch event.Type {
+	case eventbus.EventTypeAgentCreated:
+		name, _ := event.Payload["name"].(string)
+		return fmt.Sprintf("Agent created: %s (id: %s)", name, event.AgentID)
+	case eventbus.EventTypeAgentStarted:
+		name, _ := event.Payload["name"].(string)
+		return fmt.Sprintf("Agent started: %s (id: %s)", name, event.AgentID)
+	case eventbus.EventTypeAgentStopped:
+		name, _ := event.Payload["name"].(string)
+		return fmt.Sprintf("Agent stopped: %s (id: %s)", name, event.AgentID)
+	case eventbus.EventTypeMessageReceived:
+		channel, _ := event.Payload["channel"].(string)
+		content, _ := event.Payload["content"].(string)
+		if len(content) > 200 {
+			content = content[:197] + "..."
+		}
+		return fmt.Sprintf("Message received on %s: %s", channel, content)
+	case eventbus.EventTypeMessageSent:
+		channel, _ := event.Payload["channel"].(string)
+		content, _ := event.Payload["content"].(string)
+		if len(content) > 200 {
+			content = content[:197] + "..."
+		}
+		return fmt.Sprintf("Message sent to %s: %s", channel, content)
+	case eventbus.EventTypeSystem:
+		subtype, _ := event.Payload["subtype"].(string)
+		if subtype != "" {
+			return fmt.Sprintf("System event: %s", subtype)
+		}
+		return "System event"
+	case eventbus.EventTypeTriggerFired:
+		triggerID, _ := event.Payload["trigger_id"].(string)
+		return fmt.Sprintf("Trigger fired: %s", triggerID)
+	case eventbus.EventTypeWorkflowStarted:
+		workflowID, _ := event.Payload["workflow_id"].(string)
+		return fmt.Sprintf("Workflow started: %s", workflowID)
+	case eventbus.EventTypeWorkflowCompleted:
+		workflowID, _ := event.Payload["workflow_id"].(string)
+		return fmt.Sprintf("Workflow completed: %s", workflowID)
+	default:
+		return fmt.Sprintf("Event: %s", event.Type)
+	}
+}
+
+// PublishEvent publishes an event to the event bus and evaluates triggers.
+// Returns a list of (agent_id, message) pairs that were triggered.
+func (k *Kernel) PublishEvent(event *eventbus.Event) []triggers.MatchResult {
+	// Evaluate triggers before publishing
+	triggered := k.triggerEngine.Evaluate(event)
+
+	// Publish to event bus
+	k.eventBus.Publish(event)
+
+	// Get event description for history
+	eventDesc := describeEventForHistory(event)
+
+	// Send triggered messages to agents in background
+	for _, pair := range triggered {
+		triggerID := pair.TriggerID.String()
+		agentID := pair.AgentID
+		message := pair.Message
+		go func() {
+			log.Info().
+				Str("trigger_id", triggerID).
+				Str("agent_id", agentID).
+				Str("message", message).
+				Msg("Sending triggered message to agent")
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+
+			response, err := k.SendMessage(ctx, agentID, message)
+			if err != nil {
+				log.Warn().
+					Err(err).
+					Str("agent_id", agentID).
+					Msg("Failed to send triggered message to agent")
+				response = fmt.Sprintf("Error: %v", err)
+			}
+
+			// Get session ID for this agent
+			var sessionID string
+			// TODO: Implement session ID retrieval from agent entry if available
+
+			// Save trigger history
+			historyID := uuid.NewString()
+			historyRecord := &memory.TriggerHistoryRecord{
+				ID:               historyID,
+				TriggerID:        triggerID,
+				AgentID:          agentID,
+				EventType:        string(event.Type),
+				EventDescription: eventDesc,
+				SentMessage:      message,
+				AgentResponse:    response,
+				SessionID:        sessionID,
+				CreatedAt:        time.Now(),
+			}
+
+			if err := k.db.SaveTriggerHistory(historyRecord); err != nil {
+				log.Warn().
+					Err(err).
+					Str("trigger_id", triggerID).
+					Msg("Failed to save trigger history")
+			}
+		}()
+	}
+
+	return triggered
 }

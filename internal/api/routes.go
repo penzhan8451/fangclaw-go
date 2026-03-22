@@ -24,6 +24,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
+	"github.com/penzhan8451/fangclaw-go/internal/security"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
@@ -428,6 +429,11 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", r.handleHealth)
 	mux.HandleFunc("GET /api/status", r.handleStatus)
 	mux.HandleFunc("GET /api/version", r.handleVersion)
+	mux.HandleFunc("GET /api/security", r.handleSecurity)
+
+	// Auth endpoints
+	mux.HandleFunc("POST /api/auth/login", r.handleLogin)
+	mux.HandleFunc("POST /api/auth/logout", r.handleLogout)
 
 	// Agent endpoints (v1)
 	mux.HandleFunc("GET /api/v1/agents", r.handleListAgents)
@@ -603,7 +609,9 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	// Triggers endpoints
 	mux.HandleFunc("POST /api/triggers", r.handleCreateTrigger)
 	mux.HandleFunc("GET /api/triggers", r.handleListTriggers)
+	mux.HandleFunc("PUT /api/triggers/{id}", r.handleUpdateTrigger)
 	mux.HandleFunc("DELETE /api/triggers/{id}", r.handleDeleteTrigger)
+	mux.HandleFunc("GET /api/trigger-history", r.handleListTriggerHistory)
 
 	// Agent templates endpoints
 	mux.HandleFunc("GET /api/agent-templates", r.handleListAgentTemplates)
@@ -659,6 +667,145 @@ func (r *Router) handleStatus(w http.ResponseWriter, req *http.Request) {
 		ModelCount:    1,
 		Uptime:        uptimeStr,
 		UptimeSeconds: secs,
+	})
+}
+
+// handleSecurity handles security status requests.
+func (r *Router) handleSecurity(w http.ResponseWriter, req *http.Request) {
+	authMode := "localhost_only"
+	apiKeySet := false
+
+	coreProtections := map[string]bool{
+		"path_traversal":                  true,
+		"ssrf_protection":                 true,
+		"capability_system":               true,
+		"privilege_escalation_prevention": true,
+		"subprocess_isolation":            true,
+		"security_headers":                true,
+		"wire_hmac_auth":                  true,
+		"request_id_tracking":             true,
+	}
+
+	configurable := map[string]interface{}{
+		"rate_limiter": map[string]interface{}{
+			"enabled":           true,
+			"tokens_per_minute": 500,
+			"algorithm":         "GCRA",
+		},
+		"websocket_limits": map[string]interface{}{
+			"max_per_ip":              5,
+			"idle_timeout_secs":       1800,
+			"max_message_size":        65536,
+			"max_messages_per_minute": 10,
+		},
+		"wasm_sandbox": map[string]interface{}{
+			"fuel_metering":        true,
+			"epoch_interruption":   true,
+			"default_timeout_secs": 30,
+			"default_fuel_limit":   1000000,
+		},
+		"auth": map[string]interface{}{
+			"mode":        authMode,
+			"api_key_set": apiKeySet,
+		},
+	}
+
+	auditCount := 0
+	monitoring := map[string]interface{}{
+		"audit_trail": map[string]interface{}{
+			"enabled":     true,
+			"algorithm":   "SHA-256 Merkle Chain",
+			"entry_count": auditCount,
+		},
+		"taint_tracking": map[string]interface{}{
+			"enabled": true,
+			"tracked_labels": []string{
+				"ExternalNetwork",
+				"UserInput",
+				"PII",
+				"Secret",
+				"UntrustedAgent",
+			},
+		},
+		"manifest_signing": map[string]interface{}{
+			"algorithm": "Ed25519",
+			"available": true,
+		},
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"core_protections":   coreProtections,
+		"configurable":       configurable,
+		"monitoring":         monitoring,
+		"secret_zeroization": true,
+		"total_features":     15,
+		"timestamp":          time.Now().UTC(),
+	})
+}
+
+// LoginRequest represents a login request.
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// LoginResponse represents a login response.
+type LoginResponse struct {
+	Token string `json:"token"`
+}
+
+// handleLogin handles login requests.
+func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var loginReq LoginRequest
+	if err := json.NewDecoder(req.Body).Decode(&loginReq); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	defer req.Body.Close()
+
+	// TODO: Replace with actual authentication logic
+	// For now, return a dummy token for demonstration
+	// In production, validate credentials against a user store
+	dummyUser := &security.User{
+		ID:       "demo-user-id",
+		Username: loginReq.Username,
+		Role:     "user",
+	}
+
+	// Create a default security config
+	secConfig := security.DefaultSecurityConfig()
+
+	// Create auth service
+	authService := security.NewAuthService(secConfig)
+
+	// Generate token
+	token, err := authService.GenerateToken(dummyUser)
+	if err != nil {
+		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, LoginResponse{
+		Token: token,
+	})
+}
+
+// handleLogout handles logout requests.
+func (r *Router) handleLogout(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// TODO: Invalidate token on server-side (e.g., add to blacklist)
+	// For now, just return success
+	respondJSON(w, http.StatusOK, map[string]string{
+		"message": "Logged out successfully",
 	})
 }
 
@@ -4642,15 +4789,15 @@ func (r *Router) handleCreateTrigger(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var pattern triggers.TriggerPattern
 	patternBytes, err := json.Marshal(patternData)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid trigger pattern")
 		return
 	}
 
-	if err := json.Unmarshal(patternBytes, &pattern); err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid trigger pattern")
+	pattern, err := triggers.UnmarshalTriggerPattern(patternBytes)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid trigger pattern: "+err.Error())
 		return
 	}
 
@@ -4691,10 +4838,12 @@ func (r *Router) handleListTriggers(w http.ResponseWriter, req *http.Request) {
 	triggersList := r.kernel.TriggerEngine().List(agentID)
 	result := make([]map[string]interface{}, 0)
 	for _, t := range triggersList {
+		patternType := t.Pattern.Type()
 		result = append(result, map[string]interface{}{
 			"id":              t.ID,
 			"agent_id":        t.AgentID,
 			"pattern":         t.Pattern,
+			"pattern_type":    patternType,
 			"prompt_template": t.PromptTemplate,
 			"enabled":         t.Enabled,
 			"fire_count":      t.FireCount,
@@ -4702,6 +4851,42 @@ func (r *Router) handleListTriggers(w http.ResponseWriter, req *http.Request) {
 			"created_at":      t.CreatedAt.Format(time.RFC3339),
 		})
 	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (r *Router) handleListTriggerHistory(w http.ResponseWriter, req *http.Request) {
+	triggerID := req.URL.Query().Get("trigger_id")
+	agentID := req.URL.Query().Get("agent_id")
+	limitStr := req.URL.Query().Get("limit")
+
+	limit := 100
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	records, err := r.kernel.DB().ListTriggerHistory(triggerID, agentID, limit)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to list trigger history")
+		return
+	}
+
+	result := make([]map[string]interface{}, 0)
+	for _, record := range records {
+		result = append(result, map[string]interface{}{
+			"id":                record.ID,
+			"trigger_id":        record.TriggerID,
+			"agent_id":          record.AgentID,
+			"event_type":        record.EventType,
+			"event_description": record.EventDescription,
+			"sent_message":      record.SentMessage,
+			"agent_response":    record.AgentResponse,
+			"session_id":        record.SessionID,
+			"created_at":        record.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
 	respondJSON(w, http.StatusOK, result)
 }
 
@@ -4721,4 +4906,48 @@ func (r *Router) handleDeleteTrigger(w http.ResponseWriter, req *http.Request) {
 	} else {
 		respondError(w, http.StatusNotFound, "Trigger not found")
 	}
+}
+
+func (r *Router) handleUpdateTrigger(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := triggers.ParseTriggerID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid trigger ID")
+		return
+	}
+
+	var reqBody map[string]interface{}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	trigger, ok := r.kernel.TriggerEngine().Get(id)
+	if !ok {
+		respondError(w, http.StatusNotFound, "Trigger not found")
+		return
+	}
+
+	if enabled, ok := reqBody["enabled"].(bool); ok {
+		trigger.Enabled = enabled
+	}
+
+	if maxFires, ok := reqBody["max_fires"].(float64); ok {
+		trigger.MaxFires = uint64(maxFires)
+	}
+
+	if promptTemplate, ok := reqBody["prompt_template"].(string); ok {
+		trigger.PromptTemplate = promptTemplate
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id":              trigger.ID,
+		"agent_id":        trigger.AgentID,
+		"pattern":         trigger.Pattern,
+		"prompt_template": trigger.PromptTemplate,
+		"enabled":         trigger.Enabled,
+		"fire_count":      trigger.FireCount,
+		"max_fires":       trigger.MaxFires,
+		"created_at":      trigger.CreatedAt.Format(time.RFC3339),
+	})
 }

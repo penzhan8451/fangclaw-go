@@ -744,6 +744,7 @@ func (r *Runtime) getAvailableTools(toolNames []string, skillIDs []string) []too
 		available = append(available, r.tools.List()...)
 	} else {
 		for _, name := range toolNames {
+			fmt.Printf("*****Checking tool *****==>%s\n", name)
 			if tool, ok := r.tools.Get(name); ok {
 				available = append(available, tool)
 			}

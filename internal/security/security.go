@@ -2,6 +2,7 @@
 package security
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -10,12 +11,109 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// contextKey is a custom type for context keys to avoid collisions.
+type contextKey string
+
+const (
+	// UserContextKey is the context key for the authenticated user.
+	UserContextKey contextKey = "user"
+	// TokenContextKey is the context key for the authentication token.
+	TokenContextKey contextKey = "token"
+)
+
+// AuthMiddleware creates an HTTP middleware that authenticates requests.
+func AuthMiddleware(authProvider AuthProvider) func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			// Get Authorization header
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				http.Error(w, "Authorization header required", http.StatusUnauthorized)
+				return
+			}
+
+			// Check Bearer scheme
+			if !strings.HasPrefix(authHeader, "Bearer ") {
+				http.Error(w, "Invalid authorization scheme", http.StatusUnauthorized)
+				return
+			}
+
+			// Extract token
+			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+			if tokenString == "" {
+				http.Error(w, "Token required", http.StatusUnauthorized)
+				return
+			}
+
+			// Validate token
+			token, err := authProvider.ValidateToken(tokenString)
+			if err != nil {
+				http.Error(w, "Invalid token: "+err.Error(), http.StatusUnauthorized)
+				return
+			}
+
+			// Store user and token in context
+			ctx := context.WithValue(r.Context(), UserContextKey, token.UserID)
+			ctx = context.WithValue(ctx, TokenContextKey, token)
+
+			// Call next handler with updated context
+			next(w, r.WithContext(ctx))
+		}
+	}
+}
+
+// OptionalAuthMiddleware creates an HTTP middleware that optionally authenticates requests.
+// If no token is provided, the request still proceeds but without user context.
+func OptionalAuthMiddleware(authProvider AuthProvider) func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			// Get Authorization header
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+				// No token, proceed without authentication
+				next(w, r)
+				return
+			}
+
+			// Extract and validate token
+			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+			token, err := authProvider.ValidateToken(tokenString)
+			if err != nil {
+				// Invalid token, but still proceed (optional auth)
+				next(w, r)
+				return
+			}
+
+			// Store user and token in context
+			ctx := context.WithValue(r.Context(), UserContextKey, token.UserID)
+			ctx = context.WithValue(ctx, TokenContextKey, token)
+
+			// Call next handler with updated context
+			next(w, r.WithContext(ctx))
+		}
+	}
+}
+
+// GetUserFromContext retrieves the user ID from the request context.
+func GetUserFromContext(ctx context.Context) (string, bool) {
+	userID, ok := ctx.Value(UserContextKey).(string)
+	return userID, ok
+}
+
+// GetTokenFromContext retrieves the token from the request context.
+func GetTokenFromContext(ctx context.Context) (*Token, bool) {
+	token, ok := ctx.Value(TokenContextKey).(*Token)
+	return token, ok
+}
 
 // DefaultSecurityConfig returns the default security configuration.
 func DefaultSecurityConfig() *SecurityConfig {

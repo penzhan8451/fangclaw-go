@@ -45,51 +45,43 @@ function settingsPage() {
       {
         name: 'Path Traversal Prevention', key: 'path_traversal',
         description: 'Blocks directory escape attacks (../) in all file operations. Two-phase validation: syntactic rejection of path components, then canonicalization to normalize symlinks.',
-        threat: 'Directory escape, privilege escalation via symlinks',
-        impl: 'host_functions.rs — safe_resolve_path() + safe_resolve_parent()'
+        threat: 'Directory escape, privilege escalation via symlinks'
       },
       {
         name: 'SSRF Protection', key: 'ssrf_protection',
         description: 'Blocks outbound requests to private IPs, localhost, and cloud metadata endpoints (AWS/GCP/Azure). Validates DNS resolution results to defeat rebinding attacks.',
-        threat: 'Internal network reconnaissance, cloud credential theft',
-        impl: 'host_functions.rs — is_ssrf_target() + is_private_ip()'
+        threat: 'Internal network reconnaissance, cloud credential theft'
       },
       {
         name: 'Capability-Based Access Control', key: 'capability_system',
         description: 'Deny-by-default permission system. Every agent operation (file I/O, network, shell, memory, spawn) requires an explicit capability grant in the manifest.',
-        threat: 'Unauthorized resource access, sandbox escape',
-        impl: 'host_functions.rs — check_capability() on every host function'
+        threat: 'Unauthorized resource access, sandbox escape'
       },
       {
         name: 'Privilege Escalation Prevention', key: 'privilege_escalation_prevention',
         description: 'When a parent agent spawns a child, the kernel enforces child capabilities are a subset of parent capabilities. No agent can grant rights it does not have.',
-        threat: 'Capability escalation through agent spawning chains',
-        impl: 'kernel_handle.rs — spawn_agent_checked()'
+        threat: 'Capability escalation through agent spawning chains'
       },
       {
         name: 'Subprocess Environment Isolation', key: 'subprocess_isolation',
         description: 'Child processes (shell tools) inherit only a safe allow-list of environment variables. API keys, database passwords, and secrets are never leaked to subprocesses.',
-        threat: 'Secret exfiltration via child process environment',
-        impl: 'subprocess_sandbox.rs — env_clear() + SAFE_ENV_VARS'
+        threat: 'Secret exfiltration via child process environment'
       },
       {
         name: 'Security Headers', key: 'security_headers',
         description: 'Every HTTP response includes CSP, X-Frame-Options: DENY, X-Content-Type-Options: nosniff, Referrer-Policy, and X-XSS-Protection headers.',
-        threat: 'XSS, clickjacking, MIME sniffing, content injection',
-        impl: 'middleware.rs — security_headers()'
+        threat: 'XSS, clickjacking, MIME sniffing, content injection'
       },
       {
         name: 'Wire Protocol Authentication', key: 'wire_hmac_auth',
-        description: 'Agent-to-agent OFP connections use HMAC-SHA256 mutual authentication with nonce-based handshake and constant-time signature comparison (subtle crate).',
-        threat: 'Man-in-the-middle attacks on mesh network',
-        impl: 'peer.rs — hmac_sign() + hmac_verify()'
+        description: 'Agent-to-agent OFP connections use HMAC-SHA256 mutual authentication with nonce-based handshake and constant-time signature comparison.',
+        threat: 'Man-in-the-middle attacks on mesh network'
       },
       {
         name: 'Request ID Tracking', key: 'request_id_tracking',
         description: 'Every API request receives a unique UUID (x-request-id header) and is logged with method, path, status code, and latency for full traceability.',
-        threat: 'Untraceable actions, forensic blind spots',
-        impl: 'middleware.rs — request_logging()'
-      }
+        threat: 'Untraceable actions, forensic blind spots'
+      },
     ],
 
     configurableFeatures: [

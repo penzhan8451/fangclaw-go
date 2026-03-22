@@ -73,7 +73,7 @@ decay_rate = 0.05
 	// Write .env.example if not exists
 	envPath := filepath.Join(fangclawGoDir, ".fangclaw-go.env")
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		envExample := `# OpenFang Environment Variables
+		envExample := `# FangClawGo Environment Variables
 # Copy this file to .fangclaw-go.env and add your API keys
 
 # Groq (free tier available)

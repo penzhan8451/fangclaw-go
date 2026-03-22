@@ -61,12 +61,25 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func securityHeadersMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' cdn.jsdelivr.net fonts.googleapis.com; img-src 'self' data:; connect-src 'self' ws: wss:; font-src 'self' cdn.jsdelivr.net fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'")
+		next(w, r)
+	}
+}
+
 // Server is the OpenFang API server.
 type Server struct {
 	*http.Server
-	Kernel *kernel.Kernel
-	Config *ServerConfig
-	router *Router
+	Kernel      *kernel.Kernel
+	Config      *ServerConfig
+	router      *Router
+	rateLimiter *RateLimiter
 }
 
 // ServerConfig holds server configuration.
@@ -93,6 +106,8 @@ func NewServer(k *kernel.Kernel, cfg *ServerConfig) *Server {
 		cfg = DefaultServerConfig()
 	}
 
+	rateLimiter := NewRateLimiter(DefaultRequestsPerMinute)
+
 	mux := http.NewServeMux()
 	server := &Server{
 		Server: &http.Server{
@@ -102,13 +117,43 @@ func NewServer(k *kernel.Kernel, cfg *ServerConfig) *Server {
 			WriteTimeout: cfg.WriteTimeout,
 			IdleTimeout:  cfg.IdleTimeout,
 		},
-		Kernel: k,
-		Config: cfg,
+		Kernel:      k,
+		Config:      cfg,
+		rateLimiter: rateLimiter,
 	}
 
 	// Register new router
 	router := NewRouter(k)
 	server.router = router
+
+	// Wrap mux with middleware chain
+	wrappedMux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Apply rate limiting
+		key := r.RemoteAddr
+		if !rateLimiter.Allow(key) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "60")
+			w.WriteHeader(http.StatusTooManyRequests)
+			WriteJSON(w, http.StatusTooManyRequests, map[string]string{
+				"error": "Rate limit exceeded. Please try again later.",
+			})
+			return
+		}
+		// Apply security headers
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' cdn.jsdelivr.net fonts.googleapis.com; img-src 'self' data:; connect-src 'self' ws: wss:; font-src 'self' cdn.jsdelivr.net fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'")
+
+		mux.ServeHTTP(w, r)
+	})
+
+	// Update server handler to use wrapped mux
+	server.Handler = wrappedMux
+
+	// Register routes
 	router.RegisterRoutes(mux)
 
 	// Register OpenAI-compatible routes
