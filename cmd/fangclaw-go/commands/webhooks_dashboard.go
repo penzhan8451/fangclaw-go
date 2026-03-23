@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/penzhan8451/fangclaw-go/cmd/fangclaw-go/tui"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
 	"github.com/penzhan8451/fangclaw-go/internal/mcp"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
@@ -95,15 +96,31 @@ func runDashboard(cmd *cobra.Command, args []string) error {
 func tuiCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "tui",
-		Short: "Launch the interactive terminal dashboard",
-		RunE:  runTui,
+		Short: "Launch interactive TUI mode",
+		Long: `Launch the interactive terminal user interface for fangclaw-go.
+
+The TUI provides a visual interface with the following features:
+  - Dashboard: View system statistics and status
+  - Chat: Interactive chat with agents
+  - Agents: Manage and monitor agents
+
+Keyboard Shortcuts:
+  1, 2, 3     Switch to specific tab
+  ←, →        Navigate between tabs
+  r           Refresh current screen
+  ?           Show help
+  q           Quit
+  Ctrl+C      Force quit`,
+		RunE: runTUI,
 	}
 }
 
-func runTui(cmd *cobra.Command, args []string) error {
-	fmt.Println("Launching terminal dashboard (TUI)...")
-	fmt.Println("(TUI not implemented in Go version - use web dashboard)")
-	return nil
+func runTUI(cmd *cobra.Command, args []string) error {
+	fmt.Println("Launching fangclaw-go TUI...")
+	fmt.Println("Press 'q' to quit, '?' for help")
+	fmt.Println()
+
+	return tui.Run()
 }
 
 func mcpCmd() *cobra.Command {

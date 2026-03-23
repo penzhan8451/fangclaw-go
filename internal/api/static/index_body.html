@@ -4878,6 +4878,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <div class="card mb-4">
               <div class="card-header">Create Pairing Request</div>
               <div class="text-xs text-dim mb-3">Generate a pairing token to connect a new device. The token will expire after the configured time.</div>
+              <div class="text-x text-dim mb-3>You need to install ntfy app on your device to receive notifications, and subscribe the topic:"fangclaw-go-notifications"</div>
               <div class="flex gap-2">
                 <button class="btn btn-primary" @click="createPairingRequest()" :disabled="creatingPairing">
                   <span x-show="!creatingPairing">Create Pairing Request</span>
