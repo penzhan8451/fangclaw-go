@@ -1,6 +1,10 @@
 package channels
 
-import "context"
+import (
+	"context"
+
+	"github.com/penzhan8451/fangclaw-go/internal/autoreply"
+)
 
 // ChannelBridgeHandle defines the interface for kernel operations needed by channel adapters.
 type ChannelBridgeHandle interface {
@@ -15,6 +19,9 @@ type ChannelBridgeHandle interface {
 
 	// SpawnAgentByName spawns an agent by manifest name.
 	SpawnAgentByName(ctx context.Context, manifestName string) (string, error)
+
+	// GetAutoReplyEngine returns the auto-reply engine.
+	GetAutoReplyEngine() *autoreply.AutoReplyEngine
 }
 
 // AgentInfo contains basic information about an agent.

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/penzhan8451/fangclaw-go/internal/autoreply"
 )
 
 // BridgeManager manages all running channel adapters and dispatches messages.
@@ -121,6 +123,49 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 		fmt.Printf("Available agents in registry: %v\n", agents)
 	}
 
+	// Check AutoReply
+	autoReplyEngine := m.handle.GetAutoReplyEngine()
+	if autoReplyEngine != nil {
+		replyAgentID := autoReplyEngine.ShouldReply(msg.Content, string(channelType), agentID)
+		if replyAgentID == "" {
+			// 消息匹配抑制模式，完全阻止，不发送到 LLM
+			fmt.Printf("Message suppressed by pattern: %s\n", msg.Content)
+			return
+		}
+
+		// 消息不匹配抑制模式，使用 AutoReply
+		fmt.Printf("AutoReply triggered for message: %s\n", msg.Content)
+		fmt.Printf("AutoReply msg.sender: %s\n", msg.Sender)
+		replyChannel := autoreply.AutoReplyChannel{
+			ChannelType: string(channelType),
+			PeerID:      msg.Sender,
+			ThreadID:    nil,
+		}
+
+		sendFn := func(response string, ch autoreply.AutoReplyChannel) error {
+			replyMsg := &Message{
+				Content:   response,
+				Recipient: msg.Sender,
+				Sender:    "bot",
+			}
+			fmt.Printf("AutoReply Recipient in sendFn(): %s\n", msg.Sender)
+			return adapter.Send(replyMsg)
+		}
+
+		err := autoReplyEngine.ExecuteReply(
+			m.ctx,
+			replyAgentID,
+			msg.Content,
+			replyChannel,
+			sendFn,
+			m.handle.SendMessage,
+		)
+		if err == nil {
+			return // AutoReply 已处理，直接返回
+		}
+	}
+
+	// 如果 AutoReply 没处理，走原有流程
 	response, err := m.handle.SendMessage(m.ctx, agentID, msg.Content)
 	if err != nil {
 		fmt.Printf("Failed to send message to agent: %v\n", err)

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设备配对 - FangClawGo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 500px;
+            margin: 40px auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: #07c160;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 20px;
+        }
+        .content {
+            padding: 30px 20px;
+        }
+        .info-row {
+            margin-bottom: 20px;
+        }
+        .info-label {
+            font-size: 13px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            font-size: 16px;
+            color: #333;
+            font-weight: 500;
+        }
+        .input-group {
+            margin-top: 25px;
+        }
+        .input-label {
+            display: block;
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .input-field {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        .input-field:focus {
+            outline: none;
+            border-color: #07c160;
+        }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: #07c160;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn:hover:not(:disabled) {
+            background: #06ad56;
+        }
+        .message {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+            display: none;
+        }
+        .message.success {
+            background: #e7f9f0;
+            color: #07c160;
+            border: 1px solid #b8ebd0;
+        }
+        .message.error {
+            background: #fff0f0;
+            color: #fa5151;
+            border: 1px solid #ffdada;
+        }
+        .auto-detect {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📱 设备配对确认</h1>
+        </div>
+        
+        <div class="content">
+            <div class="info-row">
+                <div class="info-label">配对令牌</div>
+                <div class="info-value" id="tokenDisplay">加载中...</div>
+            </div>
+            
+            <div class="info-row">
+                <div class="info-label">检测设备</div>
+                <div class="info-value" id="deviceDetect">正在检测...</div>
+                <div class="auto-detect" id="platformDetect"></div>
+            </div>
+            
+            <div class="input-group">
+                <label class="input-label" for="displayName">
+                    给这个设备起个名字 <span style="color:#999;font-weight:normal;">（必填）</span>
+                </label>
+                <input 
+                    type="text" 
+                    id="displayName" 
+                    class="input-field" 
+                    placeholder="例如：我的手机、办公室电脑、家用平板"
+                    maxlength="50"
+                >
+            </div>
+            
+            <button class="btn" id="confirmBtn" onclick="confirmPairing()">
+                确认配对
+            </button>
+            
+            <div id="message" class="message"></div>
+        </div>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('token');
+        
+        if (!token) {
+            showError('缺少配对令牌，请重新扫描二维码');
+            document.getElementById('confirmBtn').disabled = true;
+        }
+        
+        document.getElementById('tokenDisplay').textContent = token || '无效';
+        detectDeviceInfo();
+        
+        function detectDeviceInfo() {
+            const userAgent = navigator.userAgent;
+            let platform = 'Unknown';
+            let deviceName = 'Unknown Device';
+            
+            if (/iPhone/i.test(userAgent)) {
+                platform = 'iOS';
+                deviceName = 'iPhone';
+            } else if (/Android/i.test(userAgent)) {
+                platform = 'Android';
+                deviceName = 'Android Device';
+            } else if (/iPad/i.test(userAgent)) {
+                platform = 'iPadOS';
+                deviceName = 'iPad';
+            } else if (/Windows/i.test(userAgent)) {
+                platform = 'Windows';
+                deviceName = 'Windows PC';
+            } else if (/Macintosh/i.test(userAgent)) {
+                platform = 'macOS';
+                deviceName = 'Mac';
+            } else if (/Linux/i.test(userAgent)) {
+                platform = 'Linux';
+                deviceName = 'Linux Device';
+            }
+            
+            if (/MicroMessenger/i.test(userAgent)) {
+                platform += ' (WeChat)';
+                deviceName += ' (微信内置浏览器)';
+            }
+            
+            document.getElementById('deviceDetect').textContent = deviceName;
+            document.getElementById('platformDetect').textContent = `平台：${platform}`;
+            
+            const suggestedName = `${deviceName} - ${new Date().toLocaleDateString('zh-CN')}`;
+            document.getElementById('displayName').value = suggestedName;
+        }
+        
+        async function confirmPairing() {
+            const displayName = document.getElementById('displayName').value.trim();
+            
+            if (!displayName) {
+                showError('请输入设备名称');
+                document.getElementById('displayName').focus();
+                return;
+            }
+            
+            if (displayName.length > 50) {
+                showError('设备名称不能超过 50 个字符');
+                return;
+            }
+            
+            const btn = document.getElementById('confirmBtn');
+            const messageDiv = document.getElementById('message');
+            
+            btn.disabled = true;
+            btn.textContent = '配对中...';
+            messageDiv.style.display = 'none';
+            
+            try {
+                // Debug: log the request
+                console.log('Sending pairing request with token:', token);
+                
+                const response = await fetch('/api/pairing/complete', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        token: token,
+                        display_name: displayName,
+                        platform: 'wechat-web'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                // Debug: log the response
+                console.log('Pairing result:', result);
+                
+                if (response.ok) {
+                    // Handle case where result might be null or missing fields
+                    const deviceId = result.device_id || 'N/A';
+                    const displayName = result.display_name || displayName;
+                    
+                    // Show success message with clear instructions
+                    showSuccess(`
+                        ✅ 配对成功！<br><br>
+                        <strong>设备 ID:</strong> ${deviceId}<br>
+                        <strong>设备名称:</strong> ${displayName}<br>
+                        <strong>平台:</strong> wechat-web<br>
+                        <small>配对时间：${new Date().toLocaleString('zh-CN')}</small>
+                        <br><br>
+                        <div style="background:#e7f9f0;border:2px solid #07c160;border-radius:8px;padding:15px;margin-top:20px;">
+                            <p style="color:#07c160;font-size:16px;font-weight:bold;margin:0 0 10px 0;">
+                                📱 下一步操作：
+                            </p>
+                            <ol style="margin:0;padding-left:20px;color:#333;line-height:1.8;">
+                                <li>返回电脑浏览器</li>
+                                <li>刷新 <strong>Settings → Pairing</strong> 页面</li>
+                                <li>查看新配对的设备</li>
+                            </ol>
+                        </div>
+                        <br>
+                        <div style="background:#f5f5f5;border:1px solid #ddd;border-radius:6px;padding:12px;margin-top:15px;">
+                            <p style="color:#666;font-size:14px;margin:0;">
+                                💡 <strong>关闭此页面：</strong><br>
+                                点击右上角菜单（⋯）→ 选择"关闭"<br>
+                                或直接点击右上角 × 按钮
+                            </p>
+                        </div>
+                    `);
+                    
+                    // Hide confirm button after showing success
+                    setTimeout(() => {
+                        document.getElementById('confirmBtn').style.display = 'none';
+                    }, 500);
+                } else {
+                    const errorMsg = result.error || '未知错误';
+                    showError(`❌ 配对失败：<br>${errorMsg}`);
+                    btn.disabled = false;
+                    btn.textContent = '重试';
+                }
+            } catch (error) {
+                showError(`❌ 网络错误：<br>${error.message}`);
+                btn.disabled = false;
+                btn.textContent = '重试';
+            }
+        }
+        
+        function showSuccess(html) {
+            const msg = document.getElementById('message');
+            msg.className = 'message success';
+            msg.innerHTML = html;
+            msg.style.display = 'block';
+        }
+        
+        function showError(html) {
+            const msg = document.getElementById('message');
+            msg.className = 'message error';
+            msg.innerHTML = html;
+            msg.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

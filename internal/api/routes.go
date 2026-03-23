@@ -3,8 +3,10 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/skip2/go-qrcode"
 
 	"github.com/google/uuid"
 	"github.com/penzhan8451/fangclaw-go/internal/a2a"
@@ -23,6 +26,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
+	"github.com/penzhan8451/fangclaw-go/internal/pairing"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/security"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
@@ -620,6 +624,16 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 
 	// Shutdown endpoint
 	mux.HandleFunc("POST /api/shutdown", r.handleShutdown)
+
+	// Pairing endpoints
+	mux.HandleFunc("GET /pair", r.handlePairingPage)
+	mux.HandleFunc("GET /api/pairing/config", r.handleGetPairingConfig)
+	mux.HandleFunc("POST /api/pairing/config", r.handleUpdatePairingConfig)
+	mux.HandleFunc("POST /api/pairing/request", r.handleCreatePairingRequest)
+	mux.HandleFunc("POST /api/pairing/complete", r.handleCompletePairing)
+	mux.HandleFunc("GET /api/pairing/devices", r.handleListPairedDevices)
+	mux.HandleFunc("DELETE /api/pairing/devices/{id}", r.handleRemovePairedDevice)
+	mux.HandleFunc("POST /api/pairing/notify", r.handleNotify)
 }
 
 // respondJSON responds with JSON.
@@ -630,8 +644,8 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 }
 
 // respondError responds with an error.
-func respondError(w http.ResponseWriter, status int, message string) {
-	respondJSON(w, status, map[string]string{"error": message})
+func respondError(w http.ResponseWriter, status int, data interface{}) {
+	respondJSON(w, status, data)
 }
 
 // handleHealth handles health check requests.
@@ -4950,4 +4964,273 @@ func (r *Router) handleUpdateTrigger(w http.ResponseWriter, req *http.Request) {
 		"max_fires":       trigger.MaxFires,
 		"created_at":      trigger.CreatedAt.Format(time.RFC3339),
 	})
+}
+
+func (r *Router) handleGetPairingConfig(w http.ResponseWriter, req *http.Request) {
+	pm := r.kernel.PairingManager()
+	if pm == nil {
+		respondError(w, http.StatusInternalServerError, "Pairing manager not initialized")
+		return
+	}
+	config := pm.Config()
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"enabled":           config.Enabled,
+		"max_devices":       config.MaxDevices,
+		"token_expiry_secs": config.TokenExpirySecs,
+		"push_provider":     config.PushProvider,
+	})
+}
+
+func (r *Router) handleUpdatePairingConfig(w http.ResponseWriter, req *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "ok",
+	})
+}
+
+// isLocalhost checks if a host is localhost or 127.0.0.1
+func isLocalhost(host string) bool {
+	// Remove port if present
+	hostWithoutPort := host
+	if idx := strings.Index(host, ":"); idx != -1 {
+		hostWithoutPort = host[:idx]
+	}
+	return hostWithoutPort == "localhost" || hostWithoutPort == "127.0.0.1"
+}
+
+// getLANIPAddress gets the primary LAN IP address of this machine
+func getLANIPAddress() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+
+	for _, addr := range addrs {
+		// Check if it's an IPv4 address and not loopback
+		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+			if ipNet.IP.To4() != nil {
+				// Skip link-local addresses
+				if !ipNet.IP.IsLinkLocalUnicast() {
+					return ipNet.IP.String()
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func (r *Router) handleCreatePairingRequest(w http.ResponseWriter, req *http.Request) {
+	pm := r.kernel.PairingManager()
+	if pm == nil {
+		respondError(w, http.StatusNotFound, "Pairing not enabled")
+		return
+	}
+
+	pairingReq, err := pm.CreatePairingRequest()
+	if err != nil {
+		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	// Generate WeChat-compatible QR code URL
+	// Use LAN IP for mobile accessibility, fallback to localhost
+	scheme := "http"
+	if req.TLS != nil {
+		scheme = "https"
+	}
+
+	// Get server host from request, but replace localhost with LAN IP
+	// Preserve the original port number
+	host := req.Host
+	if isLocalhost(host) {
+		lanIP := getLANIPAddress()
+		if lanIP != "" {
+			// Extract port from original host and append to LAN IP
+			_, port, _ := net.SplitHostPort(req.Host)
+			if port != "" {
+				host = fmt.Sprintf("%s:%s", lanIP, port)
+			} else {
+				host = lanIP
+			}
+		} else {
+			// Fallback: use original host if no LAN IP found
+			host = req.Host
+		}
+	}
+
+	serverURL := fmt.Sprintf("%s://%s", scheme, host)
+	qrURI := fmt.Sprintf(
+		"%s/pair?token=%s",
+		serverURL,
+		pairingReq.Token,
+	)
+
+	// Log for debugging
+	fmt.Printf("[DEBUG] QR Code URL: %s (original host: %s, LAN IP: %s)\n", qrURI, req.Host, getLANIPAddress())
+
+	png, err := qrcode.Encode(qrURI, qrcode.Medium, 256)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, map[string]interface{}{"error": "Failed to generate QR code"})
+		return
+	}
+
+	qrBase64 := base64.StdEncoding.EncodeToString(png)
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"token":      pairingReq.Token,
+		"qr_uri":     qrURI,
+		"qr_png":     qrBase64,
+		"expires_at": pairingReq.ExpiresAt.Format(time.RFC3339),
+	})
+}
+
+func (r *Router) handleCompletePairing(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Token       string  `json:"token"`
+		DisplayName string  `json:"display_name"`
+		Platform    string  `json:"platform"`
+		PushToken   *string `json:"push_token"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": "Invalid request body"})
+		return
+	}
+
+	if body.Token == "" {
+		fmt.Printf("[DEBUG] Pairing API - Missing token\n")
+		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": "Missing required fields"})
+		return
+	}
+
+	pm := r.kernel.PairingManager()
+	if pm == nil {
+		fmt.Printf("[DEBUG] Pairing API - Pairing not enabled\n")
+		respondError(w, http.StatusNotFound, map[string]interface{}{"error": "Pairing not enabled"})
+		return
+	}
+
+	displayName := body.DisplayName
+	if displayName == "" {
+		displayName = "unknown"
+	}
+	platform := body.Platform
+	if platform == "" {
+		platform = "unknown"
+	}
+
+	device := pairing.PairedDevice{
+		DeviceID:    uuid.NewString(),
+		DisplayName: displayName,
+		Platform:    platform,
+		PushToken:   body.PushToken,
+	}
+
+	pairedDevice, err := pm.CompletePairing(body.Token, device)
+	if err != nil {
+		fmt.Printf("[DEBUG] Pairing API - CompletePairing error: %v\n", err)
+		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	fmt.Printf("[DEBUG] Pairing API - Success!\n")
+	fmt.Printf("  Returned DeviceID: %s\n", pairedDevice.DeviceID)
+	fmt.Printf("  Returned DisplayName: %s\n", pairedDevice.DisplayName)
+	fmt.Printf("  Returned Platform: %s\n", pairedDevice.Platform)
+	fmt.Printf("  PairedAt: %s\n", pairedDevice.PairedAt.Format(time.RFC3339))
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"device_id":    pairedDevice.DeviceID,
+		"display_name": pairedDevice.DisplayName,
+		"platform":     pairedDevice.Platform,
+		"paired_at":    pairedDevice.PairedAt.Format(time.RFC3339),
+	})
+}
+
+// handlePairingPage serves the pairing confirmation page
+func (r *Router) handlePairingPage(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeFile(w, req, "internal/api/static/pair.html")
+}
+
+func (r *Router) handleListPairedDevices(w http.ResponseWriter, req *http.Request) {
+	pm := r.kernel.PairingManager()
+	if pm == nil {
+		respondError(w, http.StatusNotFound, map[string]interface{}{"error": "Pairing not enabled"})
+		return
+	}
+
+	devices := pm.ListDevices()
+	result := make([]map[string]interface{}, 0, len(devices))
+	for _, d := range devices {
+		deviceMap := map[string]interface{}{
+			"device_id":    d.DeviceID,
+			"display_name": d.DisplayName,
+			"platform":     d.Platform,
+			"paired_at":    d.PairedAt.Format(time.RFC3339),
+			"last_seen":    d.LastSeen.Format(time.RFC3339),
+		}
+		result = append(result, deviceMap)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"devices": result})
+}
+
+func (r *Router) handleNotify(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Message string `json:"message"`
+		Title   string `json:"title"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": "Invalid request body"})
+		return
+	}
+
+	if body.Message == "" {
+		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": "Missing required fields"})
+		return
+	}
+
+	pm := r.kernel.PairingManager()
+	if pm == nil {
+		respondError(w, http.StatusNotFound, map[string]interface{}{"error": "Pairing not enabled"})
+		return
+	}
+
+	title := body.Title
+	if title == "" {
+		title = "FangClawGo Notification"
+	}
+
+	ctx := req.Context()
+	results := pm.NotifyDevices(ctx, title, body.Message)
+	for _, res := range results {
+		if res.Error != nil {
+			respondError(w, http.StatusInternalServerError, map[string]interface{}{"error": res.Error.Error()})
+			return
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+func (r *Router) handleRemovePairedDevice(w http.ResponseWriter, req *http.Request) {
+	deviceID := req.PathValue("id")
+	if deviceID == "" {
+		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": "Missing device ID"})
+		return
+	}
+
+	pm := r.kernel.PairingManager()
+	if pm == nil {
+		respondError(w, http.StatusNotFound, map[string]interface{}{"error": "Pairing not enabled"})
+		return
+	}
+
+	if err := pm.RemoveDevice(deviceID); err != nil {
+		respondError(w, http.StatusNotFound, map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }

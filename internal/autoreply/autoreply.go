@@ -2,8 +2,10 @@
 package autoreply
 
 import (
+	"context"
 	"strings"
 	"sync"
+	"time"
 )
 
 // AutoReplyChannel represents where to deliver the auto-reply result.
@@ -95,4 +97,45 @@ func (are *AutoReplyEngine) UpdateConfig(config AutoReplyConfig) {
 		are.semaphore = make(chan struct{}, newPermits)
 		close(oldSem)
 	}
+}
+
+// ExecuteReply executes an auto-reply in the background with concurrency control.
+// Parameters:
+//   - ctx: Context
+//   - agentID: Agent ID to send message to
+//   - message: User message
+//   - channel: Where to send the reply
+//   - sendFn: Function to send reply to user
+//   - sendToAgentFn: Function to send message to agent (kernel.SendMessage)
+func (are *AutoReplyEngine) ExecuteReply(
+	ctx context.Context,
+	agentID string,
+	message string,
+	channel AutoReplyChannel,
+	sendFn func(response string, channel AutoReplyChannel) error,
+	sendToAgentFn func(ctx context.Context, agentID string, message string) (string, error),
+) error {
+	select {
+	case are.semaphore <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+	}
+
+	go func() {
+		defer func() { <-are.semaphore }()
+
+		replyCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+
+		response, err := sendToAgentFn(replyCtx, agentID, message)
+		if err != nil {
+			return
+		}
+
+		_ = sendFn(response, channel)
+	}()
+
+	return nil
 }

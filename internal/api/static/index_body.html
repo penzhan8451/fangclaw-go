@@ -160,6 +160,10 @@
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg></span>
               <span class="nav-label">Settings</span>
             </a>
+            <a class="nav-item" :class="{ active: page === 'pairing' }" @click="navigate('pairing')" :aria-current="page === 'pairing' ? 'page' : false">
+              <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linecap="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg></span>
+              <span class="nav-label">Pairing</span>
+            </a>
           </div>
         </template>
       </div>
@@ -4818,6 +4822,159 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             </div>
           </div>
 
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Page: Pairing -->
+    <template x-if="page === 'pairing'">
+      <div x-data="pairingPage" x-init="loadDevices()">
+        <div class="page-header">
+          <h2>Device Pairing</h2>
+        </div>
+        <div class="page-body">
+          <!-- Loading State -->
+          <div x-show="loading" class="loading-state">
+            <div class="spinner"></div>
+            <span>Loading pairing...</span>
+          </div>
+
+          <!-- Error State -->
+          <div x-show="!loading && loadError" class="error-state">
+            <span class="error-icon">!</span>
+            <p x-text="loadError"></p>
+            <button class="btn btn-ghost btn-sm" @click="loadDevices()">Retry</button>
+          </div>
+
+          <!-- Main Content -->
+          <div x-show="!loading && !loadError">
+            <!-- Pairing Config Card -->
+            <div class="card mb-4" style="border-left:4px solid var(--accent)">
+              <div class="flex justify-between items-center mb-2">
+                <div class="card-header" style="margin:0">Pairing Settings</div>
+                <div class="flex gap-2">
+                  <span class="badge" :class="config?.enabled ? 'badge-success' : 'badge-muted'" x-text="config?.enabled ? 'Enabled' : 'Disabled'"></span>
+                </div>
+              </div>
+              <div class="text-xs text-dim mb-2">Pairing allows devices to connect and receive notifications from this FangClaw-go instance.</div>
+              <div class="detail-grid">
+                <div class="detail-row">
+                  <span class="detail-label">Max Devices</span>
+                  <span class="detail-value" x-text="config?.max_devices || '-'"></span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Token Expiry</span>
+                  <span class="detail-value" x-text="config?.token_expiry_secs ? config.token_expiry_secs + ' seconds' : '-'"></span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Push Provider</span>
+                  <span class="detail-value" x-text="config?.push_provider || '-'"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Create Pairing Request -->
+            <div class="card mb-4">
+              <div class="card-header">Create Pairing Request</div>
+              <div class="text-xs text-dim mb-3">Generate a pairing token to connect a new device. The token will expire after the configured time.</div>
+              <div class="flex gap-2">
+                <button class="btn btn-primary" @click="createPairingRequest()" :disabled="creatingPairing">
+                  <span x-show="!creatingPairing">Create Pairing Request</span>
+                  <span x-show="creatingPairing" class="spinner" style="width:12px;height:12px;border-width:2px"></span>
+                </button>
+                <button class="btn btn-ghost btn-sm" @click="loadDevices()">Refresh</button>
+              </div>
+              <div x-show="pairingError" class="mt-2 text-xs" style="color:var(--error)" x-text="pairingError"></div>
+
+              <!-- Pairing Request Display -->
+              <template x-if="pairingRequest">
+                <div class="mt-4" style="border:1px dashed var(--border);border-radius:8px;padding:16px;background:var(--bg-elev)">
+                  <div class="flex justify-between items-start mb-3">
+                    <div>
+                      <div class="font-bold" style="font-size:14px">Pairing Request Created!</div>
+                      <div class="text-xs text-dim mt-1">Expires at <span x-text="new Date(pairingRequest.expires_at).toLocaleString()"></span></div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" @click="pairingRequest = null">Close</button>
+                  </div>
+                  <div class="flex flex-col gap-3">
+                    <div>
+                      <label class="text-xs text-dim mb-1">QR Code URI</label>
+                      <div class="key-input-group">
+                        <input type="text" x-model="pairingRequest.qr_uri" readonly style="font-family:var(--font-mono);font-size:11px">
+                        <button class="btn btn-ghost btn-sm" @click="copyToClipboard(pairingRequest.qr_uri)">Copy</button>
+                      </div>
+                      Use WeChat to scan the QR code to pair the device:
+                      <div class="mt-2"><img :src="'data:image/png;base64,' + pairingRequest.qr_png" alt="QR Code" class="w-12 h-12"></div>
+                    </div>
+                    <div>
+                      <label class="text-xs text-dim mb-1">Token</label>
+                      <div class="key-input-group">
+                        <input type="text" x-model="pairingRequest.token" readonly style="font-family:var(--font-mono);font-size:11px">
+                        <button class="btn btn-ghost btn-sm" @click="copyToClipboard(pairingRequest.token)">Copy</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Paired Devices -->
+            <div class="card">
+              <div class="flex justify-between items-center mb-3">
+                <div class="card-header" style="margin:0">Paired Devices</div>
+                <span class="badge" x-text="devices.length + ' device(s)'"></span>
+              </div>
+
+              <!-- Empty State -->
+              <div x-show="devices.length === 0" class="empty-state">
+                <h4>No Paired Devices</h4>
+                <p class="hint">Create a pairing request to connect a new device.</p>
+              </div>
+
+              <!-- Devices List -->
+              <template x-if="devices.length > 0">
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Device Name</th>
+                        <th>Device ID</th>
+                        <th>Paired At</th>
+                        <th>Last Seen</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="device in devices" :key="device.device_id">
+                        <tr>
+                          <td class="font-bold" x-text="device.display_name"></td>
+                          <td class="text-dim" style="font-family:var(--font-mono);font-size:11px" x-text="device.device_id"></td>
+                          <td class="text-xs" x-text="new Date(device.paired_at).toLocaleString()"></td>
+                          <td class="text-xs" x-text="device.last_seen ? new Date(device.last_seen).toLocaleString() : 'Never'"></td>
+                          <td>
+                            <div class="flex gap-1">
+                              <button class="btn btn-ghost btn-sm" @click="sendNotification(device.device_id)" :disabled="sendingNotification === device.device_id" title="Send Test Notification">
+                                <span x-show="sendingNotification !== device.device_id">  
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+                                </span>
+                                <span x-show="sendingNotification === device.device_id" class="spinner" style="width:10px;height:10px;border-width:2px"></span>
+                              </button>
+                              <button class="btn btn-ghost btn-sm" @click="removeDevice(device.device_id)" :disabled="removingDevice === device.device_id" style="color:var(--error)" title="Remove Device">
+                                <span x-show="removingDevice !== device.device_id">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                </span>
+                                <span x-show="removingDevice === device.device_id" class="spinner" style="width:10px;height:10px;border-width:2px"></span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </template>
+            </div>
           </div>
         </div>
       </div>

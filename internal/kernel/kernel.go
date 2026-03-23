@@ -18,6 +18,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/a2a"
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/audit"
+	"github.com/penzhan8451/fangclaw-go/internal/autoreply"
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/configreload"
@@ -65,6 +66,7 @@ type Kernel struct {
 	pairingManager  *pairing.PairingManager
 	workflowEngine  *WorkflowEngine
 	agentRuntime    *agent.Runtime
+	autoReplyEngine *autoreply.AutoReplyEngine
 	mcpConnections  sync.Map
 	mcpTools        sync.Map
 	auditLog        *audit.AuditLog
@@ -147,9 +149,15 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 	approvalPolicy := approvals.DefaultApprovalPolicy()
 	approvalMgr := approvals.NewApprovalManager(approvalPolicy)
 	deliveryReg := delivery.NewDeliveryRegistry()
+	ntfyURL := "https://ntfy.sh"
+	ntfyTopic := "fangclaw-go-notifications"
 	pairingConfig := pairing.PairingConfig{
-		Enabled:    true,
-		MaxDevices: 10,
+		Enabled:         true,
+		MaxDevices:      10,
+		TokenExpirySecs: 300,
+		PushProvider:    "ntfy",
+		NtfyURL:         &ntfyURL,
+		NtfyTopic:       &ntfyTopic,
 	}
 	pairingManager := pairing.NewPairingManager(pairingConfig)
 
@@ -165,6 +173,13 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 	fmt.Printf("[Kernel] Creating WorkflowEngine with dataDir: '%s'\n", dataDir)
 	workflowEngine := NewWorkflowEngine(dataDir)
 	fmt.Printf("[Kernel] WorkflowEngine created\n")
+
+	autoReplyConfig := autoreply.AutoReplyConfig{
+		Enabled:          true,
+		MaxConcurrent:    3,
+		SuppressPatterns: []string{"/stop", "/pause", "谢谢", "好的，知道了", "人工客服", "我要找人工客服"},
+	}
+	autoReplyEngine := autoreply.NewAutoReplyEngine(autoReplyConfig)
 
 	k := &Kernel{
 		config:          kernelConfig,
@@ -188,6 +203,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		deliveryReg:     deliveryReg,
 		pairingManager:  pairingManager,
 		workflowEngine:  workflowEngine,
+		autoReplyEngine: autoReplyEngine,
 		auditLog:        audit.NewAuditLog(),
 		a2aTaskStore:    a2a.NewA2ATaskStore(1000),
 		a2aClient:       a2a.NewA2AClient(),
@@ -1647,4 +1663,9 @@ func (k *Kernel) PublishEvent(event *eventbus.Event) []triggers.MatchResult {
 	}
 
 	return triggered
+}
+
+// GetAutoReplyEngine returns the auto-reply engine.
+func (k *Kernel) GetAutoReplyEngine() *autoreply.AutoReplyEngine {
+	return k.autoReplyEngine
 }
