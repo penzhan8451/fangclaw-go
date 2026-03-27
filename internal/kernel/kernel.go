@@ -19,11 +19,13 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/audit"
 	"github.com/penzhan8451/fangclaw-go/internal/autoreply"
+	"github.com/penzhan8451/fangclaw-go/internal/browser"
+	"github.com/penzhan8451/fangclaw-go/internal/capabilities"
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/configreload"
 	"github.com/penzhan8451/fangclaw-go/internal/cron"
-	"github.com/penzhan8451/fangclaw-go/internal/delivery"
+	deliv "github.com/penzhan8451/fangclaw-go/internal/delivery"
 	"github.com/penzhan8451/fangclaw-go/internal/embedding"
 	"github.com/penzhan8451/fangclaw-go/internal/eventbus"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
@@ -62,7 +64,9 @@ type Kernel struct {
 	handRegistry    *hands.Registry
 	triggerEngine   *triggers.TriggerEngine
 	approvalMgr     *approvals.ApprovalManager
-	deliveryReg     *delivery.DeliveryRegistry
+	capabilityMgr   *capabilities.CapabilityManager
+	deliveryReg     *deliv.DeliveryRegistry
+	deliveryTracker *deliv.DeliveryTracker
 	pairingManager  *pairing.PairingManager
 	workflowEngine  *WorkflowEngine
 	agentRuntime    *agent.Runtime
@@ -148,7 +152,8 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 	}
 	approvalPolicy := approvals.DefaultApprovalPolicy()
 	approvalMgr := approvals.NewApprovalManager(approvalPolicy)
-	deliveryReg := delivery.NewDeliveryRegistry()
+	deliveryReg := deliv.NewDeliveryRegistry()
+	deliveryTracker := deliv.NewDeliveryTracker()
 	ntfyURL := "https://ntfy.sh"
 	ntfyTopic := "fangclaw-go-notifications"
 	pairingConfig := pairing.PairingConfig{
@@ -168,11 +173,11 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 	modelCatalog := model_catalog.NewModelCatalog(modelCatalogPath)
 	agentTemplates := agent_templates.NewAgentTemplates()
 	if err := agentTemplates.Load(); err != nil {
-		fmt.Printf("[Kernel] Warning: Failed to load agent templates: %v\n", err)
+		log.Warn().Err(err).Msg("Failed to load agent templates")
 	}
-	fmt.Printf("[Kernel] Creating WorkflowEngine with dataDir: '%s'\n", dataDir)
+	log.Debug().Str("dataDir", dataDir).Msg("Creating WorkflowEngine")
 	workflowEngine := NewWorkflowEngine(dataDir)
-	fmt.Printf("[Kernel] WorkflowEngine created\n")
+	log.Debug().Msg("WorkflowEngine created")
 
 	autoReplyConfig := autoreply.AutoReplyConfig{
 		Enabled:          true,
@@ -201,6 +206,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		triggerEngine:   triggerEngine,
 		approvalMgr:     approvalMgr,
 		deliveryReg:     deliveryReg,
+		deliveryTracker: deliveryTracker,
 		pairingManager:  pairingManager,
 		workflowEngine:  workflowEngine,
 		autoReplyEngine: autoReplyEngine,
@@ -208,6 +214,7 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		a2aTaskStore:    a2a.NewA2ATaskStore(1000),
 		a2aClient:       a2a.NewA2AClient(),
 		a2aEventStore:   a2a.NewA2AEventStore(1000),
+		capabilityMgr:   capabilities.NewCapabilityManager(),
 		startTime:       time.Now(),
 		stopping:        make(chan struct{}),
 	}
@@ -237,6 +244,35 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 	kernelConfig.DataDir = dataDir
 	k.config = kernelConfig
 	k.agentRuntime = agentRuntime
+
+	agentRuntime.SetCapabilityChecker(func(agentID string, capType string, resource string) bool {
+		cap := capabilities.Capability{Type: capabilities.CapabilityType(capType), Resource: resource}
+		result := k.capabilityMgr.CheckWithDefault(agentID, cap)
+		return result.Granted()
+	})
+
+	// Initialize CDP Browser Manager if enabled
+	if kernelConfig.Browser.Enabled {
+		browserConfig := browser.CDPBrowserConfig{
+			ChromiumPath:   kernelConfig.Browser.ChromiumPath,
+			Headless:       kernelConfig.Browser.Headless,
+			ViewportWidth:  kernelConfig.Browser.ViewportWidth,
+			ViewportHeight: kernelConfig.Browser.ViewportHeight,
+			MaxSessions:    kernelConfig.Browser.MaxSessions,
+		}
+		if browserConfig.ViewportWidth == 0 {
+			browserConfig.ViewportWidth = 1280
+		}
+		if browserConfig.ViewportHeight == 0 {
+			browserConfig.ViewportHeight = 720
+		}
+		if browserConfig.MaxSessions == 0 {
+			browserConfig.MaxSessions = 5
+		}
+		cdpBrowserMgr := browser.NewCDPBrowserManager(browserConfig)
+		agentRuntime.SetBrowserManager(cdpBrowserMgr)
+		log.Info().Msg("CDP Browser Manager initialized")
+	}
 
 	// Register all built-in tools to AgentRuntime
 	tools.RegisterAllTools(agentRuntime)
@@ -269,14 +305,14 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 			// Get API key
 			apiKey := os.Getenv(agentAPIKeyEnv)
 			if apiKey == "" {
-				fmt.Printf("Warning: API key not set for agent %s: %s, skipping registration to runtime\n", agentEntry.Name, agentAPIKeyEnv)
+				log.Warn().Str("agent", agentEntry.Name).Str("env", agentAPIKeyEnv).Msg("API key not set, skipping registration to runtime")
 				continue
 			}
 
 			// Create LLM driver
 			driver, err := llm.NewDriver(agentProvider, apiKey, agentModel)
 			if err != nil {
-				fmt.Printf("Warning: Failed to create LLM driver for agent %s: %v, skipping registration to runtime\n", agentEntry.Name, err)
+				log.Warn().Str("agent", agentEntry.Name).Err(err).Msg("Failed to create LLM driver, skipping registration to runtime")
 				continue
 			}
 
@@ -296,20 +332,26 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 				agentEntry.Manifest.SkillPromptContext,
 			)
 			if err != nil {
-				fmt.Printf("Warning: Failed to register agent %s in runtime: %v, skipping\n", agentEntry.Name, err)
+				log.Warn().Str("agent", agentEntry.Name).Err(err).Msg("Failed to register agent in runtime, skipping")
 			} else {
-				fmt.Printf("Registered agent from disk: %s (ID: %s)\n", agentEntry.Name, agentEntry.ID.String())
+				caps := manifestToCapabilities(agentEntry.Manifest)
+				for _, cap := range caps {
+					fmt.Printf("***manifestToCapailities Type %s to grant to agent:%s\n", cap.Type, agentEntry.ID.String())
+					fmt.Printf("***manifestToCapailities Resource %s to grant to agent:%s\n", cap.Resource, agentEntry.ID.String())
+				}
+				k.capabilityMgr.Grant(agentEntry.ID.String(), caps)
+				log.Debug().Str("agent", agentEntry.Name).Str("id", agentEntry.ID.String()).Msg("Registered agent from disk")
 			}
 		} //_for loop for agent in _agentRegistry
 
 		// Restore hand instances from agents
-		fmt.Printf("Restoring hand instances from %d agents...\n", len(agents))
+		log.Debug().Int("agents", len(agents)).Msg("Restoring hand instances from agents")
 		var agentEntriesForHands []hands.AgentEntry
 		for _, agent := range agents {
 			agentEntriesForHands = append(agentEntriesForHands, agent)
 		}
 		handRegistry.RestoreInstancesFromAgents(agentEntriesForHands)
-		fmt.Printf("Restored %d hand instances\n", len(handRegistry.ListInstances()))
+		log.Debug().Int("instances", len(handRegistry.ListInstances())).Msg("Restored hand instances")
 	}
 
 	return k, nil
@@ -650,8 +692,16 @@ func (k *Kernel) ApprovalManager() *approvals.ApprovalManager {
 	return k.approvalMgr
 }
 
-func (k *Kernel) DeliveryRegistry() *delivery.DeliveryRegistry {
+func (k *Kernel) CapabilityManager() *capabilities.CapabilityManager {
+	return k.capabilityMgr
+}
+
+func (k *Kernel) DeliveryRegistry() *deliv.DeliveryRegistry {
 	return k.deliveryReg
+}
+
+func (k *Kernel) DeliveryTracker() *deliv.DeliveryTracker {
+	return k.deliveryTracker
 }
 
 func (k *Kernel) PairingManager() *pairing.PairingManager {
@@ -824,12 +874,20 @@ func Boot(dataDir string) (*Kernel, error) {
 		cfg = config.DefaultConfig()
 	}
 
-	config := types.KernelConfig{
+	kernelConfig := types.KernelConfig{
 		DataDir:    dataDir,
 		McpServers: cfg.McpServers,
+		Browser: types.BrowserConfig{
+			Enabled:        cfg.Browser.Enabled,
+			ChromiumPath:   cfg.Browser.ChromiumPath,
+			Headless:       cfg.Browser.Headless,
+			ViewportWidth:  cfg.Browser.ViewportWidth,
+			ViewportHeight: cfg.Browser.ViewportHeight,
+			MaxSessions:    cfg.Browser.MaxSessions,
+		},
 	}
 
-	return NewKernel(config)
+	return NewKernel(kernelConfig)
 }
 
 // ActivateHand activates a hand and spawns an agent.
@@ -1160,6 +1218,9 @@ func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error
 		return "", "", fmt.Errorf("failed to register agent in runtime: %w", err)
 	}
 
+	caps := manifestToCapabilities(manifest)
+	k.capabilityMgr.Grant(agentID.String(), caps)
+
 	k.auditLog.Record("system", agentID.String(), audit.ActionAgentSpawn, fmt.Sprintf("name=%s", agentName), "ok")
 
 	event := eventbus.NewEvent(
@@ -1208,8 +1269,9 @@ func (k *Kernel) DeleteAgent(agentIDStr string) error {
 		return err
 	}
 
-	// Also delete agent from AgentRuntime
 	k.agentRuntime.DeleteAgent(agentIDStr)
+
+	k.capabilityMgr.RevokeAll(agentIDStr)
 
 	event := eventbus.NewEvent(
 		eventbus.EventTypeAgentDeleted,
@@ -1233,7 +1295,7 @@ func (k *Kernel) ConnectMcpServers(ctx context.Context) {
 	for _, serverConfig := range k.config.McpServers {
 		conn, err := mcp.Connect(ctx, serverConfig)
 		if err != nil {
-			fmt.Printf("Warning: Failed to connect to MCP server %s: %v\n", serverConfig.Name, err)
+			log.Warn().Str("server", serverConfig.Name).Err(err).Msg("Failed to connect to MCP server")
 			continue
 		}
 
@@ -1242,7 +1304,7 @@ func (k *Kernel) ConnectMcpServers(ctx context.Context) {
 		tools := conn.Tools()
 		k.mcpTools.Store(serverConfig.Name, tools)
 
-		fmt.Printf("Connected to MCP server %s, found %d tools\n", serverConfig.Name, len(tools))
+		log.Debug().Str("server", serverConfig.Name).Int("tools", len(tools)).Msg("Connected to MCP server")
 	}
 }
 
@@ -1428,10 +1490,61 @@ func (k *Kernel) cronDeliverResponse(agentID types.AgentID, response string, del
 
 		if err := adapter.Send(msg); err != nil {
 			log.Warn().Err(err).Str("channel", targetChannel.ID).Msg("Cron delivery: failed to send message")
+			k.deliveryTracker.Record(agentID, deliv.FailedReceipt(agentID, *delivery.ChannelName, recipient, err.Error()))
+		} else {
+			k.deliveryTracker.Record(agentID, deliv.SentReceipt(agentID, *delivery.ChannelName, recipient))
 		}
 
 	case types.CronDeliveryKindLastChannel:
-		log.Warn().Msg("Cron delivery: LastChannel not implemented yet")
+		store := memory.NewStructuredStore(k.db)
+		raw, err := store.Get(agentID, "delivery.last_channel")
+		if err != nil || raw == nil {
+			log.Info().Str("agent", agentID.String()).Msg("Cron delivery: LastChannel — no previous channel recorded, skipping")
+			return
+		}
+		kvMap, ok := raw.(map[string]interface{})
+		if !ok {
+			log.Warn().Str("agent", agentID.String()).Msg("Cron delivery: LastChannel — stored value is not a map, skipping")
+			return
+		}
+		lastChannelName, _ := kvMap["channel"].(string)
+		lastRecipient, _ := kvMap["recipient"].(string)
+		if lastChannelName == "" || lastRecipient == "" {
+			log.Warn().Str("agent", agentID.String()).Msg("Cron delivery: LastChannel — channel or recipient empty, skipping")
+			return
+		}
+
+		channelList := k.registry.ListChannels()
+		var lastTargetChannel *channels.Channel
+		for _, ch := range channelList {
+			if ch.Name == lastChannelName {
+				lastTargetChannel = ch
+				break
+			}
+		}
+		if lastTargetChannel == nil {
+			log.Warn().Str("channel", lastChannelName).Msg("Cron delivery: LastChannel — channel not found")
+			return
+		}
+		adapter, ok := k.registry.GetAdapter(lastTargetChannel.ID)
+		if !ok {
+			log.Warn().Str("channel", lastTargetChannel.ID).Msg("Cron delivery: LastChannel — adapter not found")
+			return
+		}
+		lastMsg := &channels.Message{
+			ID:        fmt.Sprintf("cron_last_%d", time.Now().UnixNano()),
+			ChannelID: lastTargetChannel.ID,
+			Content:   response,
+			Recipient: lastRecipient,
+			CreatedAt: time.Now(),
+		}
+		if err := adapter.Send(lastMsg); err != nil {
+			log.Warn().Err(err).Str("channel", lastTargetChannel.ID).Msg("Cron delivery: LastChannel — failed to send message")
+			k.deliveryTracker.Record(agentID, deliv.FailedReceipt(agentID, lastChannelName, lastRecipient, err.Error()))
+		} else {
+			log.Info().Str("channel", lastChannelName).Str("recipient", lastRecipient).Msg("Cron delivery: LastChannel — message sent")
+			k.deliveryTracker.Record(agentID, deliv.SentReceipt(agentID, lastChannelName, lastRecipient))
+		}
 
 	case types.CronDeliveryKindWebhook:
 		if delivery.Url == nil {
@@ -1668,4 +1781,98 @@ func (k *Kernel) PublishEvent(event *eventbus.Event) []triggers.MatchResult {
 // GetAutoReplyEngine returns the auto-reply engine.
 func (k *Kernel) GetAutoReplyEngine() *autoreply.AutoReplyEngine {
 	return k.autoReplyEngine
+}
+
+// RecordDelivery records a channel delivery receipt and persists the last-channel info
+// into the agent's KV store (for CronDelivery LastChannel feature).
+func (k *Kernel) RecordDelivery(_ context.Context, agentIDStr, channel, recipient string, success bool, errMsg string) {
+	agentID, err := types.ParseAgentID(agentIDStr)
+	if err != nil {
+		log.Warn().Str("agent_id", agentIDStr).Msg("RecordDelivery: invalid agent ID, skipping")
+		return
+	}
+
+	var receipt deliv.DeliveryReceipt
+	if success {
+		receipt = deliv.SentReceipt(agentID, channel, recipient)
+		// Persist last successful channel for CronDelivery::LastChannel
+		kv := map[string]interface{}{
+			"channel":   channel,
+			"recipient": recipient,
+		}
+		store := memory.NewStructuredStore(k.db)
+		if err := store.Set(agentID, "delivery.last_channel", kv); err != nil {
+			log.Warn().Err(err).Str("agent", agentIDStr).Msg("RecordDelivery: failed to persist last_channel")
+		}
+	} else {
+		receipt = deliv.FailedReceipt(agentID, channel, recipient, errMsg)
+	}
+
+	k.deliveryTracker.Record(agentID, receipt)
+}
+
+func manifestToCapabilities(manifest types.AgentManifest) []capabilities.Capability {
+	var caps []capabilities.Capability
+
+	if manifest.Capabilities == nil {
+		return caps
+	}
+
+	mc := manifest.Capabilities
+
+	for _, pattern := range mc.Network {
+		caps = append(caps, capabilities.Capability{
+			Type:     capabilities.CapNetConnect,
+			Resource: pattern,
+		})
+	}
+
+	for _, pattern := range mc.Shell {
+		caps = append(caps, capabilities.Capability{
+			Type:     capabilities.CapShellExec,
+			Resource: pattern,
+		})
+	}
+
+	for _, pattern := range mc.MemoryRead {
+		caps = append(caps, capabilities.Capability{
+			Type:     capabilities.CapMemoryRead,
+			Resource: pattern,
+		})
+	}
+
+	for _, pattern := range mc.MemoryWrite {
+		caps = append(caps, capabilities.Capability{
+			Type:     capabilities.CapMemoryWrite,
+			Resource: pattern,
+		})
+	}
+
+	if mc.AgentSpawn {
+		caps = append(caps, capabilities.Capability{
+			Type: capabilities.CapAgentSpawn,
+		})
+	}
+
+	for _, pattern := range mc.AgentMessage {
+		caps = append(caps, capabilities.Capability{
+			Type:     capabilities.CapAgentMessage,
+			Resource: pattern,
+		})
+	}
+
+	if mc.Schedule {
+		caps = append(caps, capabilities.Capability{
+			Type: capabilities.CapSchedule,
+		})
+	}
+
+	for _, toolID := range manifest.Tools {
+		caps = append(caps, capabilities.Capability{
+			Type:     capabilities.CapToolInvoke,
+			Resource: toolID,
+		})
+	}
+
+	return caps
 }

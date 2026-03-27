@@ -116,11 +116,33 @@ Keyboard Shortcuts:
 }
 
 func runTUI(cmd *cobra.Command, args []string) error {
-	fmt.Println("Launching fangclaw-go TUI...")
-	fmt.Println("Press 'q' to quit, '?' for help")
-	fmt.Println()
+	if isDaemonRunning() {
+		return runTUIWithDaemon()
+	}
+	return runTUIInProcess()
+}
 
-	return tui.Run()
+func runTUIWithDaemon() error {
+	daemonAddr := mustGetDaemonAddress()
+	backend := tui.NewDaemonBackend(daemonAddr)
+	return tui.Run(backend)
+}
+
+func runTUIInProcess() error {
+	cfg := types.DefaultConfig()
+
+	k, err := kernel.NewKernel(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create kernel: %w", err)
+	}
+
+	if err := k.Start(context.Background()); err != nil {
+		return fmt.Errorf("failed to start kernel: %w", err)
+	}
+	defer k.Stop(context.Background())
+
+	backend := tui.NewInProcessBackend(k)
+	return tui.Run(backend)
 }
 
 func mcpCmd() *cobra.Command {

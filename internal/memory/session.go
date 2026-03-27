@@ -200,6 +200,15 @@ func (s *SessionStore) SaveSession(session *types.Session) error {
 	return nil
 }
 
+// DeleteAllSession deletes all sessions, no matter agent id or session id
+func (s *SessionStore) DeleteAllSession() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.Exec("DELETE FROM sessions")
+	return err
+}
+
 // DeleteSession deletes a session.
 func (s *SessionStore) DeleteSession(sessionID types.SessionID) error {
 	s.mu.Lock()

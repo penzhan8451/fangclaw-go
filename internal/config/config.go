@@ -22,6 +22,16 @@ type Config struct {
 	Log          LogSettings             `toml:"log"`
 	Channels     ChannelsConfig          `toml:"channels"`
 	McpServers   []types.McpServerConfig `toml:"mcp_servers,omitempty"`
+	Browser      BrowserSettings         `toml:"browser"`
+}
+
+type BrowserSettings struct {
+	Enabled       bool   `toml:"enabled"`
+	ChromiumPath  string `toml:"chromium_path"`
+	Headless      bool   `toml:"headless"`
+	ViewportWidth int    `toml:"viewport_width"`
+	ViewportHeight int   `toml:"viewport_height"`
+	MaxSessions   int    `toml:"max_sessions"`
 }
 
 // ChannelsConfig contains configuration for all channel adapters.

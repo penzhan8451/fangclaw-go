@@ -75,4 +75,7 @@ func Register(root *cobra.Command) {
 
 	// Hands
 	root.AddCommand(handCmd())
+
+	// Wizard
+	root.AddCommand(wizardCmd())
 }

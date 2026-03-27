@@ -36,7 +36,7 @@ func NewWorkflowEngine(dataDir ...string) *WorkflowEngine {
 	if len(dataDir) > 0 {
 		dir = dataDir[0]
 	}
-	fmt.Printf("[WorkflowEngine] NewWorkflowEngine called with dataDir: '%s'\n", dir)
+	log.Debug().Str("dataDir", dir).Msg("NewWorkflowEngine called")
 	e := &WorkflowEngine{
 		workflows: make(map[types.WorkflowID]types.Workflow),
 		runs:      make(map[types.WorkflowRunID]types.WorkflowRun),
@@ -45,11 +45,11 @@ func NewWorkflowEngine(dataDir ...string) *WorkflowEngine {
 	}
 	e.loadDefaultTemplates()
 	if dir != "" {
-		fmt.Printf("[WorkflowEngine] Calling loadFromDisk...\n")
+		log.Debug().Msg("Calling loadFromDisk")
 		e.loadFromDisk()
-		fmt.Printf("[WorkflowEngine] loadFromDisk completed. Total workflows: %d\n", len(e.workflows))
+		log.Debug().Int("workflows", len(e.workflows)).Msg("loadFromDisk completed")
 	} else {
-		fmt.Printf("[WorkflowEngine] dataDir is empty, skipping loadFromDisk\n")
+		log.Debug().Msg("dataDir is empty, skipping loadFromDisk")
 	}
 	return e
 }
@@ -77,7 +77,7 @@ func (e *WorkflowEngine) publishEvent(event *eventbus.Event) {
 
 func (e *WorkflowEngine) loadFromDisk() {
 	if e.dataDir == "" {
-		fmt.Printf("[WorkflowEngine] dataDir is empty, skipping loadFromDisk\n")
+		log.Debug().Msg("dataDir is empty, skipping loadFromDisk")
 		return
 	}
 
@@ -87,20 +87,20 @@ func (e *WorkflowEngine) loadFromDisk() {
 
 func (e *WorkflowEngine) loadWorkflowsFromDisk() {
 	workflowsDir := filepath.Join(e.dataDir, "workflows")
-	fmt.Printf("[WorkflowEngine] Loading workflows from: %s\n", workflowsDir)
+	log.Debug().Str("dir", workflowsDir).Msg("Loading workflows from")
 
 	if _, err := os.Stat(workflowsDir); os.IsNotExist(err) {
-		fmt.Printf("[WorkflowEngine] Workflows directory does not exist: %s\n", workflowsDir)
+		log.Debug().Str("dir", workflowsDir).Msg("Workflows directory does not exist")
 		return
 	}
 
 	entries, err := os.ReadDir(workflowsDir)
 	if err != nil {
-		fmt.Printf("[WorkflowEngine] Failed to read workflows directory: %v\n", err)
+		log.Warn().Err(err).Str("dir", workflowsDir).Msg("Failed to read workflows directory")
 		return
 	}
 
-	fmt.Printf("[WorkflowEngine] Found %d entries in workflows directory\n", len(entries))
+	log.Debug().Int("entries", len(entries)).Msg("Found entries in workflows directory")
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -109,41 +109,41 @@ func (e *WorkflowEngine) loadWorkflowsFromDisk() {
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
 			path := filepath.Join(workflowsDir, entry.Name())
-			fmt.Printf("[WorkflowEngine] Loading workflow file: %s\n", path)
+			log.Debug().Str("path", path).Msg("Loading workflow file")
 			data, err := os.ReadFile(path)
 			if err != nil {
-				fmt.Printf("[WorkflowEngine] Failed to read workflow file %s: %v\n", path, err)
+				log.Warn().Err(err).Str("path", path).Msg("Failed to read workflow file")
 				continue
 			}
 			var wf types.Workflow
 			if err := json.Unmarshal(data, &wf); err != nil {
-				fmt.Printf("[WorkflowEngine] Failed to unmarshal workflow file %s: %v\n", path, err)
+				log.Warn().Err(err).Str("path", path).Msg("Failed to unmarshal workflow file")
 				continue
 			}
-			fmt.Printf("[WorkflowEngine] Loaded workflow: %s (ID: %s)\n", wf.Name, wf.ID)
+			log.Debug().Str("name", wf.Name).Str("id", string(wf.ID)).Msg("Loaded workflow")
 			e.workflows[wf.ID] = wf
 			loadedCount++
 		}
 	}
-	fmt.Printf("[WorkflowEngine] Total workflows loaded: %d\n", loadedCount)
+	log.Debug().Int("count", loadedCount).Msg("Total workflows loaded")
 }
 
 func (e *WorkflowEngine) loadWorkflowRunsFromDisk() {
 	runsDir := filepath.Join(e.dataDir, "workflow_runs")
-	fmt.Printf("[WorkflowEngine] Loading workflow runs from: %s\n", runsDir)
+	log.Debug().Str("dir", runsDir).Msg("Loading workflow runs from")
 
 	if _, err := os.Stat(runsDir); os.IsNotExist(err) {
-		fmt.Printf("[WorkflowEngine] Workflow runs directory does not exist: %s\n", runsDir)
+		log.Debug().Str("dir", runsDir).Msg("Workflow runs directory does not exist")
 		return
 	}
 
 	entries, err := os.ReadDir(runsDir)
 	if err != nil {
-		fmt.Printf("[WorkflowEngine] Failed to read workflow runs directory: %v\n", err)
+		log.Warn().Err(err).Str("dir", runsDir).Msg("Failed to read workflow runs directory")
 		return
 	}
 
-	fmt.Printf("[WorkflowEngine] Found %d entries in workflow runs directory\n", len(entries))
+	log.Debug().Int("entries", len(entries)).Msg("Found entries in workflow runs directory")
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -154,20 +154,20 @@ func (e *WorkflowEngine) loadWorkflowRunsFromDisk() {
 			path := filepath.Join(runsDir, entry.Name())
 			data, err := os.ReadFile(path)
 			if err != nil {
-				fmt.Printf("[WorkflowEngine] Failed to read workflow run file %s: %v\n", path, err)
+				log.Warn().Err(err).Str("path", path).Msg("Failed to read workflow run file")
 				continue
 			}
 			var run types.WorkflowRun
 			if err := json.Unmarshal(data, &run); err != nil {
-				fmt.Printf("[WorkflowEngine] Failed to unmarshal workflow run file %s: %v\n", path, err)
+				log.Warn().Err(err).Str("path", path).Msg("Failed to unmarshal workflow run file")
 				continue
 			}
-			fmt.Printf("[WorkflowEngine] Loaded workflow run: %s (Workflow: %s)\n", run.ID, run.WorkflowName)
+			log.Debug().Str("id", string(run.ID)).Str("workflow", run.WorkflowName).Msg("Loaded workflow run")
 			e.runs[run.ID] = run
 			loadedCount++
 		}
 	}
-	fmt.Printf("[WorkflowEngine] Total workflow runs loaded: %d\n", loadedCount)
+	log.Debug().Int("count", loadedCount).Msg("Total workflow runs loaded")
 }
 
 func (e *WorkflowEngine) saveToDisk(workflow types.Workflow) error {

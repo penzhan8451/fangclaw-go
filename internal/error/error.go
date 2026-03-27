@@ -1,4 +1,4 @@
-// Package errors provides error types for OpenFang.
+// Package errors provides error types for FangClaw-Go.
 package errors
 
 import (

@@ -115,6 +115,8 @@ type Runtime struct {
 	getMcpTools     func() []types.ToolDefinition
 	callMcpTool     func(ctx context.Context, toolName string, args map[string]interface{}) (string, error)
 	approvalMgr     *approvals.ApprovalManager
+	checkCapability func(agentID string, capType string, resource string) bool
+	browserMgr      tools.BrowserManager
 }
 
 type McpCallbacks struct {
@@ -147,6 +149,14 @@ func (r *Runtime) RegisterDriver(provider string, driver llm.Driver) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.drivers[provider] = driver
+}
+
+func (r *Runtime) SetCapabilityChecker(checker func(agentID string, capType string, resource string) bool) {
+	r.checkCapability = checker
+}
+
+func (r *Runtime) SetBrowserManager(mgr tools.BrowserManager) {
+	r.browserMgr = mgr
 }
 
 func (r *Runtime) GetDriver(provider string) (llm.Driver, error) {
@@ -278,7 +288,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 	}
 
 	// Get available tools for this agent
-	availableTools := r.getAvailableTools(agentCtx.Tools, agentCtx.Skills)
+	availableTools := r.getAvailableTools(agentCtx.AgentID.String(), agentCtx.Tools, agentCtx.Skills)
 	fmt.Println("\n------Available tools------")
 	for _, tool := range availableTools {
 		fmt.Printf("  - %s\n", tool.Name())
@@ -367,7 +377,6 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			totalUsage.ToolCalls += len(toolCalls)
 			var toolResults []string
 			for _, tc := range toolCalls {
-				fmt.Printf("===Agent Loop Iteration: [ --iteration %d-- ] Executing tool name <%s> with <input> %s\n", iteration, tc.Name, tc.Input)
 				result, err := r.executeTool(ctx, agentCtx, tc.Name, tc.Input)
 				if err != nil {
 					toolResults = append(toolResults, fmt.Sprintf("Error executing %s: %v", tc.Name, err))
@@ -736,7 +745,7 @@ func (r *Runtime) buildLLMMessages(systemPrompt string, messages []types.Message
 
 // getAvailableTools gets the available tools for the agent.
 // It includes both built-in tools and tools from the specified skills.
-func (r *Runtime) getAvailableTools(toolNames []string, skillIDs []string) []tools.Tool {
+func (r *Runtime) getAvailableTools(agentID string, toolNames []string, skillIDs []string) []tools.Tool {
 	available := make([]tools.Tool, 0)
 
 	// Add built-in tools
@@ -778,6 +787,15 @@ func (r *Runtime) getAvailableTools(toolNames []string, skillIDs []string) []too
 			}
 			available = append(available, mcpTool)
 		}
+	}
+
+	// Add browser tools if browser manager is available
+	if r.browserMgr != nil {
+		browserCtx := &tools.BrowserToolContext{
+			BrowserMgr: r.browserMgr,
+			AgentID:    agentID,
+		}
+		available = append(available, tools.GetAllBrowserTools(browserCtx)...)
 	}
 
 	return available
@@ -868,6 +886,12 @@ func (t *mcpToolWrapper) Schema() map[string]interface{} {
 // executeTool executes a tool.
 // It first tries built-in tools, then skill tools, then MCP tools.
 func (r *Runtime) executeTool(ctx context.Context, agentCtx *AgentContext, name string, args map[string]interface{}) (string, error) {
+	if r.checkCapability != nil && agentCtx != nil {
+		if !r.checkCapability(agentCtx.AgentID.String(), "tool_invoke", name) {
+			return "", fmt.Errorf("capability denied: agent does not have permission to invoke tool '%s'", name)
+		}
+	}
+
 	if r.approvalMgr != nil {
 		if r.approvalMgr.RequiresApproval(name) {
 			fmt.Printf("------Approval required for tool------: %s\n", name)
@@ -938,6 +962,23 @@ func (r *Runtime) executeTool(ctx context.Context, agentCtx *AgentContext, name 
 		toolCtx, cancel := context.WithTimeout(ctx, TOOL_TIMEOUT_SECS*time.Second)
 		defer cancel()
 		return tool.Execute(toolCtx, args)
+	}
+
+	// Try browser tools if browser manager is available
+	if r.browserMgr != nil && strings.HasPrefix(name, "browser_") {
+		agentID := ""
+		if agentCtx != nil {
+			agentID = agentCtx.AgentID.String()
+		}
+		browserCtx := &tools.BrowserToolContext{
+			BrowserMgr: r.browserMgr,
+			AgentID:    agentID,
+		}
+		if browserTool := tools.FindBrowserTool(browserCtx, name); browserTool != nil {
+			toolCtx, cancel := context.WithTimeout(ctx, TOOL_TIMEOUT_SECS*time.Second)
+			defer cancel()
+			return browserTool.Execute(toolCtx, args)
+		}
 	}
 
 	// If no built-in tool found, try to find a skill that provides this tool

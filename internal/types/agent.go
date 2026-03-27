@@ -48,13 +48,26 @@ type Agent struct {
 type AgentManifest struct {
 	Name               string            `toml:"name" json:"name"`
 	Description        string            `toml:"description" json:"description,omitempty"`
-	SystemPrompt       string            `toml:"system_prompt" json:"system_prompt,omitempty"`               // agent definition，base system prompt, e.g. bundled hand/hand.json
-	SkillPromptContext string            `toml:"skill_prompt_context" json:"skill_prompt_context,omitempty"` // agent Skill prompt context is added to the system prompt
+	SystemPrompt       string            `toml:"system_prompt" json:"system_prompt,omitempty"`
+	SkillPromptContext string            `toml:"skill_prompt_context" json:"skill_prompt_context,omitempty"`
 	Model              ModelConfig       `toml:"model" json:"model,omitempty"`
-	Tools              []string          `toml:"tools" json:"tools,omitempty"`             // Buildin Tools,
-	Skills             []string          `toml:"skills" json:"skills,omitempty"`           // skills in ～/homedir/skills/{e.g. check,approval}/skill.md
-	McpServers         []string          `toml:"mcp_servers" json:"mcp_servers,omitempty"` // MCP servers whitelist
+	Tools              []string          `toml:"tools" json:"tools,omitempty"`
+	Skills             []string          `toml:"skills" json:"skills,omitempty"`
+	McpServers         []string          `toml:"mcp_servers" json:"mcp_servers,omitempty"`
+	Capabilities       *ManifestCaps     `toml:"capabilities" json:"capabilities,omitempty"`
 	Metadata           map[string]string `toml:"metadata" json:"metadata,omitempty"`
+}
+
+// ManifestCaps defines capability permissions for an agent.
+type ManifestCaps struct {
+	Network      []string `toml:"network" json:"network,omitempty"`
+	Shell        []string `toml:"shell" json:"shell,omitempty"`
+	MemoryRead   []string `toml:"memory_read" json:"memory_read,omitempty"`
+	MemoryWrite  []string `toml:"memory_write" json:"memory_write,omitempty"`
+	AgentSpawn   bool     `toml:"agent_spawn" json:"agent_spawn,omitempty"`
+	AgentMessage []string `toml:"agent_message" json:"agent_message,omitempty"`
+	Schedule     bool     `toml:"schedule" json:"schedule,omitempty"`
+	McpServers   []string `toml:"mcp_servers_caps" json:"mcp_servers_caps,omitempty"`
 }
 
 // ModelConfig defines the LLM configuration for an agent.

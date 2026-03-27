@@ -3794,6 +3794,10 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span>
               <span class="nav-label">Logs</span>
             </a>
+            <a class="nav-item" :class="{ active: page === 'delivery' }" @click="navigate('delivery')" :aria-current="page === 'delivery' ? 'page' : false">
+              <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
+              <span class="nav-label">Delivery</span>
+            </a>
           </div>
         </template>
       </div>
@@ -4434,8 +4438,9 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   <span class="recording-dot"></span>
                   <span class="text-xs" style="color:var(--danger)" x-text="formatRecordingTime()"></span>
                 </div>
+                <!-- @keydown.enter.prevent="if(!$event.shiftKey){if(showSlashMenu && filteredSlashCommands.length){executeSlashCommand(filteredSlashCommands[slashIdx].cmd)}else{sendMessage()}}" -->
                 <textarea id="msg-input" rows="1" :placeholder="recording ? 'Recording... release to send' : 'Message FangClaw-go... (/ for commands)'"
-                          @keydown.enter.prevent="if(!$event.shiftKey){if(showSlashMenu && filteredSlashCommands.length){executeSlashCommand(filteredSlashCommands[slashIdx].cmd)}else{sendMessage()}}"
+                          @keydown.enter.prevent="if(!$event.shiftKey){if(showSlashMenu && filteredSlashCommands.length){executeSlashCommand(filteredSlashCommands[slashIdx].cmd)}}"
                           @keydown.escape="showSlashMenu = false"
                           @keydown.arrow-up.prevent="if(showSlashMenu){slashIdx = Math.max(0, slashIdx - 1)}"
                           @keydown.arrow-down.prevent="if(showSlashMenu){slashIdx = Math.min(filteredSlashCommands.length - 1, slashIdx + 1)}"
@@ -4619,7 +4624,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
           <!-- Multi-step Spawn Wizard -->
           <template x-if="showSpawnModal">
-            <div class="modal-overlay" @click.self="showSpawnModal = false" @keydown.escape.window="showSpawnModal = false">
+            <div class="modal-overlay">
               <div class="modal" style="max-width:560px">
                 <div class="modal-header">
                   <h3>Create Agent</h3>
@@ -4628,8 +4633,70 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
                 <!-- Wizard / TOML toggle -->
                 <div class="tabs" style="margin-bottom:12px">
+                  <div class="tab" :class="{ active: spawnMode === 'smart' }" @click="spawnMode = 'smart'">Smart</div>
                   <div class="tab" :class="{ active: spawnMode === 'wizard' }" @click="spawnMode = 'wizard'">Wizard</div>
                   <!-- comment on Raw Toml tab --><!--div class="tab" :class="{ active: spawnMode === 'toml' }" @click="spawnMode = 'toml'">Raw TOML</div-->  
+                </div>
+
+                <!-- Smart mode: AI-powered agent creation -->
+                <div x-show="spawnMode === 'smart'">
+                  <div class="form-group">
+                    <label>Describe your agent</label>
+                    <textarea class="form-textarea" style="height:100px" x-model="smartIntent" placeholder="e.g. Create a web research assistant that can search the web and summarize findings"></textarea>
+                  </div>
+                  <div class="form-group" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <label style="font-size:12px;color:var(--text-dim)">Quick capabilities:</label>
+                    <template x-for="cap in ['web', 'file', 'browser', 'memory', 'code', 'agent', 'schedule', 'mcp']" :key="cap">
+                      <button 
+                        class="btn btn-xs" 
+                        :class="smartCaps.includes(cap) ? 'btn-primary' : 'btn-ghost'" 
+                        @click="toggleSmartCap(cap)" 
+                        x-text="cap">
+                      </button>
+                    </template>
+                  </div>
+                  <div class="form-group" x-show="availableSkills.length > 0 || skillsLoading">
+                    <label style="font-size:12px;color:var(--text-dim)">Available skills:</label>
+                    <div x-show="skillsLoading" style="font-size:12px;color:var(--text-dim);padding:8px">Loading skills...</div>
+                    <div x-show="!skillsLoading && availableSkills.length > 0" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+                      <template x-for="skill in availableSkills" :key="skill.name">
+                        <button 
+                          class="btn btn-xs" 
+                          :class="smartSkills.includes(skill.name) ? 'btn-primary' : 'btn-ghost'" 
+                          @click="toggleSmartSkill(skill.name)"
+                          :title="skill.description">
+                          <span x-text="skill.name"></span>
+                          <span x-show="skill.tools_count > 0" style="opacity:0.6;margin-left:4px" x-text="'(' + skill.tools_count + ' tools)'"></span>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Model Tier</label>
+                    <select class="form-select" x-model="smartTier">
+                      <option value="simple">Simple (fast, cheap)</option>
+                      <option value="medium">Medium (balanced)</option>
+                      <option value="complex">Complex (powerful)</option>
+                    </select>
+                  </div>
+                  <button class="btn btn-primary btn-block mt-4" @click="generateSmartAgent()" :disabled="smartGenerating || !smartIntent.trim()">
+                    <span x-show="!smartGenerating">Generate Agent</span>
+                    <span x-show="smartGenerating">Generating...</span>
+                  </button>
+                  <div x-show="smartPreview" class="mt-4" style="background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:12px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                      <span style="font-weight:600" x-text="smartPreviewName"></span>
+                      <button class="btn btn-ghost btn-xs" @click="showSmartManifest = !showSmartManifest">
+                        <span x-text="showSmartManifest ? 'Hide' : 'Show'"> Show</span> JSON
+                      </button>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-dim);white-space:pre-wrap" x-text="smartPreviewSummary"></p>
+                    <pre x-show="showSmartManifest" style="margin-top:8px;font-size:11px;max-height:200px;overflow:auto;background:rgba(0,0,0,0.2);padding:8px;border-radius:4px" x-text="smartPreview"></pre>
+                    <button class="btn btn-success btn-block mt-3" @click="spawnSmartAgent()" :disabled="spawning">
+                      <span x-show="!spawning">Create Agent</span>
+                      <span x-show="spawning">Creating...</span>
+                    </button>
+                  </div>
                 </div>
 
                 <!-- Raw TOML mode (unchanged) -->
@@ -7593,7 +7660,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             </div>
             <div class="table-wrap" x-show="filteredSessions.length">
               <table>
-                <thead><tr><th>Session</th><th>Agent</th><th>Messages</th><th>Created</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Session</th><th>Agent</th><th>Messages</th><th>Created</th><th>Actions</th><th><button class="btn btn-primary btn-sm" @click="deleteAllSessions()">Delete All</button></th></tr></thead>
                 <tbody>
                   <template x-for="s in filteredSessions" :key="s.session_id">
                     <tr>
@@ -8596,6 +8663,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <div class="card mb-4">
               <div class="card-header">Create Pairing Request</div>
               <div class="text-xs text-dim mb-3">Generate a pairing token to connect a new device. The token will expire after the configured time.</div>
+              <div class="text-x text-dim mb-3>You need to install ntfy app on your device to receive notifications, and subscribe the topic:"fangclaw-go-notifications"</div>
               <div class="flex gap-2">
                 <button class="btn btn-primary" @click="createPairingRequest()" :disabled="creatingPairing">
                   <span x-show="!creatingPairing">Create Pairing Request</span>
@@ -8693,6 +8761,201 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 </div>
               </template>
             </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Page: Delivery -->
+    <template x-if="page === 'delivery'">
+      <div x-data="deliveryPage" x-init="init()">
+        <div class="page-header">
+          <h2>Delivery</h2>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-ghost btn-sm" @click="refreshAll()" title="Refresh">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="page-body">
+          <!-- Stats Cards -->
+          <div class="stats-row mb-4">
+            <div class="stat-card">
+              <div class="stat-value" x-text="totalReceipts"></div>
+              <div class="stat-label">Total Messages</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value stat-value-success" x-text="sentCount"></div>
+              <div class="stat-label">Sent/Delivered</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" :class="failedCount > 0 ? 'stat-value-error' : ''" x-text="failedCount"></div>
+              <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value stat-value-accent" x-text="pendingTasksCount"></div>
+              <div class="stat-label">Pending Tasks</div>
+            </div>
+          </div>
+
+          <!-- Tabs -->
+          <div class="card mb-4">
+            <div class="flex gap-2 border-b border-var(--border) pb-2 mb-4">
+              <button class="btn" :class="activeTab === 'receipts' ? 'btn-primary' : 'btn-ghost'" @click="activeTab = 'receipts'">
+                Message Receipts
+              </button>
+              <button class="btn" :class="activeTab === 'tasks' ? 'btn-primary' : 'btn-ghost'" @click="activeTab = 'tasks'">
+                Delivery Tasks
+              </button>
+            </div>
+
+            <!-- Receipts Tab -->
+            <template x-if="activeTab === 'receipts'">
+              <div>
+                <div class="flex flex-wrap gap-2 mb-4">
+                  <div class="flex items-center gap-2">
+                    <label class="text-xs text-dim">Agent:</label>
+                    <select x-model="selectedAgent" @change="loadDeliveryReceipts()" class="form-input" style="min-width:200px">
+                      <option value="">All Agents</option>
+                      <template x-for="agent in agents" :key="agent.id">
+                        <option :value="agent.id" x-text="agent.name"></option>
+                      </template>
+                    </select>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <label class="text-xs text-dim">Status:</label>
+                    <select x-model="statusFilter" class="form-input" style="min-width:150px">
+                      <option value="">All</option>
+                      <option value="sent">Sent</option>
+                      <option value="delivered">Delivered</option>
+                      <option value="failed">Failed</option>
+                      <option value="best_effort">Best Effort</option>
+                    </select>
+                  </div>
+                  <button class="btn btn-ghost btn-sm" @click="refreshReceipts()">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+                    Refresh
+                  </button>
+                </div>
+
+                <div x-show="loadingReceipts" class="loading-state">
+                  <div class="spinner"></div>
+                  <span>Loading receipts...</span>
+                </div>
+
+                <div x-show="!loadingReceipts && receiptsError" class="error-state">
+                  <span class="error-icon">!</span>
+                  <p x-text="receiptsError"></p>
+                </div>
+
+                <template x-if="!loadingReceipts && !receiptsError">
+                  <div>
+                    <div x-show="filteredReceipts.length === 0" class="empty-state">
+                      <h4>No Receipts</h4>
+                      <p class="hint">No delivery receipts found.</p>
+                    </div>
+
+                    <template x-if="filteredReceipts.length > 0">
+                      <div class="table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Agent</th>
+                              <th>Message ID</th>
+                              <th>Channel</th>
+                              <th>Recipient</th>
+                              <th>Status</th>
+                              <th>Delivered At</th>
+                              <th>Error</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <template x-for="receipt in filteredReceipts" :key="receipt.message_id">
+                              <tr>
+                                <td class="font-bold" x-text="getAgentName(receipt.agent_id)"></td>
+                                <td class="text-dim" style="font-family:var(--font-mono);font-size:10px" x-text="receipt.message_id"></td>
+                                <td x-text="receipt.channel"></td>
+                                <td x-text="receipt.recipient"></td>
+                                <td><span class="badge" :class="getStatusBadgeClass(receipt.status)" x-text="receipt.status"></span></td>
+                                <td class="text-xs" x-text="new Date(receipt.delivered_at).toLocaleString()"></td>
+                                <td class="text-xs text-dim" x-text="receipt.error || '-'"></td>
+                              </tr>
+                            </template>
+                          </tbody>
+                        </table>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <!-- Tasks Tab -->
+            <template x-if="activeTab === 'tasks'">
+              <div>
+                <div class="flex flex-wrap gap-2 mb-4">
+                  <div class="flex items-center gap-2">
+                    <label class="text-xs text-dim">Status:</label>
+                    <select x-model="statusFilter" class="form-input" style="min-width:150px">
+                      <option value="">All</option>
+                      <option value="pending">Pending</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="done">Done</option>
+                    </select>
+                  </div>
+                  <button class="btn btn-ghost btn-sm" @click="refreshTasks()">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+                    Refresh
+                  </button>
+                </div>
+
+                <div x-show="loadingTasks" class="loading-state">
+                  <div class="spinner"></div>
+                  <span>Loading tasks...</span>
+                </div>
+
+                <div x-show="!loadingTasks && tasksError" class="error-state">
+                  <span class="error-icon">!</span>
+                  <p x-text="tasksError"></p>
+                </div>
+
+                <template x-if="!loadingTasks && !tasksError">
+                  <div>
+                    <div x-show="filteredTasks.length === 0" class="empty-state">
+                      <h4>No Tasks</h4>
+                      <p class="hint">No delivery tasks found.</p>
+                    </div>
+
+                    <template x-if="filteredTasks.length > 0">
+                      <div class="table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Task ID</th>
+                              <th>Name</th>
+                              <th>Status</th>
+                              <th>Created At</th>
+                              <th>Updated At</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <template x-for="task in filteredTasks" :key="task.id">
+                              <tr>
+                                <td class="text-dim" style="font-family:var(--font-mono);font-size:10px" x-text="task.id"></td>
+                                <td class="font-bold" x-text="task.name"></td>
+                                <td><span class="badge" :class="getStatusBadgeClass(task.status)" x-text="task.status"></span></td>
+                                <td class="text-xs" x-text="new Date(task.created_at).toLocaleString()"></td>
+                                <td class="text-xs" x-text="new Date(task.updated_at).toLocaleString()"></td>
+                              </tr>
+                            </template>
+                          </tbody>
+                        </table>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
           </div>
         </div>
       </div>
@@ -10567,7 +10830,7 @@ function app() {
       });
 
       // Hash routing
-      var validPages = ['overview','agents','sessions','approvals','workflows','scheduler','channels','skills','hands','analytics','logs','settings','wizard','a2a','pairing'];
+      var validPages = ['overview','agents','sessions','approvals','workflows','scheduler','channels','skills','hands','analytics','logs','settings','wizard','a2a','pairing','delivery'];
       var pageRedirects = {
         'chat': 'agents',
         'templates': 'agents',
@@ -12066,7 +12329,7 @@ function agentsPage() {
     showSpawnModal: false,
     showDetailModal: false,
     detailAgent: null,
-    spawnMode: 'wizard',
+    spawnMode: 'smart',
     spawning: false,
     spawnToml: '',
     filterState: 'all',
@@ -12081,6 +12344,20 @@ function agentsPage() {
       profile: 'full',
       caps: { memory_read: true, memory_write: true, network: false, shell: false, agent_spawn: false }
     },
+
+    // -- Smart creation state --
+    smartIntent: '',
+    smartCaps: [],
+    smartTier: 'medium',
+    smartGenerating: false,
+    smartPreview: null,
+    smartPreviewName: '',
+    smartPreviewSummary: '',
+    smartManifest: null,
+    showSmartManifest: false,
+    smartSkills: [],
+    availableSkills: [],
+    skillsLoading: false,
 
     // -- Multi-step wizard state --
     spawnStep: 1,
@@ -12326,17 +12603,128 @@ function agentsPage() {
       });
     },
 
+    // ── Smart creation functions ──
+    toggleSmartCap(cap) {
+      var idx = this.smartCaps.indexOf(cap);
+      if (idx >= 0) {
+        this.smartCaps.splice(idx, 1);
+      } else {
+        this.smartCaps.push(cap);
+      }
+    },
+
+    toggleSmartSkill(skillId) {
+      var idx = this.smartSkills.indexOf(skillId);
+      if (idx >= 0) {
+        this.smartSkills.splice(idx, 1);
+      } else {
+        this.smartSkills.push(skillId);
+      }
+    },
+
+    async loadAvailableSkills() {
+      if (this.availableSkills.length > 0 || this.skillsLoading) return;
+      this.skillsLoading = true;
+      try {
+        var data = await FangClawGoAPI.get('/api/skills');
+        this.availableSkills = data.skills || [];
+      } catch(e) {
+        this.availableSkills = [];
+      }
+      this.skillsLoading = false;
+    },
+
+    generateUniqueAgentName() {
+      var adjectives = ['swift', 'clever', 'brave', 'calm', 'keen', 'wise', 'bold', 'bright'];
+      var nouns = ['agent', 'bot', 'helper', 'assistant', 'aide', 'guide', 'scout', 'pilot'];
+      var adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+      var noun = nouns[Math.floor(Math.random() * nouns.length)];
+      var suffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      return adj + '-' + noun + '-' + suffix;
+    },
+
+    async generateSmartAgent() {
+      if (!this.smartIntent.trim()) return;
+      
+      this.smartGenerating = true;
+      this.smartPreview = null;
+      
+      try {
+        var agentName = this.generateUniqueAgentName();
+        var response = await FangClawGoAPI.post('/api/wizard/generate', {
+          intent: {
+            name: agentName,
+            description: this.smartIntent,
+            task: this.smartIntent,
+            skills: this.smartSkills.slice(),
+            model_tier: this.smartTier,
+            scheduled: false,
+            schedule: null,
+            capabilities: this.smartCaps.slice()
+          }
+        });
+        
+        this.smartManifest = response.plan.manifest;
+        this.smartPreview = response.manifest;
+        this.smartPreviewName = response.plan.manifest.name;
+        this.smartPreviewSummary = response.plan.summary;
+      } catch(e) {
+        FangClawGoToast.error('Failed to generate agent: ' + (e.message || 'Unknown error'));
+      }
+      this.smartGenerating = false;
+    },
+
+    async spawnSmartAgent() {
+      if (!this.smartManifest) return;
+      
+      this.spawning = true;
+      var self = this;
+      
+      try {
+        var manifest = self.smartManifest;
+        
+        var res = await FangClawGoAPI.post('/api/agents', { manifest_json: manifest });
+        if (res.agent_id) {
+          FangClawGoToast.success('Agent "' + (res.name || 'new') + '" created successfully');
+          self.showSpawnModal = false;
+          self.smartIntent = '';
+          self.smartCaps = [];
+          self.smartPreview = null;
+          self.smartManifest = null;
+          await Alpine.store('app').refreshAgents();
+          self.chatWithAgent({ id: res.agent_id, name: res.name, model_provider: manifest.model && manifest.model.provider ? manifest.model.provider : 'openai', model_name: manifest.model && manifest.model.model ? manifest.model.model : 'gpt-4o-mini' });
+        } else {
+          FangClawGoToast.error('Create failed: ' + (res.error || 'Unknown error'));
+        }
+      } catch(e) {
+        FangClawGoToast.error('Failed to create agent: ' + (e.message || 'Unknown error'));
+      }
+      self.spawning = false;
+    },
+
     // ── Multi-step wizard navigation ──
     async openSpawnWizard() {
       this.showSpawnModal = true;
       this.spawnStep = 1;
-      this.spawnMode = 'wizard';
+      this.spawnMode = 'smart';
       this.spawnIdentity = { emoji: '', color: '#FF5C00', archetype: '' };
       this.selectedPreset = '';
       this.soulContent = '';
       this.spawnForm.name = '';
       this.spawnForm.systemPrompt = 'You are a helpful assistant.';
       this.spawnForm.profile = 'full';
+      
+      // Initialize smart mode state
+      this.smartIntent = '';
+      this.smartCaps = [];
+      this.smartSkills = [];
+      this.smartTier = 'medium';
+      this.smartGenerating = false;
+      this.smartPreview = null;
+      this.smartPreviewName = '';
+      this.smartPreviewSummary = '';
+      this.smartManifest = null;
+      this.showSmartManifest = false;
       
       var self = this;
       try {
@@ -12354,6 +12742,8 @@ function agentsPage() {
             self.spawnForm.provider = self.spawnProviders[0].id;
           }
         }
+        
+        self.loadAvailableSkills();
       } catch(e) {
         self.spawnProviders = [];
       }
@@ -15937,6 +16327,19 @@ function sessionsPage() {
       location.hash = 'agents';
     },
 
+    deleteAllSessions() {
+      var self = this;
+      FangClawGoToast.confirm('Delete All Sessions', 'This will permanently remove all sessions and their messages.', async function() {
+        try {
+          await FangClawGoAPI.del('/api/sessions');
+          self.sessions = [];
+          FangClawGoToast.success('All sessions deleted');
+        } catch(e) {
+          FangClawGoToast.error('Failed to delete all sessions: ' + e.message);
+        }
+      });
+    },
+
     deleteSession(sessionId) {
       var self = this;
       FangClawGoToast.confirm('Delete Session', 'This will permanently remove the session and its messages.', async function() {
@@ -17449,6 +17852,150 @@ function pairingPage() {
       }).catch(function() {
         FangClawGoToast.warning('Failed to copy to clipboard');
       });
+    }
+  };
+}
+
+'use strict';
+
+function deliveryPage() {
+  return {
+    activeTab: 'receipts',
+    deliveryReceipts: [],
+    deliveryTasks: [],
+    agents: [],
+    selectedAgent: '',
+    statusFilter: '',
+    loadingReceipts: false,
+    loadingTasks: false,
+    loadingAgents: false,
+    receiptsError: '',
+    tasksError: '',
+    agentsError: '',
+    receiptsLimit: 200,
+
+    async init() {
+      await this.loadAgents();
+      await this.loadDeliveryReceipts();
+      await this.loadDeliveryTasks();
+    },
+
+    async loadAgents() {
+      this.loadingAgents = true;
+      this.agentsError = '';
+      try {
+        var data = await FangClawGoAPI.get('/api/agents');
+        this.agents = Array.isArray(data) ? data : [];
+      } catch(e) {
+        this.agentsError = e.message || 'Failed to load agents';
+      }
+      this.loadingAgents = false;
+    },
+
+    getAgentName(agentId) {
+      var agent = this.agents.find(a => a.id === agentId);
+      return agent ? agent.name : agentId;
+    },
+
+    async loadDeliveryReceipts() {
+      this.loadingReceipts = true;
+      this.receiptsError = '';
+      this.deliveryReceipts = [];
+      try {
+        if (this.selectedAgent && this.selectedAgent !== '') {
+          var data = await FangClawGoAPI.get('/api/agents/' + encodeURIComponent(this.selectedAgent) + '/deliveries?limit=' + this.receiptsLimit);
+          this.deliveryReceipts = data.receipts || [];
+        } else {
+          var data = await FangClawGoAPI.get('/api/deliveries/receipts?limit=' + this.receiptsLimit);
+          this.deliveryReceipts = data.receipts || [];
+        }
+      } catch(e) {
+        this.receiptsError = e.message || 'Failed to load delivery receipts';
+      }
+      this.loadingReceipts = false;
+    },
+
+    async loadDeliveryTasks() {
+      this.loadingTasks = true;
+      this.tasksError = '';
+      try {
+        var data = await FangClawGoAPI.get('/api/deliveries');
+        this.deliveryTasks = data.deliveries || [];
+      } catch(e) {
+        this.tasksError = e.message || 'Failed to load delivery tasks';
+      }
+      this.loadingTasks = false;
+    },
+
+    get filteredReceipts() {
+      if (!this.statusFilter) return this.deliveryReceipts;
+      return this.deliveryReceipts.filter(r => r.status === this.statusFilter);
+    },
+
+    get filteredTasks() {
+      if (!this.statusFilter) return this.deliveryTasks;
+      return this.deliveryTasks.filter(t => t.status === this.statusFilter);
+    },
+
+    get totalReceipts() {
+      return this.deliveryReceipts.length;
+    },
+
+    get sentCount() {
+      return this.deliveryReceipts.filter(r => r.status === 'sent' || r.status === 'delivered').length;
+    },
+
+    get failedCount() {
+      return this.deliveryReceipts.filter(r => r.status === 'failed').length;
+    },
+
+    get bestEffortCount() {
+      return this.deliveryReceipts.filter(r => r.status === 'best_effort').length;
+    },
+
+    get pendingTasksCount() {
+      return this.deliveryTasks.filter(t => t.status === 'pending').length;
+    },
+
+    get inProgressTasksCount() {
+      return this.deliveryTasks.filter(t => t.status === 'in_progress').length;
+    },
+
+    get doneTasksCount() {
+      return this.deliveryTasks.filter(t => t.status === 'done').length;
+    },
+
+    getStatusBadgeClass(status) {
+      switch(status) {
+        case 'sent':
+        case 'delivered':
+          return 'badge-success';
+        case 'failed':
+          return 'badge-error';
+        case 'best_effort':
+          return 'badge-muted';
+        case 'pending':
+          return 'badge-warn';
+        case 'in_progress':
+          return 'badge-accent';
+        case 'done':
+          return 'badge-success';
+        default:
+          return 'badge-muted';
+      }
+    },
+
+    refreshReceipts() {
+      this.loadDeliveryReceipts();
+    },
+
+    refreshTasks() {
+      this.loadDeliveryTasks();
+    },
+
+    refreshAll() {
+      this.loadDeliveryReceipts();
+      this.loadDeliveryTasks();
     }
   };
 }

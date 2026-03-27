@@ -9,7 +9,7 @@ function agentsPage() {
     showSpawnModal: false,
     showDetailModal: false,
     detailAgent: null,
-    spawnMode: 'wizard',
+    spawnMode: 'smart',
     spawning: false,
     spawnToml: '',
     filterState: 'all',
@@ -24,6 +24,20 @@ function agentsPage() {
       profile: 'full',
       caps: { memory_read: true, memory_write: true, network: false, shell: false, agent_spawn: false }
     },
+
+    // -- Smart creation state --
+    smartIntent: '',
+    smartCaps: [],
+    smartTier: 'medium',
+    smartGenerating: false,
+    smartPreview: null,
+    smartPreviewName: '',
+    smartPreviewSummary: '',
+    smartManifest: null,
+    showSmartManifest: false,
+    smartSkills: [],
+    availableSkills: [],
+    skillsLoading: false,
 
     // -- Multi-step wizard state --
     spawnStep: 1,
@@ -269,17 +283,128 @@ function agentsPage() {
       });
     },
 
+    // ── Smart creation functions ──
+    toggleSmartCap(cap) {
+      var idx = this.smartCaps.indexOf(cap);
+      if (idx >= 0) {
+        this.smartCaps.splice(idx, 1);
+      } else {
+        this.smartCaps.push(cap);
+      }
+    },
+
+    toggleSmartSkill(skillId) {
+      var idx = this.smartSkills.indexOf(skillId);
+      if (idx >= 0) {
+        this.smartSkills.splice(idx, 1);
+      } else {
+        this.smartSkills.push(skillId);
+      }
+    },
+
+    async loadAvailableSkills() {
+      if (this.availableSkills.length > 0 || this.skillsLoading) return;
+      this.skillsLoading = true;
+      try {
+        var data = await FangClawGoAPI.get('/api/skills');
+        this.availableSkills = data.skills || [];
+      } catch(e) {
+        this.availableSkills = [];
+      }
+      this.skillsLoading = false;
+    },
+
+    generateUniqueAgentName() {
+      var adjectives = ['swift', 'clever', 'brave', 'calm', 'keen', 'wise', 'bold', 'bright'];
+      var nouns = ['agent', 'bot', 'helper', 'assistant', 'aide', 'guide', 'scout', 'pilot'];
+      var adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+      var noun = nouns[Math.floor(Math.random() * nouns.length)];
+      var suffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      return adj + '-' + noun + '-' + suffix;
+    },
+
+    async generateSmartAgent() {
+      if (!this.smartIntent.trim()) return;
+      
+      this.smartGenerating = true;
+      this.smartPreview = null;
+      
+      try {
+        var agentName = this.generateUniqueAgentName();
+        var response = await FangClawGoAPI.post('/api/wizard/generate', {
+          intent: {
+            name: agentName,
+            description: this.smartIntent,
+            task: this.smartIntent,
+            skills: this.smartSkills.slice(),
+            model_tier: this.smartTier,
+            scheduled: false,
+            schedule: null,
+            capabilities: this.smartCaps.slice()
+          }
+        });
+        
+        this.smartManifest = response.plan.manifest;
+        this.smartPreview = response.manifest;
+        this.smartPreviewName = response.plan.manifest.name;
+        this.smartPreviewSummary = response.plan.summary;
+      } catch(e) {
+        FangClawGoToast.error('Failed to generate agent: ' + (e.message || 'Unknown error'));
+      }
+      this.smartGenerating = false;
+    },
+
+    async spawnSmartAgent() {
+      if (!this.smartManifest) return;
+      
+      this.spawning = true;
+      var self = this;
+      
+      try {
+        var manifest = self.smartManifest;
+        
+        var res = await FangClawGoAPI.post('/api/agents', { manifest_json: manifest });
+        if (res.agent_id) {
+          FangClawGoToast.success('Agent "' + (res.name || 'new') + '" created successfully');
+          self.showSpawnModal = false;
+          self.smartIntent = '';
+          self.smartCaps = [];
+          self.smartPreview = null;
+          self.smartManifest = null;
+          await Alpine.store('app').refreshAgents();
+          self.chatWithAgent({ id: res.agent_id, name: res.name, model_provider: manifest.model && manifest.model.provider ? manifest.model.provider : 'openai', model_name: manifest.model && manifest.model.model ? manifest.model.model : 'gpt-4o-mini' });
+        } else {
+          FangClawGoToast.error('Create failed: ' + (res.error || 'Unknown error'));
+        }
+      } catch(e) {
+        FangClawGoToast.error('Failed to create agent: ' + (e.message || 'Unknown error'));
+      }
+      self.spawning = false;
+    },
+
     // ── Multi-step wizard navigation ──
     async openSpawnWizard() {
       this.showSpawnModal = true;
       this.spawnStep = 1;
-      this.spawnMode = 'wizard';
+      this.spawnMode = 'smart';
       this.spawnIdentity = { emoji: '', color: '#FF5C00', archetype: '' };
       this.selectedPreset = '';
       this.soulContent = '';
       this.spawnForm.name = '';
       this.spawnForm.systemPrompt = 'You are a helpful assistant.';
       this.spawnForm.profile = 'full';
+      
+      // Initialize smart mode state
+      this.smartIntent = '';
+      this.smartCaps = [];
+      this.smartSkills = [];
+      this.smartTier = 'medium';
+      this.smartGenerating = false;
+      this.smartPreview = null;
+      this.smartPreviewName = '';
+      this.smartPreviewSummary = '';
+      this.smartManifest = null;
+      this.showSmartManifest = false;
       
       var self = this;
       try {
@@ -297,6 +422,8 @@ function agentsPage() {
             self.spawnForm.provider = self.spawnProviders[0].id;
           }
         }
+        
+        self.loadAvailableSkills();
       } catch(e) {
         self.spawnProviders = [];
       }

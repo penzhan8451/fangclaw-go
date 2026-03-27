@@ -22,6 +22,12 @@ type ChannelBridgeHandle interface {
 
 	// GetAutoReplyEngine returns the auto-reply engine.
 	GetAutoReplyEngine() *autoreply.AutoReplyEngine
+
+	// RecordDelivery records the outcome of sending a message reply back to a channel.
+	// agentID is the agent that produced the response; channel is the channel type name;
+	// recipient is the platform user identifier; success indicates whether the send succeeded;
+	// errMsg is the error message on failure (empty on success).
+	RecordDelivery(ctx context.Context, agentID, channel, recipient string, success bool, errMsg string)
 }
 
 // AgentInfo contains basic information about an agent.

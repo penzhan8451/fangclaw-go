@@ -17,6 +17,7 @@ import (
 // BrowserConfig holds browser automation configuration
 type BrowserConfig struct {
 	PythonPath      string `mapstructure:"python_path" json:"python_path"`
+	ChromiumPath    string `mapstructure:"chromium_path" json:"chromium_path"`
 	Headless        bool   `mapstructure:"headless" json:"headless"`
 	ViewportWidth   int    `mapstructure:"viewport_width" json:"viewport_width"`
 	ViewportHeight  int    `mapstructure:"viewport_height" json:"viewport_height"`
@@ -40,10 +41,14 @@ func DefaultBrowserConfig() BrowserConfig {
 
 // BrowserCommand represents a command sent from Go to Python bridge
 type BrowserCommand struct {
-	Action   string `json:"action"`
-	URL      string `json:"url,omitempty"`
-	Selector string `json:"selector,omitempty"`
-	Text     string `json:"text,omitempty"`
+	Action     string `json:"action"`
+	URL        string `json:"url,omitempty"`
+	Selector   string `json:"selector,omitempty"`
+	Text       string `json:"text,omitempty"`
+	Direction  string `json:"direction,omitempty"`
+	Amount     int    `json:"amount,omitempty"`
+	TimeoutMs  int    `json:"timeout_ms,omitempty"`
+	Expression string `json:"expression,omitempty"`
 }
 
 // BrowserResponse represents response from Python bridge
@@ -442,6 +447,97 @@ func (m *BrowserManager) ReadPage(agentID string) (string, error) {
 	return fmt.Sprintf("Page: %s\nURL: %s\n\n%s", data.Title, data.URL, data.Content), nil
 }
 
+// Scroll scrolls the page in the specified direction
+func (m *BrowserManager) Scroll(agentID, direction string, amount int) (string, error) {
+	resp, err := m.sendCommand(agentID, BrowserCommand{
+		Action:    "Scroll",
+		Direction: direction,
+		Amount:    amount,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if !resp.Success {
+		return "", fmt.Errorf(resp.Error)
+	}
+
+	var data struct {
+		ScrollX   float64 `json:"scrollX"`
+		ScrollY   float64 `json:"scrollY"`
+		Direction string  `json:"direction"`
+		Amount    int     `json:"amount"`
+	}
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return fmt.Sprintf("Scrolled %s by %d pixels. Position: (%.0f, %.0f)", data.Direction, data.Amount, data.ScrollX, data.ScrollY), nil
+}
+
+// Wait waits for an element to appear on the page
+func (m *BrowserManager) Wait(agentID, selector string, timeoutMs int) (string, error) {
+	resp, err := m.sendCommand(agentID, BrowserCommand{
+		Action:    "Wait",
+		Selector:  selector,
+		TimeoutMs: timeoutMs,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if !resp.Success {
+		return "", fmt.Errorf(resp.Error)
+	}
+
+	return fmt.Sprintf("Element found: %s", selector), nil
+}
+
+// RunJs executes JavaScript in the browser
+func (m *BrowserManager) RunJs(agentID, expression string) (interface{}, error) {
+	resp, err := m.sendCommand(agentID, BrowserCommand{
+		Action:     "RunJs",
+		Expression: expression,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if !resp.Success {
+		return nil, fmt.Errorf(resp.Error)
+	}
+
+	var data struct {
+		Result interface{} `json:"result"`
+	}
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return data.Result, nil
+}
+
+// Back navigates back in browser history
+func (m *BrowserManager) Back(agentID string) (string, error) {
+	resp, err := m.sendCommand(agentID, BrowserCommand{
+		Action: "Back",
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if !resp.Success {
+		return "", fmt.Errorf(resp.Error)
+	}
+
+	var data BrowserData
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return fmt.Sprintf("Navigated back to: %s\nTitle: %s", data.URL, data.Title), nil
+}
+
 // Close closes the browser session
 func (m *BrowserManager) Close(agentID string) {
 	m.CloseSession(agentID)
@@ -561,6 +657,50 @@ def handle_command(page, context, action, cmd, timeout_ms):
         title = page.title()
         content = extract_readable(page)
         return {"success": True, "data": {"title": title, "url": page.url, "content": content}}
+
+    elif action == "Scroll":
+        direction = cmd.get("direction", "down")
+        amount = cmd.get("amount", 300)
+        dx, dy = 0, 0
+        if direction == "up":
+            dy = -amount
+        elif direction == "down":
+            dy = amount
+        elif direction == "left":
+            dx = -amount
+        elif direction == "right":
+            dx = amount
+        page.evaluate(f"window.scrollBy({dx}, {dy})")
+        scroll_x = page.evaluate("window.scrollX")
+        scroll_y = page.evaluate("window.scrollY")
+        return {"success": True, "data": {"scrollX": scroll_x, "scrollY": scroll_y, "direction": direction, "amount": amount}}
+
+    elif action == "Wait":
+        selector = cmd.get("selector", "")
+        timeout = cmd.get("timeout_ms", timeout_ms)
+        if not selector:
+            return {"success": False, "error": "Missing 'selector' parameter"}
+        try:
+            page.wait_for_selector(selector, timeout=timeout)
+            return {"success": True, "data": {"found": True, "selector": selector}}
+        except Exception as e:
+            return {"success": False, "error": f"Timed out waiting for selector: {selector} ({timeout}ms)"}
+
+    elif action == "RunJs":
+        expression = cmd.get("expression", "")
+        if not expression:
+            return {"success": False, "error": "Missing 'expression' parameter"}
+        try:
+            result = page.evaluate(expression)
+            return {"success": True, "data": {"result": result}}
+        except Exception as e:
+            return {"success": False, "error": f"JS execution failed: {e}"}
+
+    elif action == "Back":
+        page.go_back(timeout=timeout_ms)
+        page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
+        title = page.title()
+        return {"success": True, "data": {"title": title, "url": page.url}}
 
     elif action == "Close":
         return {"success": True, "data": {"status": "closed"}}

@@ -219,7 +219,7 @@ function app() {
       });
 
       // Hash routing
-      var validPages = ['overview','agents','sessions','approvals','workflows','scheduler','channels','skills','hands','analytics','logs','settings','wizard','a2a','pairing'];
+      var validPages = ['overview','agents','sessions','approvals','workflows','scheduler','channels','skills','hands','analytics','logs','settings','wizard','a2a','pairing','delivery'];
       var pageRedirects = {
         'chat': 'agents',
         'templates': 'agents',

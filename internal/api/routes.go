@@ -24,6 +24,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
 	"github.com/penzhan8451/fangclaw-go/internal/clawhub"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
+	deliv "github.com/penzhan8451/fangclaw-go/internal/delivery"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
 	"github.com/penzhan8451/fangclaw-go/internal/pairing"
@@ -31,6 +32,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/security"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
+	"github.com/penzhan8451/fangclaw-go/internal/wizard"
 )
 
 // Field type for the channel configuration form.
@@ -458,12 +460,14 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/sessions", r.handleCreateSession)
 	mux.HandleFunc("GET /api/v1/sessions/{id}", r.handleGetSession)
 	mux.HandleFunc("DELETE /api/v1/sessions/{id}", r.handleDeleteSession)
+	mux.HandleFunc("DELETE /api/v1/sessions", r.handleDeleteAllSession)
 
 	// Session endpoints (aliases)
 	mux.HandleFunc("GET /api/sessions", r.handleListSessions)
 	mux.HandleFunc("POST /api/sessions", r.handleCreateSession)
 	mux.HandleFunc("GET /api/sessions/{id}", r.handleGetSession)
 	mux.HandleFunc("DELETE /api/sessions/{id}", r.handleDeleteSession)
+	mux.HandleFunc("DELETE /api/sessions", r.handleDeleteAllSession)
 
 	// Chat endpoints
 	mux.HandleFunc("POST /api/v1/chat", r.handleChat)
@@ -610,6 +614,11 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	// Workflow delivery endpoints
 	mux.HandleFunc("POST /api/workflows/{id}/run-with-delivery", r.handleRunWorkflowWithDelivery)
 
+	// Delivery query endpoints
+	mux.HandleFunc("GET /api/agents/{id}/deliveries", r.handleGetAgentDeliveries)
+	mux.HandleFunc("GET /api/deliveries/receipts", r.handleGetAllDeliveries)
+	mux.HandleFunc("GET /api/deliveries", r.handleListDeliveries)
+
 	// Triggers endpoints
 	mux.HandleFunc("POST /api/triggers", r.handleCreateTrigger)
 	mux.HandleFunc("GET /api/triggers", r.handleListTriggers)
@@ -621,6 +630,10 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agent-templates", r.handleListAgentTemplates)
 	mux.HandleFunc("GET /api/agent-templates/{id}", r.handleGetAgentTemplate)
 	mux.HandleFunc("POST /api/templates/{id}/spawn", r.handleSpawnAgentFromTemplate)
+
+	// Wizard endpoints
+	mux.HandleFunc("POST /api/wizard/generate", r.handleWizardGenerate)
+	mux.HandleFunc("POST /api/wizard/parse", r.handleWizardParse)
 
 	// Shutdown endpoint
 	mux.HandleFunc("POST /api/shutdown", r.handleShutdown)
@@ -852,23 +865,38 @@ func (r *Router) handleListAgents(w http.ResponseWriter, req *http.Request) {
 
 func (r *Router) handleCreateAgent(w http.ResponseWriter, req *http.Request) {
 	var body struct {
-		ManifestTOML string `json:"manifest_toml"`
+		ManifestTOML string                 `json:"manifest_toml"`
+		ManifestJSON map[string]interface{} `json:"manifest_json"`
 	}
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// SECURITY: Reject oversized manifests to prevent parser memory exhaustion.
-	const MAX_MANIFEST_SIZE = 1024 * 1024 // 1MB
-	if len(body.ManifestTOML) > MAX_MANIFEST_SIZE {
-		respondError(w, http.StatusRequestEntityTooLarge, "Manifest too large (max 1MB)")
-		return
-	}
-
 	var manifest types.AgentManifest
-	if err := toml.Unmarshal([]byte(body.ManifestTOML), &manifest); err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid manifest format: "+err.Error())
+
+	if body.ManifestJSON != nil {
+		jsonData, err := json.Marshal(body.ManifestJSON)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Failed to marshal manifest JSON: "+err.Error())
+			return
+		}
+		if err := json.Unmarshal(jsonData, &manifest); err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid manifest JSON format: "+err.Error())
+			return
+		}
+	} else if body.ManifestTOML != "" {
+		const MAX_MANIFEST_SIZE = 1024 * 1024
+		if len(body.ManifestTOML) > MAX_MANIFEST_SIZE {
+			respondError(w, http.StatusRequestEntityTooLarge, "Manifest too large (max 1MB)")
+			return
+		}
+		if err := toml.Unmarshal([]byte(body.ManifestTOML), &manifest); err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid manifest format: "+err.Error())
+			return
+		}
+	} else {
+		respondError(w, http.StatusBadRequest, "Either manifest_toml or manifest_json is required")
 		return
 	}
 
@@ -1021,6 +1049,17 @@ func (r *Router) handleGetSession(w http.ResponseWriter, req *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, session)
+}
+
+// DeleteAllSession deletes all sessions, regardless of agent id or session id
+func (r *Router) handleDeleteAllSession(w http.ResponseWriter, req *http.Request) {
+	if err := r.kernel.SessionStore().DeleteAllSession(); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+	})
 }
 
 func (r *Router) handleDeleteSession(w http.ResponseWriter, req *http.Request) {
@@ -5233,4 +5272,131 @@ func (r *Router) handleRemovePairedDevice(w http.ResponseWriter, req *http.Reque
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// handleGetAgentDeliveries returns recent delivery receipts for a specific agent.
+// Supports ?limit=N (default 50, max 500). Agent can be identified by UUID or name.
+func (r *Router) handleGetAgentDeliveries(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+
+	// Try UUID first, fall back to name lookup
+	agentID, err := types.ParseAgentID(idStr)
+	if err != nil {
+		// Try by name
+		entry := r.kernel.AgentRegistry().FindByName(idStr)
+		if entry == nil {
+			respondError(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		agentID = entry.ID
+	}
+
+	limit := 50
+	if lStr := req.URL.Query().Get("limit"); lStr != "" {
+		if n, err := strconv.Atoi(lStr); err == nil && n > 0 {
+			if n > 500 {
+				n = 500
+			}
+			limit = n
+		}
+	}
+
+	receipts := r.kernel.DeliveryTracker().Get(agentID, limit)
+	if receipts == nil {
+		receipts = []deliv.DeliveryReceipt{}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"agent_id": agentID.String(),
+		"receipts": receipts,
+		"count":    len(receipts),
+	})
+}
+
+// handleGetAllDeliveries returns all delivery receipts from all agents.
+// Supports ?limit=N (default 200, max 1000).
+func (r *Router) handleGetAllDeliveries(w http.ResponseWriter, req *http.Request) {
+	limit := 200
+	if lStr := req.URL.Query().Get("limit"); lStr != "" {
+		if n, err := strconv.Atoi(lStr); err == nil && n > 0 {
+			if n > 1000 {
+				n = 1000
+			}
+			limit = n
+		}
+	}
+
+	receipts := r.kernel.DeliveryTracker().GetAll(limit)
+	if receipts == nil {
+		receipts = []deliv.DeliveryReceipt{}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"receipts": receipts,
+		"count":    len(receipts),
+	})
+}
+
+// handleListDeliveries returns all pending/in-progress/done delivery task entries
+// from the DeliveryRegistry (task-level lifecycle, not per-message receipts).
+func (r *Router) handleListDeliveries(w http.ResponseWriter, req *http.Request) {
+	entries := r.kernel.DeliveryRegistry().List()
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"deliveries": entries,
+		"count":      len(entries),
+	})
+}
+
+type WizardGenerateRequest struct {
+	Intent wizard.AgentIntent `json:"intent"`
+}
+
+type WizardGenerateResponse struct {
+	Plan     wizard.SetupPlan `json:"plan"`
+	Manifest string           `json:"manifest"`
+}
+
+func (r *Router) handleWizardGenerate(w http.ResponseWriter, req *http.Request) {
+	var request WizardGenerateRequest
+	if err := json.NewDecoder(req.Body).Decode(&request); err != nil {
+		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	wiz := wizard.NewSetupWizard()
+	plan := wiz.BuildPlan(request.Intent)
+
+	manifestJSON, err := wiz.GenerateJSON(plan.Manifest)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, map[string]interface{}{"error": "Failed to generate manifest: " + err.Error()})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, WizardGenerateResponse{
+		Plan:     plan,
+		Manifest: manifestJSON,
+	})
+}
+
+type WizardParseRequest struct {
+	IntentJSON string `json:"intent_json"`
+}
+
+func (r *Router) handleWizardParse(w http.ResponseWriter, req *http.Request) {
+	var request WizardParseRequest
+	if err := json.NewDecoder(req.Body).Decode(&request); err != nil {
+		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	wiz := wizard.NewSetupWizard()
+	intent, err := wiz.ParseIntent(request.IntentJSON)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": "Failed to parse intent: " + err.Error()})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"intent": intent,
+	})
 }

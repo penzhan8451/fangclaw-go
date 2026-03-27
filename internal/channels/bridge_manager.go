@@ -103,7 +103,7 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 	if cmd, args, isCmd := isCommand(msg.Content); isCmd {
 		fmt.Printf("Handling command: /%s\n", cmd)
 		response := m.handleCommand(adapter, msg, cmd, args)
-		m.sendReply(adapter, msg, response)
+		m.sendReply(adapter, msg, response, "")
 		return
 	}
 
@@ -112,7 +112,7 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 	if !found {
 		// No agent configured - send help message
 		helpMsg := "No agent assigned. Use /agents to list available agents, then /agent <name> to select one."
-		m.sendReply(adapter, msg, helpMsg)
+		m.sendReply(adapter, msg, helpMsg, "")
 		return
 	}
 
@@ -128,12 +128,11 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 	if autoReplyEngine != nil {
 		replyAgentID := autoReplyEngine.ShouldReply(msg.Content, string(channelType), agentID)
 		if replyAgentID == "" {
-			// 消息匹配抑制模式，完全阻止，不发送到 LLM
+			// Message matched suppression pattern — block silently, no LLM call
 			fmt.Printf("Message suppressed by pattern: %s\n", msg.Content)
 			return
 		}
 
-		// 消息不匹配抑制模式，使用 AutoReply
 		fmt.Printf("AutoReply triggered for message: %s\n", msg.Content)
 		fmt.Printf("AutoReply msg.sender: %s\n", msg.Sender)
 		replyChannel := autoreply.AutoReplyChannel{
@@ -149,7 +148,13 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 				Sender:    "bot",
 			}
 			fmt.Printf("AutoReply Recipient in sendFn(): %s\n", msg.Sender)
-			return adapter.Send(replyMsg)
+			sendErr := adapter.Send(replyMsg)
+			if sendErr == nil {
+				m.handle.RecordDelivery(m.ctx, replyAgentID, string(channelType), msg.Sender, true, "")
+			} else {
+				m.handle.RecordDelivery(m.ctx, replyAgentID, string(channelType), msg.Sender, false, sendErr.Error())
+			}
+			return sendErr
 		}
 
 		err := autoReplyEngine.ExecuteReply(
@@ -161,34 +166,44 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 			m.handle.SendMessage,
 		)
 		if err == nil {
-			return // AutoReply 已处理，直接返回
+			return // AutoReply handled it
 		}
 	}
 
-	// 如果 AutoReply 没处理，走原有流程
+	// Fall through to normal agent dispatch
 	response, err := m.handle.SendMessage(m.ctx, agentID, msg.Content)
 	if err != nil {
 		fmt.Printf("Failed to send message to agent: %v\n", err)
+		m.handle.RecordDelivery(m.ctx, agentID, string(channelType), msg.Sender, false, err.Error())
 		errorMsg := "No agent found. Use /agents to list available agents, then /agent <name> or /agent default to select one."
-		m.sendReply(adapter, msg, errorMsg)
+		m.sendReply(adapter, msg, errorMsg, "")
 		return
 	}
 
 	if response != "" {
-		m.sendReply(adapter, msg, response)
+		m.sendReply(adapter, msg, response, agentID)
 	}
 }
 
-// sendReply sends a reply message to the user.
-func (m *BridgeManager) sendReply(adapter Adapter, originalMsg *Message, content string) {
+// sendReply sends a reply message to the user and records a delivery receipt if agentID is provided.
+func (m *BridgeManager) sendReply(adapter Adapter, originalMsg *Message, content string, agentID string) {
+	channelType := adapter.GetChannel().Type
 	replyMsg := &Message{
 		Content:   content,
-		Recipient: originalMsg.Recipient,
+		Recipient: originalMsg.Sender,
 		Sender:    "bot",
 	}
 
 	if err := adapter.Send(replyMsg); err != nil {
 		fmt.Printf("Failed to send reply: %v\n", err)
+		if agentID != "" {
+			m.handle.RecordDelivery(m.ctx, agentID, string(channelType), originalMsg.Sender, false, err.Error())
+		}
+		return
+	}
+
+	if agentID != "" {
+		m.handle.RecordDelivery(m.ctx, agentID, string(channelType), originalMsg.Sender, true, "")
 	}
 }
 

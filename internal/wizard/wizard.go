@@ -1,47 +1,29 @@
 package wizard
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
 type AgentIntent struct {
-	Name         string
-	Description  string
-	Task         string
-	Skills       []string
-	ModelTier    string
-	Scheduled    bool
-	Schedule     *string
-	Capabilities []string
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Task         string   `json:"task"`
+	Skills       []string `json:"skills"`
+	ModelTier    string   `json:"model_tier"`
+	Scheduled    bool     `json:"scheduled"`
+	Schedule     *string  `json:"schedule"`
+	Capabilities []string `json:"capabilities"`
 }
 
 type SetupPlan struct {
-	Intent          AgentIntent
-	Manifest        AgentManifest
-	SkillsToInstall []string
-	Summary         string
-}
-
-type AgentManifest struct {
-	Name          string
-	Description   string
-	ModelConfig   ModelConfig
-	Priority      string
-	ResourceQuota ResourceQuota
-	ScheduleMode  string
-	Skills        []string
-	Capabilities  []string
-}
-
-type ModelConfig struct {
-	Provider string
-	Model    string
-}
-
-type ResourceQuota struct {
-	MaxIterations uint32
-	MaxRestarts   uint32
+	Intent          AgentIntent         `json:"intent"`
+	Manifest        types.AgentManifest `json:"manifest"`
+	SkillsToInstall []string            `json:"skills_to_install"`
+	Summary         string              `json:"summary"`
 }
 
 type SetupWizard struct{}
@@ -52,22 +34,22 @@ func NewSetupWizard() *SetupWizard {
 
 func (sw *SetupWizard) BuildPlan(intent AgentIntent) SetupPlan {
 	provider, model := sw.getModelForTier(intent.ModelTier)
+	caps, tools := sw.buildCapabilities(intent.Capabilities)
+	systemPrompt := sw.generateSystemPrompt(intent, tools)
 
-	manifest := AgentManifest{
-		Name:        intent.Name,
-		Description: intent.Description,
-		ModelConfig: ModelConfig{
+	manifest := types.AgentManifest{
+		Name:         intent.Name,
+		Description:  intent.Description,
+		SystemPrompt: systemPrompt,
+		Model: types.ModelConfig{
 			Provider: provider,
 			Model:    model,
 		},
-		Priority: "normal",
-		ResourceQuota: ResourceQuota{
-			MaxIterations: 10,
-			MaxRestarts:   3,
-		},
-		ScheduleMode: sw.getScheduleMode(intent),
+		Capabilities: caps,
 		Skills:       intent.Skills,
-		Capabilities: intent.Capabilities,
+		Tools:        tools,
+		McpServers:   []string{},
+		Metadata:     map[string]string{},
 	}
 
 	summary := sw.generateSummary(intent, manifest)
@@ -91,93 +73,192 @@ func (sw *SetupWizard) getModelForTier(tier string) (string, string) {
 	}
 }
 
-func (sw *SetupWizard) getScheduleMode(intent AgentIntent) string {
-	if !intent.Scheduled {
-		return "reactive"
-	}
-	if intent.Schedule != nil {
-		schedule := *intent.Schedule
-		if strings.HasPrefix(schedule, "cron:") || strings.Contains(schedule, "*") {
-			return "periodic"
+func (sw *SetupWizard) buildCapabilities(capabilities []string) (*types.ManifestCaps, []string) {
+	caps := &types.ManifestCaps{}
+	var tools []string
+
+	for _, cap := range capabilities {
+		switch strings.ToLower(cap) {
+		case "web", "network":
+			caps.Network = append(caps.Network, "*")
+			tools = sw.addToolIfMissing(tools, "web_search")
+			tools = sw.addToolIfMissing(tools, "fetch")
+
+		case "browser":
+			caps.Network = append(caps.Network, "*")
+
+		case "file", "files":
+			tools = sw.addToolIfMissing(tools, "read_file")
+			tools = sw.addToolIfMissing(tools, "write_file")
+			tools = sw.addToolIfMissing(tools, "list_dir")
+
+		case "shell":
+			caps.Shell = append(caps.Shell, "*")
+			tools = sw.addToolIfMissing(tools, "shell_exec")
+
+		case "memory":
+			caps.MemoryRead = append(caps.MemoryRead, "*")
+			caps.MemoryWrite = append(caps.MemoryWrite, "*")
+
+		case "agent":
+			caps.AgentSpawn = true
+			caps.AgentMessage = []string{"*"}
+
+		case "schedule":
+			caps.Schedule = true
+
+		case "mcp":
+			caps.McpServers = []string{"*"}
+
+		case "code", "coding":
+			tools = sw.addToolIfMissing(tools, "read_file")
+			tools = sw.addToolIfMissing(tools, "write_file")
+			tools = sw.addToolIfMissing(tools, "shell_exec")
+			caps.Shell = append(caps.Shell, "*")
+
+		case "calculator":
+			tools = sw.addToolIfMissing(tools, "calculator")
+
+		case "datetime":
+			tools = sw.addToolIfMissing(tools, "datetime")
+
+		case "weather":
+			tools = sw.addToolIfMissing(tools, "weather")
+
+		case "search":
+			tools = sw.addToolIfMissing(tools, "search")
+			caps.Network = append(caps.Network, "*")
+
+		case "json":
+			tools = sw.addToolIfMissing(tools, "json")
+
+		case "hash":
+			tools = sw.addToolIfMissing(tools, "hash")
+
+		default:
+			tools = sw.addToolIfMissing(tools, cap)
 		}
-		return "continuous"
 	}
-	return "reactive"
+
+	return caps, tools
 }
 
-func (sw *SetupWizard) generateSummary(intent AgentIntent, manifest AgentManifest) string {
-	var summary strings.Builder
-
-	summary.WriteString(fmt.Sprintf("Creating agent: %s\n", intent.Name))
-	summary.WriteString(fmt.Sprintf("Description: %s\n", intent.Description))
-	summary.WriteString(fmt.Sprintf("Task: %s\n", intent.Task))
-	summary.WriteString(fmt.Sprintf("Model: %s/%s\n", manifest.ModelConfig.Provider, manifest.ModelConfig.Model))
-
-	if len(intent.Skills) > 0 {
-		summary.WriteString(fmt.Sprintf("Skills: %s\n", strings.Join(intent.Skills, ", ")))
-	}
-
-	if len(intent.Capabilities) > 0 {
-		summary.WriteString(fmt.Sprintf("Capabilities: %s\n", strings.Join(intent.Capabilities, ", ")))
-	}
-
-	if intent.Scheduled {
-		summary.WriteString("Schedule mode: ")
-		if intent.Schedule != nil {
-			summary.WriteString(*intent.Schedule)
-		} else {
-			summary.WriteString("enabled")
+func (sw *SetupWizard) addToolIfMissing(tools []string, tool string) []string {
+	for _, t := range tools {
+		if t == tool {
+			return tools
 		}
-		summary.WriteString("\n")
 	}
-
-	return summary.String()
+	return append(tools, tool)
 }
 
-func (sw *SetupWizard) GenerateTOML(manifest AgentManifest) string {
-	var toml strings.Builder
+func (sw *SetupWizard) generateSystemPrompt(intent AgentIntent, tools []string) string {
+	var sb strings.Builder
 
-	toml.WriteString("[agent]\n")
-	toml.WriteString(fmt.Sprintf("name = \"%s\"\n", manifest.Name))
-	toml.WriteString(fmt.Sprintf("description = \"%s\"\n", manifest.Description))
-	toml.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("You are %s, an AI agent running inside the FangClaw Agent OS.\n", intent.Name))
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("YOUR TASK: %s\n", intent.Task))
+	sb.WriteString("\n")
+	sb.WriteString("APPROACH:\n")
+	sb.WriteString("- Understand the request fully before acting.\n")
+	sb.WriteString("- Use your tools to accomplish the task rather than just describing what to do.\n")
+	sb.WriteString("- If you need information, search for it. If you need to read a file, read it.\n")
+	sb.WriteString("- Be concise in your responses. Lead with results, not process narration.\n")
 
-	toml.WriteString("[model]\n")
-	toml.WriteString(fmt.Sprintf("provider = \"%s\"\n", manifest.ModelConfig.Provider))
-	toml.WriteString(fmt.Sprintf("model = \"%s\"\n", manifest.ModelConfig.Model))
-	toml.WriteString("\n")
+	toolHints := sw.toolHintsFor(tools)
+	if toolHints != "" {
+		sb.WriteString("\nKEY TOOLS:\n")
+		sb.WriteString(toolHints)
+		sb.WriteString("\n")
+	}
 
-	toml.WriteString("[priority]\n")
-	toml.WriteString(fmt.Sprintf("level = \"%s\"\n", manifest.Priority))
-	toml.WriteString("\n")
+	return sb.String()
+}
 
-	toml.WriteString("[quota]\n")
-	toml.WriteString(fmt.Sprintf("max_iterations = %d\n", manifest.ResourceQuota.MaxIterations))
-	toml.WriteString(fmt.Sprintf("max_restarts = %d\n", manifest.ResourceQuota.MaxRestarts))
-	toml.WriteString("\n")
+func (sw *SetupWizard) toolHintsFor(tools []string) string {
+	var hints []string
 
-	toml.WriteString("[schedule]\n")
-	toml.WriteString(fmt.Sprintf("mode = \"%s\"\n", manifest.ScheduleMode))
-	toml.WriteString("\n")
+	has := func(name string) bool {
+		for _, t := range tools {
+			if t == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	if has("web_search") || has("search") {
+		hints = append(hints, "- Use web_search to find current information on any topic.")
+	}
+	if has("fetch") {
+		hints = append(hints, "- Use fetch to read the full content of a specific URL.")
+	}
+	if has("read_file") {
+		hints = append(hints, "- Use read_file to examine files before modifying them.")
+	}
+	if has("shell_exec") {
+		hints = append(hints, "- Use shell_exec to run commands. Explain destructive commands before running.")
+	}
+	if has("calculator") {
+		hints = append(hints, "- Use calculator for mathematical calculations.")
+	}
+	if has("datetime") {
+		hints = append(hints, "- Use datetime to get current date and time information.")
+	}
+	if has("weather") {
+		hints = append(hints, "- Use weather to get weather information for any location.")
+	}
+
+	return strings.Join(hints, "\n")
+}
+
+func (sw *SetupWizard) generateSummary(intent AgentIntent, manifest types.AgentManifest) string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("Agent: %s\n", manifest.Name))
+	if manifest.Description != "" {
+		sb.WriteString(fmt.Sprintf("Description: %s\n", manifest.Description))
+	}
+	sb.WriteString(fmt.Sprintf("Model: %s/%s\n", manifest.Model.Provider, manifest.Model.Model))
+
+	if len(manifest.Tools) > 0 {
+		sb.WriteString(fmt.Sprintf("Tools: %s\n", strings.Join(manifest.Tools, ", ")))
+	}
 
 	if len(manifest.Skills) > 0 {
-		toml.WriteString("[skills]\n")
-		toml.WriteString("enabled = [\n")
-		for _, skill := range manifest.Skills {
-			toml.WriteString(fmt.Sprintf("  \"%s\",\n", skill))
-		}
-		toml.WriteString("]\n")
-		toml.WriteString("\n")
+		sb.WriteString(fmt.Sprintf("Skills: %s\n", strings.Join(manifest.Skills, ", ")))
 	}
 
-	if len(manifest.Capabilities) > 0 {
-		toml.WriteString("[capabilities]\n")
-		toml.WriteString("enabled = [\n")
-		for _, capability := range manifest.Capabilities {
-			toml.WriteString(fmt.Sprintf("  \"%s\",\n", capability))
+	if manifest.Capabilities != nil {
+		if len(manifest.Capabilities.Network) > 0 {
+			sb.WriteString(fmt.Sprintf("Network access: %s\n", strings.Join(manifest.Capabilities.Network, ", ")))
 		}
-		toml.WriteString("]\n")
+		if len(manifest.Capabilities.Shell) > 0 {
+			sb.WriteString(fmt.Sprintf("Shell access: %s\n", strings.Join(manifest.Capabilities.Shell, ", ")))
+		}
+		if manifest.Capabilities.AgentSpawn {
+			sb.WriteString("Can spawn child agents: yes\n")
+		}
+		if manifest.Capabilities.Schedule {
+			sb.WriteString("Can schedule tasks: yes\n")
+		}
 	}
 
-	return toml.String()
+	return sb.String()
+}
+
+func (sw *SetupWizard) GenerateJSON(manifest types.AgentManifest) (string, error) {
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+	return string(data), nil
+}
+
+func (sw *SetupWizard) ParseIntent(intentJSON string) (AgentIntent, error) {
+	var intent AgentIntent
+	if err := json.Unmarshal([]byte(intentJSON), &intent); err != nil {
+		return intent, fmt.Errorf("failed to parse intent JSON: %w", err)
+	}
+	return intent, nil
 }

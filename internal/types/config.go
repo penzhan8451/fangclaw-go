@@ -28,7 +28,17 @@ type KernelConfig struct {
 	CronShellSecurity CronShellSecurityConfig `toml:"cron_shell_security" json:"cron_shell_security"`
 	McpServers        []McpServerConfig       `toml:"mcp_servers,omitempty" json:"mcp_servers,omitempty"`
 	A2a               A2aConfig               `toml:"a2a" json:"a2a"`
+	Browser           BrowserConfig           `toml:"browser" json:"browser"`
 	Include           []string                `toml:"include,omitempty" json:"include,omitempty"`
+}
+
+type BrowserConfig struct {
+	Enabled       bool   `toml:"enabled" json:"enabled"`
+	ChromiumPath  string `toml:"chromium_path" json:"chromium_path"`
+	Headless      bool   `toml:"headless" json:"headless"`
+	ViewportWidth int    `toml:"viewport_width" json:"viewport_width"`
+	ViewportHeight int   `toml:"viewport_height" json:"viewport_height"`
+	MaxSessions   int    `toml:"max_sessions" json:"max_sessions"`
 }
 
 // APIConfig represents API server configuration.

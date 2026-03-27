@@ -3,15 +3,8 @@ package delivery
 import (
 	"sync"
 	"time"
-)
 
-type DeliveryStatus string
-
-const (
-	DeliveryStatusPending    DeliveryStatus = "pending"
-	DeliveryStatusInProgress DeliveryStatus = "in_progress"
-	DeliveryStatusDone       DeliveryStatus = "done"
-	DeliveryStatusFailed     DeliveryStatus = "failed"
+	"github.com/google/uuid"
 )
 
 type DeliveryEntry struct {
@@ -35,8 +28,15 @@ func NewDeliveryRegistry() *DeliveryRegistry {
 func (r *DeliveryRegistry) Create(name string, payload map[string]interface{}) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	id := randomID()
-	r.deliveries[id] = &DeliveryEntry{ID: id, Name: name, Payload: payload, Status: DeliveryStatusPending, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	id := uuid.New().String()
+	r.deliveries[id] = &DeliveryEntry{
+		ID:        id,
+		Name:      name,
+		Payload:   payload,
+		Status:    DeliveryStatusPending,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
 	return id
 }
 
@@ -64,20 +64,4 @@ func (r *DeliveryRegistry) List() []*DeliveryEntry {
 		out = append(out, d)
 	}
 	return out
-}
-
-func randomID() string {
-	b := make([]byte, 4)
-	t := time.Now().UnixNano()
-	for i := 0; i < len(b); i++ {
-		b[i] = byte((t >> (i * 8)) & 0xff)
-	}
-	// simple hex encoding
-	hex := "0123456789abcdef"
-	out := make([]byte, len(b)*2)
-	for i := 0; i < len(b); i++ {
-		out[i*2] = hex[(b[i]>>4)&0x0f]
-		out[i*2+1] = hex[b[i]&0x0f]
-	}
-	return string(out)
 }

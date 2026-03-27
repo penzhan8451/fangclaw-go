@@ -66,6 +66,19 @@ function sessionsPage() {
       location.hash = 'agents';
     },
 
+    deleteAllSessions() {
+      var self = this;
+      FangClawGoToast.confirm('Delete All Sessions', 'This will permanently remove all sessions and their messages.', async function() {
+        try {
+          await FangClawGoAPI.del('/api/sessions');
+          self.sessions = [];
+          FangClawGoToast.success('All sessions deleted');
+        } catch(e) {
+          FangClawGoToast.error('Failed to delete all sessions: ' + e.message);
+        }
+      });
+    },
+
     deleteSession(sessionId) {
       var self = this;
       FangClawGoToast.confirm('Delete Session', 'This will permanently remove the session and its messages.', async function() {
