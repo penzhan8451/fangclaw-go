@@ -7,7 +7,8 @@ import (
 )
 
 func (r *Router) handleListAgentTemplates(w http.ResponseWriter, req *http.Request) {
-	templates := r.kernel.AgentTemplates().ListTemplates()
+	k := r.getKernel(req)
+	templates := k.AgentTemplates().ListTemplates()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"templates": templates,
@@ -16,8 +17,9 @@ func (r *Router) handleListAgentTemplates(w http.ResponseWriter, req *http.Reque
 }
 
 func (r *Router) handleGetAgentTemplate(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	id := req.PathValue("id")
-	template := r.kernel.AgentTemplates().GetTemplate(id)
+	template := k.AgentTemplates().GetTemplate(id)
 
 	if template == nil {
 		respondError(w, http.StatusNotFound, "Template not found")
@@ -30,9 +32,10 @@ func (r *Router) handleGetAgentTemplate(w http.ResponseWriter, req *http.Request
 }
 
 func (r *Router) handleSpawnAgentFromTemplate(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	id := req.PathValue("id")
 	fmt.Println("Spawning agent from template-->:", id)
-	template := r.kernel.AgentTemplates().GetTemplate(id)
+	template := k.AgentTemplates().GetTemplate(id)
 
 	if template == nil {
 		respondError(w, http.StatusNotFound, "Template not found")
@@ -40,7 +43,7 @@ func (r *Router) handleSpawnAgentFromTemplate(w http.ResponseWriter, req *http.R
 	}
 
 	manifest := template.ToAgentManifest()
-	agentID, agentName, err := r.kernel.SpawnAgent(manifest)
+	agentID, agentName, err := k.SpawnAgent(manifest)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			respondError(w, http.StatusConflict, err.Error())

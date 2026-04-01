@@ -354,7 +354,9 @@ function chatPage() {
     },
 
     selectAgent(agent, skipWelcome) {
-      this.currentAgent = agent;
+      var agents = Alpine.store('app').agents;
+      var realAgent = agents.find(function(a) { return a.id === agent.id; });
+      this.currentAgent = realAgent || agent;
       this.messages = [];
       this.connectWs(agent.id);
       if (!skipWelcome) {

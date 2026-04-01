@@ -78,4 +78,7 @@ func Register(root *cobra.Command) {
 
 	// Wizard
 	root.AddCommand(wizardCmd())
+
+	// User management (multi-tenant mode)
+	root.AddCommand(NewUserCmd())
 }

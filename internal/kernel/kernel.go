@@ -18,6 +18,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/a2a"
 	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/audit"
+	"github.com/penzhan8451/fangclaw-go/internal/auth"
 	"github.com/penzhan8451/fangclaw-go/internal/autoreply"
 	"github.com/penzhan8451/fangclaw-go/internal/browser"
 	"github.com/penzhan8451/fangclaw-go/internal/capabilities"
@@ -41,6 +42,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
+	"github.com/penzhan8451/fangclaw-go/internal/userdir"
 	"github.com/penzhan8451/fangclaw-go/internal/vector"
 	"github.com/rs/zerolog/log"
 )
@@ -60,6 +62,7 @@ type Kernel struct {
 	skillLoader     *skills.Loader
 	embeddingDriver *embedding.EmbeddingDriver
 	registry        *channels.Registry
+	sharedRegistry  *channels.Registry
 	agentRegistry   *AgentRegistry
 	handRegistry    *hands.Registry
 	triggerEngine   *triggers.TriggerEngine
@@ -77,6 +80,10 @@ type Kernel struct {
 	a2aTaskStore    *a2a.A2ATaskStore
 	a2aClient       *a2a.A2AClient
 	a2aEventStore   *a2a.A2AEventStore
+	authManager     *auth.AuthManager
+	userDirMgr      *userdir.Manager
+	secrets         map[string]string
+	secretsMu       sync.RWMutex
 	mu              sync.RWMutex
 	started         bool
 	startTime       time.Time
@@ -84,14 +91,44 @@ type Kernel struct {
 }
 
 func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
-	dataDir, err := expandPath(kernelConfig.DataDir)
+	return NewKernelWithShared(kernelConfig, nil, nil)
+}
+
+func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *model_catalog.ModelCatalog, sharedAgentTemplates *agent_templates.AgentTemplates) (*Kernel, error) {
+	var dataDir string
+	var err error
+	var userDirMgr *userdir.Manager
+
+	userDirMgr, err = userdir.GetDefaultManager()
 	if err != nil {
-		return nil, fmt.Errorf("invalid data directory: %w", err)
+		log.Warn().Err(err).Msg("Failed to get userdir manager, some features may not work")
+	}
+
+	if kernelConfig.DataDir != "" {
+		dataDir, err = expandPath(kernelConfig.DataDir)
+		if err != nil {
+			return nil, fmt.Errorf("invalid data directory: %w", err)
+		}
+		log.Info().Str("user", kernelConfig.Username).Str("dataDir", dataDir).Str("configDataDir", kernelConfig.DataDir).Msg("Using configured data directory")
+	} else if kernelConfig.Username != "" && kernelConfig.Auth.Enabled && userDirMgr != nil {
+		if err := userDirMgr.EnsureUserDir(kernelConfig.Username); err != nil {
+			return nil, fmt.Errorf("failed to ensure user directory: %w", err)
+		}
+
+		dataDir = userDirMgr.UserDir(kernelConfig.Username)
+		log.Info().Str("user", kernelConfig.Username).Str("dataDir", dataDir).Msg("Using user-specific data directory")
+	} else {
+		dataDir, err = expandPath(kernelConfig.DataDir)
+		if err != nil {
+			return nil, fmt.Errorf("invalid data directory: %w", err)
+		}
 	}
 
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
+
+	kernelConfig.DataDir = dataDir
 
 	dbPath := filepath.Join(dataDir, "fangclaw.db")
 
@@ -170,8 +207,23 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 	cronScheduler := cron.NewCronScheduler(cronPersistDir, 100)
 
 	modelCatalogPath := filepath.Join(dataDir, "model_catalog.json")
-	modelCatalog := model_catalog.NewModelCatalog(modelCatalogPath)
-	agentTemplates := agent_templates.NewAgentTemplates()
+	var modelCatalog *model_catalog.ModelCatalog
+	if sharedModelCatalog != nil {
+		sharedModels := sharedModelCatalog.GetSharedModels()
+		sharedAliases := sharedModelCatalog.GetSharedAliases()
+		sharedProviders := sharedModelCatalog.GetSharedProviders()
+		modelCatalog = model_catalog.NewModelCatalogWithShared(modelCatalogPath, sharedModels, sharedAliases, sharedProviders)
+	} else {
+		modelCatalog = model_catalog.NewModelCatalog(modelCatalogPath)
+	}
+
+	var agentTemplates *agent_templates.AgentTemplates
+	if sharedAgentTemplates != nil {
+		sharedTemplates := sharedAgentTemplates.GetSharedTemplates()
+		agentTemplates = agent_templates.NewAgentTemplatesWithShared(dataDir, sharedTemplates)
+	} else {
+		agentTemplates = agent_templates.NewAgentTemplatesWithDataDir(dataDir)
+	}
 	if err := agentTemplates.Load(); err != nil {
 		log.Warn().Err(err).Msg("Failed to load agent templates")
 	}
@@ -215,9 +267,30 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 		a2aClient:       a2a.NewA2AClient(),
 		a2aEventStore:   a2a.NewA2AEventStore(1000),
 		capabilityMgr:   capabilities.NewCapabilityManager(),
+		userDirMgr:      userDirMgr,
+		secrets:         make(map[string]string),
 		startTime:       time.Now(),
 		stopping:        make(chan struct{}),
 	}
+
+	authDBPath := kernelConfig.Auth.DBPath
+	if authDBPath == "" {
+		authDBPath = filepath.Join(dataDir, "auth.db")
+	}
+	authManager, err := auth.NewAuthManager(authDBPath)
+	if err != nil {
+		semanticStore.Close()
+		sessionStore.Close()
+		db.Close()
+		return nil, fmt.Errorf("failed to create auth manager: %w", err)
+	}
+	authManager.SetGitHubOAuthConfig(
+		kernelConfig.Auth.GitHub.ClientID,
+		kernelConfig.Auth.GitHub.ClientSecret,
+		kernelConfig.Auth.GitHub.Enabled,
+	)
+	k.authManager = authManager
+	log.Info().Str("path", authDBPath).Msg("Auth manager initialized")
 
 	// Link event store to A2A components
 	k.a2aTaskStore.SetEventStore(k.a2aEventStore)
@@ -302,8 +375,8 @@ func NewKernel(kernelConfig types.KernelConfig) (*Kernel, error) {
 				agentAPIKeyEnv = agentEntry.Manifest.Model.APIKeyEnv
 			}
 
-			// Get API key
-			apiKey := os.Getenv(agentAPIKeyEnv)
+			// Get API key from secrets
+			apiKey := k.GetSecret(agentAPIKeyEnv)
 			if apiKey == "" {
 				log.Warn().Str("agent", agentEntry.Name).Str("env", agentAPIKeyEnv).Msg("API key not set, skipping registration to runtime")
 				continue
@@ -372,6 +445,53 @@ func (k *Kernel) Start(ctx context.Context) error {
 	k.modelCatalog.DetectAuth()
 
 	k.agentTemplates.StartWatching()
+
+	// Load agents from agentRegistry and register to agentRuntime
+	agentEntries := k.agentRegistry.List()
+	fmt.Printf("[Kernel] Found %d agents in registry to register to runtime\n", len(agentEntries))
+	for _, entry := range agentEntries {
+		fmt.Printf("[Kernel] Registering agent from registry: ID=%s, Name=%s\n", entry.ID.String(), entry.Name)
+
+		manifest := entry.Manifest
+
+		// Get API key
+		apiKeyEnv := manifest.Model.APIKeyEnv
+		apiKey := k.GetSecret(apiKeyEnv)
+		if apiKey == "" {
+			fmt.Printf("[Kernel] Warning: API key not found for agent %s (env=%s), skipping\n", entry.Name, apiKeyEnv)
+			continue
+		}
+
+		// Create and register driver
+		driver, err := llm.NewDriver(manifest.Model.Provider, apiKey, manifest.Model.Model)
+		if err != nil {
+			fmt.Printf("[Kernel] Warning: Failed to create LLM driver for agent %s: %v, skipping\n", entry.Name, err)
+			continue
+		}
+		k.agentRuntime.RegisterDriver(manifest.Model.Provider, driver)
+
+		// Register agent to runtime with the original ID
+		_, err = k.agentRuntime.RegisterAgent(
+			context.Background(),
+			entry.ID.String(),
+			entry.Name,
+			manifest.Model.Provider,
+			manifest.Model.Model,
+			manifest.SystemPrompt,
+			manifest.Tools,
+			manifest.Skills,
+			manifest.SkillPromptContext,
+		)
+		if err != nil {
+			fmt.Printf("[Kernel] Warning: Failed to register agent %s in runtime: %v\n", entry.Name, err)
+		} else {
+			fmt.Printf("[Kernel] Successfully registered agent %s (ID=%s) to runtime\n", entry.Name, entry.ID.String())
+
+			// Grant capabilities
+			caps := manifestToCapabilities(manifest)
+			k.capabilityMgr.Grant(entry.ID.String(), caps)
+		}
+	}
 
 	k.started = true
 
@@ -471,6 +591,20 @@ func (k *Kernel) Start(ctx context.Context) error {
 									log.Info().Str("job", jobName).Str("result", res.result).Msg("Cron job completed successfully")
 									k.cronScheduler.RecordSuccess(jobID)
 									k.cronDeliverResponse(job.AgentID, res.result, &delivery)
+
+									payload := map[string]interface{}{
+										"type":         fmt.Sprintf("cron.%s", jobName),
+										"text":         *job.Action.Message,
+										"job_id":       jobID.String(),
+										"agent_id":     job.AgentID.String(),
+										"agent_result": res.result,
+									}
+									event := eventbus.NewEvent(
+										eventbus.EventTypeSystem,
+										"cron",
+										eventbus.EventTargetBroadcast,
+									).WithPayload(payload)
+									k.PublishEvent(event)
 								}
 							}
 						}
@@ -623,6 +757,9 @@ func (k *Kernel) Stop(ctx context.Context) error {
 	k.semantic.Close()
 	k.sessions.Close()
 	k.db.Close()
+	if k.authManager != nil {
+		k.authManager.Close()
+	}
 	k.started = false
 
 	event := eventbus.NewEvent(eventbus.EventTypeSystem, "kernel", eventbus.EventTargetSystem)
@@ -633,6 +770,43 @@ func (k *Kernel) Stop(ctx context.Context) error {
 
 func (k *Kernel) Config() types.KernelConfig {
 	return k.config
+}
+
+func (k *Kernel) GetSecret(key string) string {
+	k.secretsMu.RLock()
+	defer k.secretsMu.RUnlock()
+	return k.secrets[key]
+}
+
+func (k *Kernel) SetSecret(key, value string) {
+	k.secretsMu.Lock()
+	defer k.secretsMu.Unlock()
+	k.secrets[key] = value
+}
+
+func (k *Kernel) SetSecrets(secrets map[string]string) {
+	k.secretsMu.Lock()
+	defer k.secretsMu.Unlock()
+	k.secrets = secrets
+}
+
+func (k *Kernel) GetSecrets() map[string]string {
+	k.secretsMu.RLock()
+	defer k.secretsMu.RUnlock()
+	result := make(map[string]string)
+	for key, value := range k.secrets {
+		result[key] = value
+	}
+	return result
+}
+
+func (k *Kernel) ReloadSecrets() error {
+	secrets, err := userdir.LoadUserSecrets(k.config.Username)
+	if err != nil {
+		return err
+	}
+	k.SetSecrets(secrets)
+	return nil
 }
 
 func (k *Kernel) EventBus() *eventbus.EventBus {
@@ -667,13 +841,44 @@ func (k *Kernel) GetUptime() time.Duration {
 	return time.Since(k.startTime)
 }
 
+func (k *Kernel) IsSetupComplete() bool {
+	var cfg *config.Config
+	var err error
+	if k.config.Username != "" {
+		cfg, err = config.LoadUserConfig(k.config.Username)
+	} else {
+		cfg, err = config.Load("")
+	}
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	if cfg.DefaultModel.APIKeyEnv == "" {
+		return false
+	}
+
+	apiKey := k.GetSecret(cfg.DefaultModel.APIKeyEnv)
+	return apiKey != ""
+}
+
 func (k *Kernel) SkillLoader() *skills.Loader {
 	return k.skillLoader
 }
 
 // channel registry
 func (k *Kernel) Registry() *channels.Registry {
+	if k.sharedRegistry != nil {
+		return k.sharedRegistry
+	}
 	return k.registry
+}
+
+func (k *Kernel) LocalRegistry() *channels.Registry {
+	return k.registry
+}
+
+func (k *Kernel) SetSharedRegistry(registry *channels.Registry) {
+	k.sharedRegistry = registry
 }
 
 func (k *Kernel) AgentRegistry() *AgentRegistry {
@@ -696,6 +901,26 @@ func (k *Kernel) CapabilityManager() *capabilities.CapabilityManager {
 	return k.capabilityMgr
 }
 
+func (k *Kernel) AuthManager() *auth.AuthManager {
+	return k.authManager
+}
+
+func (k *Kernel) IsAuthEnabled() bool {
+	return k.config.Auth.Enabled
+}
+
+func (k *Kernel) Username() string {
+	return k.config.Username
+}
+
+func (k *Kernel) UserID() string {
+	return k.config.UserID
+}
+
+func (k *Kernel) UserDirManager() *userdir.Manager {
+	return k.userDirMgr
+}
+
 func (k *Kernel) DeliveryRegistry() *deliv.DeliveryRegistry {
 	return k.deliveryReg
 }
@@ -710,6 +935,188 @@ func (k *Kernel) PairingManager() *pairing.PairingManager {
 
 func (k *Kernel) CronScheduler() *cron.CronScheduler {
 	return k.cronScheduler
+}
+
+func (k *Kernel) RunCronJob(ctx context.Context, jobID types.CronJobID) error {
+	job := k.cronScheduler.GetJob(jobID)
+	if job == nil {
+		return fmt.Errorf("job not found: %s", jobID)
+	}
+
+	log.Info().Str("job", job.Name).Msg("Cron: manually firing job")
+
+	switch job.Action.Kind {
+	case types.CronActionKindSystemEvent:
+		if job.Action.Text != nil {
+			log.Info().Str("job", job.Name).Msg("Cron: firing system event")
+			payload := map[string]interface{}{
+				"type":   fmt.Sprintf("cron.%s", job.Name),
+				"text":   *job.Action.Text,
+				"job_id": jobID.String(),
+			}
+			event := eventbus.NewEvent(
+				eventbus.EventTypeSystem,
+				"cron",
+				eventbus.EventTargetBroadcast,
+			).WithPayload(payload)
+			k.PublishEvent(event)
+			k.cronScheduler.RecordSuccess(jobID)
+		}
+	case types.CronActionKindAgentTurn:
+		log.Info().Str("job", job.Name).Str("agent", job.AgentID.String()).Msg("Cron: firing agent turn")
+		if job.Action.Message != nil {
+			log.Info().Str("job", job.Name).Str("message", *job.Action.Message).Msg("Cron: sending message to agent")
+			timeoutSecs := uint64(120)
+			if job.Action.TimeoutSecs != nil {
+				timeoutSecs = *job.Action.TimeoutSecs
+			}
+			timeout := time.Duration(timeoutSecs) * time.Second
+			ctxTimeout, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+
+			delivery := job.Delivery
+			resultChan := make(chan struct {
+				result string
+				err    error
+			}, 1)
+
+			go func() {
+				log.Info().Str("job", job.Name).Msg("Cron: calling SendMessage")
+				result, err := k.SendMessage(ctxTimeout, job.AgentID.String(), *job.Action.Message)
+				log.Info().Str("job", job.Name).Err(err).Msg("Cron: SendMessage returned")
+				resultChan <- struct {
+					result string
+					err    error
+				}{result, err}
+			}()
+
+			select {
+			case <-ctxTimeout.Done():
+				log.Warn().Str("job", job.Name).Uint64("timeout_s", timeoutSecs).Msg("Cron job timed out")
+				k.cronScheduler.RecordFailure(jobID, fmt.Sprintf("timed out after %ds", timeoutSecs))
+			case res := <-resultChan:
+				if res.err != nil {
+					errMsg := res.err.Error()
+					log.Warn().Str("job", job.Name).Err(res.err).Msg("Cron job failed")
+					k.cronScheduler.RecordFailure(jobID, errMsg)
+				} else {
+					log.Info().Str("job", job.Name).Str("result", res.result).Msg("Cron job completed successfully")
+					k.cronScheduler.RecordSuccess(jobID)
+					k.cronDeliverResponse(job.AgentID, res.result, &delivery)
+
+					payload := map[string]interface{}{
+						"type":         fmt.Sprintf("cron.%s", job.Name),
+						"text":         *job.Action.Message,
+						"job_id":       jobID.String(),
+						"agent_id":     job.AgentID.String(),
+						"agent_result": res.result,
+					}
+					event := eventbus.NewEvent(
+						eventbus.EventTypeSystem,
+						"cron",
+						eventbus.EventTargetBroadcast,
+					).WithPayload(payload)
+					k.PublishEvent(event)
+				}
+			}
+		}
+	case types.CronActionKindExecuteShell:
+		log.Info().Str("job", job.Name).Msg("Cron: firing execute shell")
+		if job.Action.Command != nil {
+			command := *job.Action.Command
+			args := job.Action.Args
+			log.Info().Str("job", job.Name).Str("command", command).Strs("args", args).Msg("Cron: executing shell command")
+
+			if err := ValidateShellCommand(command, args, k.config.CronShellSecurity); err != nil {
+				errMsg := fmt.Sprintf("security validation failed: %v", err)
+				log.Warn().Str("job", job.Name).Err(err).Msg("Cron job blocked by security")
+				k.cronScheduler.RecordFailure(jobID, errMsg)
+				return nil
+			}
+
+			timeoutSecs := uint64(60)
+			if job.Action.TimeoutSecs != nil {
+				timeoutSecs = *job.Action.TimeoutSecs
+			}
+			timeout := time.Duration(timeoutSecs) * time.Second
+			ctxTimeout, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+
+			delivery := job.Delivery
+			resultChan := make(chan struct {
+				stdout string
+				stderr string
+				err    error
+			}, 1)
+
+			go func() {
+				env, workDir, prepErr := security.PrepareSecureExec(security.DefaultSecureExecConfig())
+				if prepErr != nil {
+					log.Warn().Str("job", job.Name).Err(prepErr).Msg("Cron: failed to prepare secure execution, using default environment")
+				}
+
+				cmd := exec.CommandContext(ctxTimeout, command, args...)
+				var stdoutBuf, stderrBuf bytes.Buffer
+				cmd.Stdout = &stdoutBuf
+				cmd.Stderr = &stderrBuf
+				cmd.Env = env
+				if workDir != "" {
+					cmd.Dir = workDir
+				}
+
+				log.Info().Str("job", job.Name).Msg("Cron: starting command execution")
+				execErr := cmd.Run()
+				stdout := stdoutBuf.String()
+				stderr := stderrBuf.String()
+
+				log.Info().Str("job", job.Name).Str("stdout", stdout).Str("stderr", stderr).Err(execErr).Msg("Cron: command execution finished")
+				resultChan <- struct {
+					stdout string
+					stderr string
+					err    error
+				}{stdout, stderr, execErr}
+			}()
+
+			select {
+			case <-ctxTimeout.Done():
+				log.Warn().Str("job", job.Name).Uint64("timeout_s", timeoutSecs).Msg("Cron job timed out")
+				k.cronScheduler.RecordFailure(jobID, fmt.Sprintf("timed out after %ds", timeoutSecs))
+			case res := <-resultChan:
+				if res.err != nil {
+					errMsg := fmt.Sprintf("command failed: %v, stderr: %s", res.err, res.stderr)
+					log.Warn().Str("job", job.Name).Err(res.err).Str("stderr", res.stderr).Msg("Cron job failed")
+					k.cronScheduler.RecordFailure(jobID, errMsg)
+					var fullResult string
+					if res.stdout != "" && res.stderr != "" {
+						fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.stderr, res.err)
+					} else if res.stdout != "" {
+						fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stdout, res.err)
+					} else if res.stderr != "" {
+						fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n📥 错误:\n%s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.stderr, res.err)
+					} else {
+						fullResult = fmt.Sprintf("❌ 命令执行失败\n\n📝 命令: %s %s\n\n⚠️  错误信息: %v", command, strings.Join(args, " "), res.err)
+					}
+					k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
+				} else {
+					log.Info().Str("job", job.Name).Str("stdout", res.stdout).Msg("Cron job completed successfully")
+					k.cronScheduler.RecordSuccess(jobID)
+					var fullResult string
+					if res.stdout != "" && res.stderr != "" {
+						fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stdout, res.stderr)
+					} else if res.stdout != "" {
+						fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📤 输出:\n%s", command, strings.Join(args, " "), res.stdout)
+					} else if res.stderr != "" {
+						fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n📥 警告:\n%s", command, strings.Join(args, " "), res.stderr)
+					} else {
+						fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n(无输出)", command, strings.Join(args, " "))
+					}
+					k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func (k *Kernel) AuditLog() *audit.AuditLog {
@@ -885,9 +1292,19 @@ func Boot(dataDir string) (*Kernel, error) {
 			ViewportHeight: cfg.Browser.ViewportHeight,
 			MaxSessions:    cfg.Browser.MaxSessions,
 		},
+		Auth: cfg.Auth,
 	}
 
-	return NewKernel(kernelConfig)
+	k, err := NewKernel(kernelConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := k.ReloadSecrets(); err != nil {
+		log.Warn().Err(err).Msg("Failed to load global secrets")
+	}
+
+	return k, nil
 }
 
 // ActivateHand activates a hand and spawns an agent.
@@ -973,7 +1390,7 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 
 	k.mu.Unlock()
 
-	apiKey := os.Getenv(agentAPIKeyEnv)
+	apiKey := k.GetSecret(agentAPIKeyEnv)
 	if apiKey == "" {
 		return nil, fmt.Errorf("API key not set for agent %s: %s", agentName, agentAPIKeyEnv)
 	}
@@ -1191,7 +1608,7 @@ func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error
 	}
 
 	// Part 2: Operations that don't require a lock
-	apiKey := os.Getenv(agentAPIKeyEnv)
+	apiKey := k.GetSecret(agentAPIKeyEnv)
 	if apiKey == "" {
 		return "", "", fmt.Errorf("API key not set for agent %s: %s", agentName, agentAPIKeyEnv)
 	}
@@ -1386,8 +1803,8 @@ type McpServerInfo struct {
 
 // GetMcpServers returns all MCP servers.
 func (k *Kernel) GetMcpServers() map[string]interface{} {
-	var connected []map[string]interface{}
-	var configured []map[string]interface{}
+	connected := []map[string]interface{}{}
+	configured := []map[string]interface{}{}
 
 	for _, serverConfig := range k.config.McpServers {
 		// Check if connected
@@ -1410,10 +1827,20 @@ func (k *Kernel) GetMcpServers() map[string]interface{} {
 			})
 		}
 
+		env := serverConfig.Env
+		if env == nil {
+			env = []string{}
+		}
+
+		transport := serverConfig.Transport
+		if transport.Type == "" {
+			transport.Type = "stdio"
+		}
+
 		configured = append(configured, map[string]interface{}{
 			"name":      serverConfig.Name,
-			"transport": serverConfig.Transport,
-			"env":       serverConfig.Env,
+			"transport": transport,
+			"env":       env,
 		})
 	}
 

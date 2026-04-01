@@ -1,0 +1,64 @@
+{
+  "id": "software-release-workflow",
+  "name": "Software Release Pipeline",
+  "description": "Complete software release workflow: code review, tests, documentation, and release notes",
+  "steps": [
+    {
+      "name": "code-review",
+      "agent": {
+        "name": "coder"
+      },
+      "prompt_template": "Please review this code for quality, security, and best practices:\n\n{{input}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": {
+        "type": "retry",
+        "max_retries": 2
+      },
+      "output_var": "review_result"
+    },
+    {
+      "name": "security-scan",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Perform a security analysis on this code. Look for vulnerabilities, security issues, and potential risks:\n\n{{input}}",
+      "mode": "fan_out",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "security_scan"
+    },
+    {
+      "name": "performance-analysis",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Analyze this code for performance considerations, potential bottlenecks, and optimization opportunities:\n\n{{input}}",
+      "mode": "fan_out",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "perf_analysis"
+    },
+    {
+      "name": "create-documentation",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Create comprehensive documentation for this code. Include:\n1. Purpose and overview\n2. Key features\n3. Usage examples\n4. Important notes\n\nCode:\n{{input}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "documentation"
+    },
+    {
+      "name": "generate-release-notes",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Generate release notes based on these reviews:\n\nCode Review:\n{{steps.code-review.output}}\n\nSecurity Scan:\n{{steps.security-scan.output}}\n\nPerformance Analysis:\n{{steps.performance-analysis.output}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail"
+    }
+  ]
+}

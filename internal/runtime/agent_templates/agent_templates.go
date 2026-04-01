@@ -12,12 +12,13 @@ import (
 )
 
 type AgentTemplates struct {
-	templates    []types.AgentTemplate
-	templatesDir string
-	mu           sync.RWMutex
-	lastModTime  time.Time
-	stopChan     chan struct{}
-	wg           sync.WaitGroup
+	templates       []types.AgentTemplate
+	templatesDir    string
+	mu              sync.RWMutex
+	lastModTime     time.Time
+	stopChan        chan struct{}
+	wg              sync.WaitGroup
+	sharedTemplates []types.AgentTemplate
 }
 
 func NewAgentTemplates() *AgentTemplates {
@@ -28,6 +29,27 @@ func NewAgentTemplates() *AgentTemplates {
 		templates:    types.GetDefaultAgentTemplates(),
 		templatesDir: templatesDir,
 		stopChan:     make(chan struct{}),
+	}
+}
+
+func NewAgentTemplatesWithDataDir(dataDir string) *AgentTemplates {
+	templatesDir := filepath.Join(dataDir, "agent_templates")
+
+	return &AgentTemplates{
+		templates:    types.GetDefaultAgentTemplates(),
+		templatesDir: templatesDir,
+		stopChan:     make(chan struct{}),
+	}
+}
+
+func NewAgentTemplatesWithShared(dataDir string, sharedTemplates []types.AgentTemplate) *AgentTemplates {
+	templatesDir := filepath.Join(dataDir, "agent_templates")
+
+	return &AgentTemplates{
+		templates:       types.GetDefaultAgentTemplates(),
+		templatesDir:    templatesDir,
+		stopChan:        make(chan struct{}),
+		sharedTemplates: sharedTemplates,
 	}
 }
 
@@ -50,22 +72,28 @@ func (at *AgentTemplates) writeDefaultTemplates() error {
 		filename := fmt.Sprintf("%s.json", tpl.ID)
 		filepath := filepath.Join(at.templatesDir, filename)
 
-		if _, err := os.Stat(filepath); os.IsNotExist(err) {
-			data, err := json.MarshalIndent(tpl, "", "  ")
-			if err != nil {
-				continue
-			}
-			os.WriteFile(filepath, data, 0644)
+		data, err := json.MarshalIndent(tpl, "", "  ")
+		if err != nil {
+			continue
 		}
+		os.WriteFile(filepath, data, 0644)
 	}
 	return nil
 }
 
 func (at *AgentTemplates) loadTemplatesFromDir() ([]types.AgentTemplate, error) {
+	if len(at.sharedTemplates) > 0 {
+		result := make([]types.AgentTemplate, len(at.sharedTemplates))
+		copy(result, at.sharedTemplates)
+		return result, nil
+	}
+
 	templateMap := make(map[string]types.AgentTemplate)
+	defaultTemplateIDs := make(map[string]bool)
 
 	for _, t := range types.GetDefaultAgentTemplates() {
 		templateMap[t.ID] = t
+		defaultTemplateIDs[t.ID] = true
 	}
 
 	if _, err := os.Stat(at.templatesDir); err == nil {
@@ -81,7 +109,9 @@ func (at *AgentTemplates) loadTemplatesFromDir() ([]types.AgentTemplate, error) 
 					var tpl types.AgentTemplate
 					if err := json.Unmarshal(data, &tpl); err == nil {
 						if tpl.ID != "" {
-							templateMap[tpl.ID] = tpl
+							if !defaultTemplateIDs[tpl.ID] {
+								templateMap[tpl.ID] = tpl
+							}
 						}
 					}
 				}
@@ -121,11 +151,13 @@ func (at *AgentTemplates) Load() error {
 	at.mu.Lock()
 	defer at.mu.Unlock()
 
-	if err := at.ensureTemplatesDir(); err != nil {
-		return err
-	}
+	if len(at.sharedTemplates) == 0 {
+		if err := at.ensureTemplatesDir(); err != nil {
+			return err
+		}
 
-	at.writeDefaultTemplates()
+		at.writeDefaultTemplates()
+	}
 
 	templates, err := at.loadTemplatesFromDir()
 	if err != nil {
@@ -133,11 +165,17 @@ func (at *AgentTemplates) Load() error {
 	}
 
 	at.templates = templates
-	at.lastModTime = at.getDirModTime()
+	if len(at.sharedTemplates) == 0 {
+		at.lastModTime = at.getDirModTime()
+	}
 	return nil
 }
 
 func (at *AgentTemplates) StartWatching() {
+	if len(at.sharedTemplates) > 0 {
+		return
+	}
+
 	at.wg.Add(1)
 	go func() {
 		defer at.wg.Done()
@@ -191,4 +229,18 @@ func (at *AgentTemplates) GetTemplate(id string) *types.AgentTemplate {
 		}
 	}
 	return nil
+}
+
+// GetSharedTemplates returns the shared default templates.
+func (at *AgentTemplates) GetSharedTemplates() []types.AgentTemplate {
+	at.mu.RLock()
+	defer at.mu.RUnlock()
+	if len(at.sharedTemplates) > 0 {
+		result := make([]types.AgentTemplate, len(at.sharedTemplates))
+		copy(result, at.sharedTemplates)
+		return result
+	}
+	result := make([]types.AgentTemplate, len(at.templates))
+	copy(result, at.templates)
+	return result
 }

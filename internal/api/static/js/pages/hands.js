@@ -357,6 +357,11 @@ function handsPage() {
 
     async launchHand() {
       if (!this.setupWizard) return;
+      
+      if (!Alpine.store('app').requireSetupCheck()) {
+        return;
+      }
+      
       var handId = this.setupWizard.id;
       var config = {};
       for (var key in this.settingsValues) {
@@ -367,6 +372,13 @@ function handsPage() {
         var data = await FangClawGoAPI.post('/api/hands/' + handId + '/activate', { config: config });
         this.showToast('Hand "' + handId + '" activated as ' + (data.agent_name || data.instance_id));
         this.closeSetupWizard();
+        // Update local hand status
+        for (var i = 0; i < this.hands.length; i++) {
+          if (this.hands[i].id === handId) {
+            this.hands[i].status = 'active';
+            break;
+          }
+        }
         await this.loadActive();
         this.tab = 'active';
       } catch(e) {
@@ -398,6 +410,13 @@ function handsPage() {
       try {
         await FangClawGoAPI.post('/api/hands/instances/' + inst.instance_id + '/pause', {});
         inst.status = 'Paused';
+        // Update local hand status
+        for (var i = 0; i < this.hands.length; i++) {
+          if (this.hands[i].id === inst.hand_id) {
+            this.hands[i].status = 'paused';
+            break;
+          }
+        }
       } catch(e) {
         this.showToast('Pause failed: ' + (e.message || 'unknown error'));
       }
@@ -407,6 +426,13 @@ function handsPage() {
       try {
         await FangClawGoAPI.post('/api/hands/instances/' + inst.instance_id + '/resume', {});
         inst.status = 'Active';
+        // Update local hand status
+        for (var i = 0; i < this.hands.length; i++) {
+          if (this.hands[i].id === inst.hand_id) {
+            this.hands[i].status = 'active';
+            break;
+          }
+        }
       } catch(e) {
         this.showToast('Resume failed: ' + (e.message || 'unknown error'));
       }
@@ -419,6 +445,13 @@ function handsPage() {
         try {
           await FangClawGoAPI.delete('/api/hands/instances/' + inst.instance_id);
           self.instances = self.instances.filter(function(i) { return i.instance_id !== inst.instance_id; });
+          // Update local hand status
+          for (var i = 0; i < self.hands.length; i++) {
+            if (self.hands[i].id === inst.hand_id) {
+              self.hands[i].status = 'inactive';
+              break;
+            }
+          }
           FangClawGoToast.success('Hand deactivated.');
         } catch(e) {
           FangClawGoToast.error('Deactivation failed: ' + (e.message || 'unknown error'));
@@ -459,7 +492,7 @@ function handsPage() {
       var self = this;
       this.activateResult = msg;
       if (this._toastTimer) clearTimeout(this._toastTimer);
-      this._toastTimer = setTimeout(function() { self.activateResult = null; }, 4000);
+      this._toastTimer = setTimeout(function() { self.activateResult = null; }, 6000);
     },
 
     // ── Browser Viewer ───────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/rs/zerolog/log"
 	"github.com/skip2/go-qrcode"
 
 	"github.com/google/uuid"
@@ -32,6 +33,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/security"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
+	"github.com/penzhan8451/fangclaw-go/internal/userdir"
 	"github.com/penzhan8451/fangclaw-go/internal/wizard"
 )
 
@@ -209,12 +211,11 @@ func strPtr(s string) *string {
 	return &s
 }
 
-func getHandsFilePath() string {
-	homeDir, _ := os.UserHomeDir()
-	return filepath.Join(homeDir, ".fangclaw-go", "hands.json")
+func getHandsFilePathForKernel(k *kernel.Kernel) string {
+	return filepath.Join(k.Config().DataDir, "hands.json")
 }
 
-func loadHandsStatus() []map[string]string {
+func loadHandsStatusForKernel(k *kernel.Kernel) []map[string]string {
 	var bundledHands = []map[string]string{
 		{
 			"id":          "researcher",
@@ -267,7 +268,7 @@ func loadHandsStatus() []map[string]string {
 		},
 	}
 
-	path := getHandsFilePath()
+	path := getHandsFilePathForKernel(k)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return bundledHands
@@ -287,8 +288,8 @@ func loadHandsStatus() []map[string]string {
 	return bundledHands
 }
 
-func saveHandsStatus(hands []map[string]string) {
-	path := getHandsFilePath()
+func saveHandsStatusForKernel(k *kernel.Kernel, hands []map[string]string) {
+	path := getHandsFilePathForKernel(k)
 	data, err := json.MarshalIndent(hands, "", "  ")
 	if err != nil {
 		return
@@ -300,15 +301,15 @@ func saveHandsStatus(hands []map[string]string) {
 	os.WriteFile(path, data, 0644)
 }
 
-func updateHandStatus(handID, status string) {
-	hands := loadHandsStatus()
+func updateHandStatusForKernel(k *kernel.Kernel, handID, status string) {
+	hands := loadHandsStatusForKernel(k)
 	for i := range hands {
 		if hands[i]["id"] == handID {
 			hands[i]["status"] = status
 			break
 		}
 	}
-	saveHandsStatus(hands)
+	saveHandsStatusForKernel(k, hands)
 }
 
 // sharedMemoryAgentID is the well-known shared-memory agent ID used for cross-agent KV storage.
@@ -319,14 +320,33 @@ func sharedMemoryAgentID() string {
 
 // Router manages API routes.
 type Router struct {
-	kernel       *kernel.Kernel
-	defaultAgent string
+	kernel        *kernel.Kernel
+	defaultAgent  string
+	authHandler   *AuthHandler
+	bridgeManager *channels.BridgeManager
+}
+
+func (r *Router) getKernel(req *http.Request) *kernel.Kernel {
+	if uk := getUserKernelFromContext(req.Context()); uk != nil {
+		log.Debug().Str("path", req.URL.Path).Str("dataDir", uk.Config().DataDir).Msg("Using user kernel from context")
+		return uk
+	}
+	log.Debug().Str("path", req.URL.Path).Str("dataDir", r.kernel.Config().DataDir).Msg("Using global kernel")
+	return r.kernel
+}
+
+func (r *Router) getUserID(req *http.Request) string {
+	return getUserIDFromContext(req.Context())
 }
 
 // NewRouter creates a new API router.
 func NewRouter(k *kernel.Kernel) *Router {
 	r := &Router{
 		kernel: k,
+	}
+
+	if k.IsAuthEnabled() && k.AuthManager() != nil {
+		r.authHandler = NewAuthHandler(k.AuthManager())
 	}
 
 	// Register approval callback to notify frontend
@@ -397,6 +417,16 @@ func (r *Router) SetDefault(agentID string) {
 	r.defaultAgent = agentID
 }
 
+// SetBridgeManager sets the bridge manager for the router.
+func (r *Router) SetBridgeManager(bm *channels.BridgeManager) {
+	r.bridgeManager = bm
+}
+
+// SetAuthHandler sets the auth handler for the router.
+func (r *Router) SetAuthHandler(authHandler *AuthHandler) {
+	r.authHandler = authHandler
+}
+
 // RegisterRoutes registers all API routes.
 func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	// A2A Standard protocol endpoints (standard, no /api prefix)
@@ -440,6 +470,16 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	// Auth endpoints
 	mux.HandleFunc("POST /api/auth/login", r.handleLogin)
 	mux.HandleFunc("POST /api/auth/logout", r.handleLogout)
+	mux.HandleFunc("POST /api/auth/register", r.handleAuthRegister)
+	mux.HandleFunc("GET /api/auth/me", r.handleAuthGetCurrentUser)
+	mux.HandleFunc("PUT /api/auth/me", r.handleAuthUpdateCurrentUser)
+	mux.HandleFunc("POST /api/auth/api-keys", r.handleAuthCreateAPIKey)
+	mux.HandleFunc("GET /api/auth/github", r.handleGitHubLogin)
+	mux.HandleFunc("GET /api/auth/github/callback", r.handleGitHubCallback)
+	mux.HandleFunc("GET /api/users", r.handleAuthListUsers)
+	mux.HandleFunc("GET /api/users/{id}", r.handleAuthGetUser)
+	mux.HandleFunc("PUT /api/users/{id}", r.handleAuthUpdateUser)
+	mux.HandleFunc("DELETE /api/users/{id}", r.handleAuthDeleteUser)
 
 	// Agent endpoints (v1)
 	mux.HandleFunc("GET /api/v1/agents", r.handleListAgents)
@@ -532,6 +572,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/config", r.handleConfig)
 	mux.HandleFunc("GET /api/config/schema", r.handleConfigSchema)
 	mux.HandleFunc("GET /api/logs/stream", r.handleLogsStream)
+	mux.HandleFunc("GET /api/setup/status", r.handleSetupStatus)
 
 	// Hands endpoints
 	mux.HandleFunc("GET /api/hands", r.handleListHands)
@@ -590,18 +631,30 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agents/{id}/ws", func(w http.ResponseWriter, req *http.Request) {
 		id := req.PathValue("id")
 		req.URL.RawQuery = "agent_id=" + id
-		WSHandler(r.kernel)(w, req)
+		WSHandler(r.getKernel(req))(w, req)
 	})
 
 	// Cron jobs endpoints
 	mux.HandleFunc("GET /api/cron/jobs", r.handleListCronJobs)
 	mux.HandleFunc("POST /api/cron/jobs", r.handleCreateCronJob)
 	mux.HandleFunc("PUT /api/cron/jobs/{id}/enable", r.handleEnableCronJob)
+	mux.HandleFunc("PUT /api/cron/jobs/{id}", r.handleUpdateCronJob)
 	mux.HandleFunc("DELETE /api/cron/jobs/{id}", r.handleDeleteCronJob)
 	mux.HandleFunc("GET /api/cron/jobs/{id}/status", r.handleCronJobStatus)
+	mux.HandleFunc("POST /api/cron/jobs/{id}/run", r.handleRunCronJob)
+
+	// Schedules endpoints (aliases for cron jobs for backward compatibility)
+	mux.HandleFunc("GET /api/schedules", r.handleListCronJobs)
+	mux.HandleFunc("POST /api/schedules", r.handleCreateCronJob)
+	mux.HandleFunc("PUT /api/schedules/{id}/enable", r.handleEnableCronJob)
+	mux.HandleFunc("PUT /api/schedules/{id}", r.handleUpdateCronJob)
+	mux.HandleFunc("DELETE /api/schedules/{id}", r.handleDeleteCronJob)
+	mux.HandleFunc("GET /api/schedules/{id}/status", r.handleCronJobStatus)
+	mux.HandleFunc("POST /api/schedules/{id}/run", r.handleRunCronJob)
 
 	// Workflows endpoints
 	mux.HandleFunc("POST /api/workflows", r.handleCreateWorkflow)
+	mux.HandleFunc("PUT /api/workflows/{id}", r.handleUpdateWorkflow)
 	mux.HandleFunc("GET /api/workflows", r.handleListWorkflows)
 	mux.HandleFunc("GET /api/workflows/{id}", r.handleGetWorkflow)
 	mux.HandleFunc("DELETE /api/workflows/{id}", r.handleDeleteWorkflow)
@@ -658,7 +711,17 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 
 // respondError responds with an error.
 func respondError(w http.ResponseWriter, status int, data interface{}) {
-	respondJSON(w, status, data)
+	switch v := data.(type) {
+	case string:
+		respondJSON(w, status, map[string]string{"error": v})
+	case map[string]string:
+		if _, ok := v["error"]; !ok {
+			v["error"] = "unknown error"
+		}
+		respondJSON(w, status, v)
+	default:
+		respondJSON(w, status, map[string]interface{}{"error": data})
+	}
 }
 
 // handleHealth handles health check requests.
@@ -672,7 +735,8 @@ func (r *Router) handleHealth(w http.ResponseWriter, req *http.Request) {
 
 // handleStatus handles status requests.
 func (r *Router) handleStatus(w http.ResponseWriter, req *http.Request) {
-	uptime := r.kernel.GetUptime()
+	k := r.getKernel(req)
+	uptime := k.GetUptime()
 	var uptimeStr string
 	secs := int(uptime.Seconds())
 	days := secs / 86400
@@ -686,11 +750,17 @@ func (r *Router) handleStatus(w http.ResponseWriter, req *http.Request) {
 		uptimeStr = fmt.Sprintf("%dm", mins)
 	}
 
+	apiCfg := r.kernel.Config().API
+	listenAddr := fmt.Sprintf("%s:%d", apiCfg.Host, apiCfg.Port)
+	if apiCfg.Host == "" {
+		listenAddr = fmt.Sprintf("127.0.0.1:%d", apiCfg.Port)
+	}
+
 	respondJSON(w, http.StatusOK, types.StatusResponse{
 		Status:        "running",
 		Version:       "0.1.0",
-		ListenAddr:    ":4200",
-		AgentCount:    r.kernel.AgentRegistry().Count(),
+		ListenAddr:    listenAddr,
+		AgentCount:    k.AgentRegistry().Count(),
 		ModelCount:    1,
 		Uptime:        uptimeStr,
 		UptimeSeconds: secs,
@@ -788,6 +858,11 @@ func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if r.authHandler != nil {
+		r.authHandler.HandleLogin(w, req)
+		return
+	}
+
 	var loginReq LoginRequest
 	if err := json.NewDecoder(req.Body).Decode(&loginReq); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -795,22 +870,15 @@ func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 
-	// TODO: Replace with actual authentication logic
-	// For now, return a dummy token for demonstration
-	// In production, validate credentials against a user store
 	dummyUser := &security.User{
 		ID:       "demo-user-id",
 		Username: loginReq.Username,
 		Role:     "user",
 	}
 
-	// Create a default security config
 	secConfig := security.DefaultSecurityConfig()
-
-	// Create auth service
 	authService := security.NewAuthService(secConfig)
 
-	// Generate token
 	token, err := authService.GenerateToken(dummyUser)
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
@@ -829,8 +897,11 @@ func (r *Router) handleLogout(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// TODO: Invalidate token on server-side (e.g., add to blacklist)
-	// For now, just return success
+	if r.authHandler != nil {
+		r.authHandler.HandleLogout(w, req)
+		return
+	}
+
 	respondJSON(w, http.StatusOK, map[string]string{
 		"message": "Logged out successfully",
 	})
@@ -845,7 +916,8 @@ func (r *Router) handleVersion(w http.ResponseWriter, req *http.Request) {
 
 // Agent handlers
 func (r *Router) handleListAgents(w http.ResponseWriter, req *http.Request) {
-	agents := r.kernel.AgentRegistry().List()
+	k := r.getKernel(req)
+	agents := k.AgentRegistry().List()
 	var result []map[string]interface{}
 	for _, agent := range agents {
 		result = append(result, map[string]interface{}{
@@ -864,6 +936,12 @@ func (r *Router) handleListAgents(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleCreateAgent(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
+	if !k.IsSetupComplete() {
+		respondError(w, http.StatusBadRequest, "Setup incomplete: Please configure your provider API key in Dashboard Settings Page first")
+		return
+	}
+
 	var body struct {
 		ManifestTOML string                 `json:"manifest_toml"`
 		ManifestJSON map[string]interface{} `json:"manifest_json"`
@@ -900,7 +978,7 @@ func (r *Router) handleCreateAgent(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	agentID, agentName, err := r.kernel.SpawnAgent(manifest)
+	agentID, agentName, err := k.SpawnAgent(manifest)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			respondError(w, http.StatusConflict, err.Error())
@@ -917,6 +995,7 @@ func (r *Router) handleCreateAgent(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleGetAgent(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	idStr := req.PathValue("id")
 	id, err := types.ParseAgentID(idStr)
 	if err != nil {
@@ -924,7 +1003,7 @@ func (r *Router) handleGetAgent(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	agent := r.kernel.AgentRegistry().Get(id)
+	agent := k.AgentRegistry().Get(id)
 	if agent == nil {
 		respondError(w, http.StatusNotFound, "agent not found")
 		return
@@ -934,6 +1013,7 @@ func (r *Router) handleGetAgent(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleUpdateAgent(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	idStr := req.PathValue("id")
 	id, err := types.ParseAgentID(idStr)
 	if err != nil {
@@ -952,26 +1032,45 @@ func (r *Router) handleUpdateAgent(w http.ResponseWriter, req *http.Request) {
 
 	if reqBody.State != nil {
 		state := types.AgentState(*reqBody.State)
-		if err := r.kernel.AgentRegistry().SetState(id, state); err != nil {
+		if err := k.AgentRegistry().SetState(id, state); err != nil {
 			respondError(w, http.StatusNotFound, err.Error())
 			return
 		}
 	}
 
 	if reqBody.Mode != nil {
-		if err := r.kernel.AgentRegistry().SetMode(id, *reqBody.Mode); err != nil {
+		if err := k.AgentRegistry().SetMode(id, *reqBody.Mode); err != nil {
 			respondError(w, http.StatusNotFound, err.Error())
 			return
 		}
 	}
 
-	agent := r.kernel.AgentRegistry().Get(id)
+	agent := k.AgentRegistry().Get(id)
 	respondJSON(w, http.StatusOK, agent)
 }
 
 func (r *Router) handleDeleteAgent(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	idStr := req.PathValue("id")
-	if err := r.kernel.DeleteAgent(idStr); err != nil {
+
+	id, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent ID")
+		return
+	}
+
+	entry := k.AgentRegistry().Get(id)
+	if entry != nil {
+		for _, tag := range entry.Tags {
+			if strings.HasPrefix(tag, "hand:") {
+				handID := strings.TrimPrefix(tag, "hand:")
+				respondError(w, http.StatusBadRequest, fmt.Sprintf("Cannot delete agent created by hand '%s'. Please deactivate the hand from the Hands page instead.", handID))
+				return
+			}
+		}
+	}
+
+	if err := k.DeleteAgent(idStr); err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -983,7 +1082,8 @@ func (r *Router) handleDeleteAgent(w http.ResponseWriter, req *http.Request) {
 
 // Session handlers
 func (r *Router) handleListSessions(w http.ResponseWriter, req *http.Request) {
-	sessions, err := r.kernel.SessionStore().ListSessions()
+	k := r.getKernel(req)
+	sessions, err := k.SessionStore().ListSessions()
 	if err != nil {
 		respondJSON(w, http.StatusOK, map[string]interface{}{
 			"sessions": []map[string]interface{}{},
@@ -996,6 +1096,7 @@ func (r *Router) handleListSessions(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleCreateSession(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	var reqBody struct {
 		AgentID string  `json:"agent_id"`
 		Label   *string `json:"label,omitempty"`
@@ -1011,7 +1112,7 @@ func (r *Router) handleCreateSession(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	agent := r.kernel.AgentRegistry().Get(agentID)
+	agent := k.AgentRegistry().Get(agentID)
 	agentName := ""
 	agentModelProvider := ""
 	agentModelName := ""
@@ -1022,7 +1123,7 @@ func (r *Router) handleCreateSession(w http.ResponseWriter, req *http.Request) {
 	}
 
 	session := types.NewSession(agentID, agentName, agentModelProvider, agentModelName, reqBody.Label)
-	if err := r.kernel.SessionStore().SaveSession(&session); err != nil {
+	if err := k.SessionStore().SaveSession(&session); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1031,6 +1132,7 @@ func (r *Router) handleCreateSession(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleGetSession(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	id := req.PathValue("id")
 	sessionID, err := types.ParseSessionID(id)
 	if err != nil {
@@ -1038,7 +1140,7 @@ func (r *Router) handleGetSession(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	session, err := r.kernel.SessionStore().GetSession(sessionID)
+	session, err := k.SessionStore().GetSession(sessionID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1053,7 +1155,8 @@ func (r *Router) handleGetSession(w http.ResponseWriter, req *http.Request) {
 
 // DeleteAllSession deletes all sessions, regardless of agent id or session id
 func (r *Router) handleDeleteAllSession(w http.ResponseWriter, req *http.Request) {
-	if err := r.kernel.SessionStore().DeleteAllSession(); err != nil {
+	k := r.getKernel(req)
+	if err := k.SessionStore().DeleteAllSession(); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -1063,6 +1166,7 @@ func (r *Router) handleDeleteAllSession(w http.ResponseWriter, req *http.Request
 }
 
 func (r *Router) handleDeleteSession(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	id := req.PathValue("id")
 	sessionID, err := types.ParseSessionID(id)
 	if err != nil {
@@ -1070,7 +1174,7 @@ func (r *Router) handleDeleteSession(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := r.kernel.SessionStore().DeleteSession(sessionID); err != nil {
+	if err := k.SessionStore().DeleteSession(sessionID); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1105,6 +1209,7 @@ func (r *Router) handleCreateMemory(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleSearchMemories(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	query := req.URL.Query().Get("q")
 	limit := 10
 	agentIDStr := req.URL.Query().Get("agent_id")
@@ -1115,7 +1220,7 @@ func (r *Router) handleSearchMemories(w http.ResponseWriter, req *http.Request) 
 		filter = &types.MemoryFilter{AgentID: &agentID}
 	}
 
-	memories, err := r.kernel.SemanticStore().Recall(query, limit, filter)
+	memories, err := k.SemanticStore().Recall(query, limit, filter)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1125,6 +1230,7 @@ func (r *Router) handleSearchMemories(w http.ResponseWriter, req *http.Request) 
 }
 
 func (r *Router) handleDeleteMemory(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	id := req.PathValue("id")
 	memoryID, err := types.ParseMemoryID(id)
 	if err != nil {
@@ -1132,7 +1238,7 @@ func (r *Router) handleDeleteMemory(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := r.kernel.SemanticStore().Forget(memoryID); err != nil {
+	if err := k.SemanticStore().Forget(memoryID); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1144,13 +1250,14 @@ func (r *Router) handleDeleteMemory(w http.ResponseWriter, req *http.Request) {
 
 // handleGetAgentKV handles GET /api/memory/agents/{id}/kv — List KV pairs for an agent.
 func (r *Router) handleGetAgentKV(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	agentID := req.PathValue("id")
 	if agentID == "" {
 		respondError(w, http.StatusBadRequest, "agent id required")
 		return
 	}
 
-	records, err := r.kernel.DB().ListKV(agentID)
+	records, err := k.DB().ListKV(agentID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Memory operation failed")
 		return
@@ -1175,6 +1282,7 @@ func (r *Router) handleGetAgentKV(w http.ResponseWriter, req *http.Request) {
 
 // handleGetAgentKVKey handles GET /api/memory/agents/{id}/kv/{key} — Get a specific KV value.
 func (r *Router) handleGetAgentKVKey(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	agentID := req.PathValue("id")
 	if agentID == "" {
 		respondError(w, http.StatusBadRequest, "agent id required")
@@ -1182,7 +1290,7 @@ func (r *Router) handleGetAgentKVKey(w http.ResponseWriter, req *http.Request) {
 	}
 	key := req.PathValue("key")
 
-	record, err := r.kernel.DB().GetKV(agentID, key)
+	record, err := k.DB().GetKV(agentID, key)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Memory operation failed")
 		return
@@ -1206,6 +1314,7 @@ func (r *Router) handleGetAgentKVKey(w http.ResponseWriter, req *http.Request) {
 
 // handleSetAgentKVKey handles PUT /api/memory/agents/{id}/kv/{key} — Set a KV value.
 func (r *Router) handleSetAgentKVKey(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	agentID := req.PathValue("id")
 	if agentID == "" {
 		respondError(w, http.StatusBadRequest, "agent id required")
@@ -1231,7 +1340,7 @@ func (r *Router) handleSetAgentKVKey(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := r.kernel.DB().SetKV(agentID, key, valueBytes); err != nil {
+	if err := k.DB().SetKV(agentID, key, valueBytes); err != nil {
 		respondError(w, http.StatusInternalServerError, "Memory operation failed")
 		return
 	}
@@ -1244,6 +1353,7 @@ func (r *Router) handleSetAgentKVKey(w http.ResponseWriter, req *http.Request) {
 
 // handleDeleteAgentKVKey handles DELETE /api/memory/agents/{id}/kv/{key} — Delete a KV value.
 func (r *Router) handleDeleteAgentKVKey(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	agentID := req.PathValue("id")
 	if agentID == "" {
 		respondError(w, http.StatusBadRequest, "agent id required")
@@ -1251,7 +1361,7 @@ func (r *Router) handleDeleteAgentKVKey(w http.ResponseWriter, req *http.Request
 	}
 	key := req.PathValue("key")
 
-	if err := r.kernel.DB().DeleteKV(agentID, key); err != nil {
+	if err := k.DB().DeleteKV(agentID, key); err != nil {
 		respondError(w, http.StatusInternalServerError, "Memory operation failed")
 		return
 	}
@@ -1264,7 +1374,8 @@ func (r *Router) handleDeleteAgentKVKey(w http.ResponseWriter, req *http.Request
 
 // Skill handlers
 func (r *Router) handleListSkills(w http.ResponseWriter, req *http.Request) {
-	skills, err := r.kernel.SkillLoader().ListSkills()
+	k := r.getKernel(req)
+	skills, err := k.SkillLoader().ListSkills()
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1306,6 +1417,7 @@ func (r *Router) handleListSkills(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleInstallSkill(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	var reqBody struct {
 		SourcePath string `json:"source_path"`
 		SkillID    string `json:"skill_id"`
@@ -1315,7 +1427,7 @@ func (r *Router) handleInstallSkill(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	skill, err := r.kernel.SkillLoader().InstallSkill(reqBody.SourcePath, reqBody.SkillID)
+	skill, err := k.SkillLoader().InstallSkill(reqBody.SourcePath, reqBody.SkillID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1325,8 +1437,9 @@ func (r *Router) handleInstallSkill(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleUninstallSkill(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	id := req.PathValue("id")
-	if err := r.kernel.SkillLoader().UninstallSkill(id); err != nil {
+	if err := k.SkillLoader().UninstallSkill(id); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1338,30 +1451,45 @@ func (r *Router) handleListChannels(w http.ResponseWriter, req *http.Request) {
 	var channels []map[string]interface{}
 	var configuredCount uint32 = 0
 
+	user := GetUserFromContext(req.Context())
+	var cfg *config.Config
+	var err error
+	var k *kernel.Kernel
+	if user != nil && !IsOwner(user) {
+		cfg, err = config.LoadUserConfig(user.Username)
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+		k = r.getKernel(req)
+	} else {
+		cfg, err = config.Load("")
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+		k = r.kernel
+	}
+
 	for _, meta := range CHANNEL_REGISTRY {
-		configured := isChannelConfigured(meta.Name)
+		configured := isChannelConfiguredWithCfg(meta.Name, cfg)
 		if configured {
 			configuredCount++
 		}
 
 		hasToken := true
 		if meta.Name == "feishu" {
-			cfg, err := config.Load("")
-			if err == nil && cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && (cfg.Channels.Feishu.AppSecret != "" || cfg.Channels.Feishu.AppSecretEnv != "") {
+			if cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && (cfg.Channels.Feishu.AppSecret != "" || (cfg.Channels.Feishu.AppSecretEnv != "" && k.GetSecret(cfg.Channels.Feishu.AppSecretEnv) != "")) {
 				hasToken = true
 			} else {
 				hasToken = false
 			}
 		} else if meta.Name == "qq" {
-			cfg, err := config.Load("")
-			if err == nil && cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" && (cfg.Channels.QQ.AppSecret != "" || cfg.Channels.QQ.AppSecretEnv != "") {
+			if cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" && (cfg.Channels.QQ.AppSecret != "" || (cfg.Channels.QQ.AppSecretEnv != "" && k.GetSecret(cfg.Channels.QQ.AppSecretEnv) != "")) {
 				hasToken = true
 			} else {
 				hasToken = false
 			}
 		} else if meta.Name == "whatsapp" {
-			cfg, err := config.Load("")
-			if err == nil && cfg.Channels.WhatsApp != nil && cfg.Channels.WhatsApp.AccessTokenEnv != "" && cfg.Channels.WhatsApp.PhoneNumberID != "" {
+			if cfg.Channels.WhatsApp != nil && cfg.Channels.WhatsApp.AccessTokenEnv != "" && k.GetSecret(cfg.Channels.WhatsApp.AccessTokenEnv) != "" && cfg.Channels.WhatsApp.PhoneNumberID != "" {
 				hasToken = true
 			} else {
 				hasToken = false
@@ -1369,7 +1497,7 @@ func (r *Router) handleListChannels(w http.ResponseWriter, req *http.Request) {
 		} else {
 			for _, f := range meta.Fields {
 				if f.Required && f.EnvVar != nil {
-					val := os.Getenv(*f.EnvVar)
+					val := k.GetSecret(*f.EnvVar)
 					if val == "" {
 						hasToken = false
 						break
@@ -1379,39 +1507,38 @@ func (r *Router) handleListChannels(w http.ResponseWriter, req *http.Request) {
 		}
 
 		var fields []map[string]interface{}
-		cfg, _ := config.Load("")
 		for _, f := range meta.Fields {
 			hasValue := false
 			if meta.Name == "feishu" {
 				if f.Key == "app_id" && cfg.Channels.Feishu != nil {
 					hasValue = cfg.Channels.Feishu.AppID != ""
 				} else if f.Key == "app_secret_env" && cfg.Channels.Feishu != nil {
-					hasValue = cfg.Channels.Feishu.AppSecret != "" || cfg.Channels.Feishu.AppSecretEnv != ""
+					hasValue = cfg.Channels.Feishu.AppSecret != "" || (cfg.Channels.Feishu.AppSecretEnv != "" && k.GetSecret(cfg.Channels.Feishu.AppSecretEnv) != "")
 				} else if f.EnvVar != nil {
-					val := os.Getenv(*f.EnvVar)
+					val := k.GetSecret(*f.EnvVar)
 					hasValue = val != ""
 				}
 			} else if meta.Name == "qq" {
 				if f.Key == "app_id" && cfg.Channels.QQ != nil {
 					hasValue = cfg.Channels.QQ.AppID != ""
 				} else if f.Key == "app_secret_env" && cfg.Channels.QQ != nil {
-					hasValue = cfg.Channels.QQ.AppSecret != "" || cfg.Channels.QQ.AppSecretEnv != ""
+					hasValue = cfg.Channels.QQ.AppSecret != "" || (cfg.Channels.QQ.AppSecretEnv != "" && k.GetSecret(cfg.Channels.QQ.AppSecretEnv) != "")
 				} else if f.EnvVar != nil {
-					val := os.Getenv(*f.EnvVar)
+					val := k.GetSecret(*f.EnvVar)
 					hasValue = val != ""
 				}
 			} else if meta.Name == "whatsapp" {
 				if f.Key == "access_token_env" && cfg.Channels.WhatsApp != nil {
-					hasValue = cfg.Channels.WhatsApp.AccessTokenEnv != ""
+					hasValue = cfg.Channels.WhatsApp.AccessTokenEnv != "" && k.GetSecret(cfg.Channels.WhatsApp.AccessTokenEnv) != ""
 				} else if f.Key == "phone_number_id" && cfg.Channels.WhatsApp != nil {
 					hasValue = cfg.Channels.WhatsApp.PhoneNumberID != ""
 				} else if f.EnvVar != nil {
-					val := os.Getenv(*f.EnvVar)
+					val := k.GetSecret(*f.EnvVar)
 					hasValue = val != ""
 				}
 			} else {
 				if f.EnvVar != nil {
-					val := os.Getenv(*f.EnvVar)
+					val := k.GetSecret(*f.EnvVar)
 					hasValue = val != ""
 				}
 			}
@@ -1461,7 +1588,10 @@ func isChannelConfigured(channelName string) bool {
 	if err != nil {
 		return false
 	}
+	return isChannelConfiguredWithCfg(channelName, cfg)
+}
 
+func isChannelConfiguredWithCfg(channelName string, cfg *config.Config) bool {
 	switch channelName {
 	case "telegram":
 		return cfg.Channels.Telegram != nil && cfg.Channels.Telegram.BotTokenEnv != ""
@@ -1512,10 +1642,24 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 	}
 
 	// Load current config
-	cfg, err := config.Load("")
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to load config")
-		return
+	user := GetUserFromContext(req.Context())
+	var cfg *config.Config
+	var err error
+	var k *kernel.Kernel
+	if user != nil && !IsOwner(user) {
+		cfg, err = config.LoadUserConfig(user.Username)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to load user config")
+			return
+		}
+		k = r.getKernel(req)
+	} else {
+		cfg, err = config.Load("")
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to load config")
+			return
+		}
+		k = r.kernel
 	}
 
 	// Create or update channel config
@@ -1585,25 +1729,39 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 
 		// Handle env vars (secrets)
 		if field.EnvVar != nil && field.FieldType == FieldTypeSecret {
-			// Directly save the secret in config (no secrets.env dependency)
+			secretKey := *field.EnvVar
+			secretValue := valueStr
+
+			if user != nil && !IsOwner(user) {
+				if err := userdir.SetUserSecret(user.Username, secretKey, secretValue); err != nil {
+					respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save secret: %v", err))
+					return
+				}
+				k.SetSecret(secretKey, secretValue)
+			} else {
+				if err := userdir.SetUserSecret("", secretKey, secretValue); err != nil {
+					respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save secret: %v", err))
+					return
+				}
+				k.SetSecret(secretKey, secretValue)
+			}
+
 			switch field.Key {
 			case "bot_token_env":
-				channelConfig.BotToken = valueStr
+				channelConfig.BotTokenEnv = secretKey
 			case "app_token_env":
-				channelConfig.AppToken = valueStr
+				channelConfig.AppTokenEnv = secretKey
 			case "access_token_env":
-				channelConfig.AccessToken = valueStr
+				channelConfig.AccessTokenEnv = secretKey
 			case "app_secret_env":
-				channelConfig.AppSecret = valueStr
+				channelConfig.AppSecretEnv = secretKey
 			case "secret_env":
-				channelConfig.Secret = valueStr
+				channelConfig.SecretEnv = secretKey
 			case "verify_token_env":
-				channelConfig.VerifyToken = valueStr
+				channelConfig.VerifyTokenEnv = secretKey
 			case "client_secret_env":
-				channelConfig.ClientSecret = valueStr
+				channelConfig.ClientSecretEnv = secretKey
 			}
-			// Also set in current process for backward compatibility
-			os.Setenv(*field.EnvVar, valueStr)
 		} else {
 			// Handle regular fields
 			switch field.Key {
@@ -1640,16 +1798,38 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 	}
 
 	// Save config
-	if err := config.Save(cfg, ""); err != nil {
+	var saveErr error
+	if user != nil && !IsOwner(user) {
+		saveErr = config.SaveUserConfig(user.Username, cfg)
+	} else {
+		saveErr = config.Save(cfg, "")
+	}
+	if saveErr != nil {
 		respondError(w, http.StatusInternalServerError, "failed to save config")
 		return
 	}
 
 	// Reload channels
-	started, err := reloadChannelsFromDisk(r.kernel, name)
+	var started []string
+	started, err = reloadChannelsFromDisk(k, name)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to reload channels: %v", err))
 		return
+	}
+
+	// Register new adapter to bridge manager if available
+	if r.bridgeManager != nil && len(started) > 0 {
+		adapters := k.Registry().ListAdapters()
+		for id, adapter := range adapters {
+			channel := adapter.GetChannel()
+			if channel != nil && channel.Type == nameToChannelType(name) {
+				if err := r.bridgeManager.RegisterAdapter(id, adapter); err != nil {
+					fmt.Printf("Warning: Failed to register adapter to bridge manager: %v\n", err)
+				} else {
+					fmt.Printf("Successfully registered new adapter %s to bridge manager\n", id)
+				}
+			}
+		}
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -1682,12 +1862,6 @@ func nameToChannelType(name string) channels.ChannelType {
 
 // reloadChannelsFromDisk reloads a specific channel from disk and restarts it.
 func reloadChannelsFromDisk(k *kernel.Kernel, channelName string) ([]string, error) {
-	// Load fresh config
-	cfg, err := config.Load("")
-	if err != nil {
-		return nil, err
-	}
-
 	registry := k.Registry()
 	var started []string
 
@@ -1711,6 +1885,19 @@ func reloadChannelsFromDisk(k *kernel.Kernel, channelName string) ([]string, err
 			}
 		}
 
+		// Load user config based on kernel's username
+		var cfg *config.Config
+		var err error
+		username := k.Username()
+		if username != "" {
+			cfg, err = config.LoadUserConfig(username)
+		} else {
+			cfg, err = config.Load("")
+		}
+		if err != nil {
+			return started, nil
+		}
+
 		// Check if channel is configured
 		isConfigured := false
 		switch channelName {
@@ -1725,34 +1912,86 @@ func reloadChannelsFromDisk(k *kernel.Kernel, channelName string) ([]string, err
 		case "qq":
 			isConfigured = cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" && cfg.Channels.QQ.AppSecretEnv != ""
 		case "dingtalk":
-			isConfigured = cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.AccessTokenEnv != "" && cfg.Channels.DingTalk.SecretEnv != ""
+			isConfigured = cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.ClientID != "" && cfg.Channels.DingTalk.ClientSecretEnv != ""
 		case "feishu":
 			isConfigured = cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && (cfg.Channels.Feishu.AppSecretEnv != "" || cfg.Channels.Feishu.AppSecret != "")
 		}
 
 		if isConfigured {
 			// Create and register new channel
+			owner := k.Username()
+			if owner == "" {
+				owner = "owner"
+			}
 			newChannel := &channels.Channel{
 				Name:  channelName + " Channel",
 				Type:  channelType,
+				Owner: owner,
 				State: channels.ChannelStateIdle,
 			}
 
-			// Set channel-specific config
+			// Set channel-specific config using kernel secrets
 			switch channelName {
+			case "telegram":
+				botToken := cfg.Channels.Telegram.BotToken
+				if botToken == "" && cfg.Channels.Telegram.BotTokenEnv != "" {
+					botToken = k.GetSecret(cfg.Channels.Telegram.BotTokenEnv)
+				}
+				newChannel.Config.Telegram = &channels.TelegramChannelConfig{
+					BotToken: botToken,
+				}
+			case "discord":
+				botToken := cfg.Channels.Discord.BotToken
+				if botToken == "" && cfg.Channels.Discord.BotTokenEnv != "" {
+					botToken = k.GetSecret(cfg.Channels.Discord.BotTokenEnv)
+				}
+				newChannel.Config.Discord = &channels.DiscordChannelConfig{
+					BotToken: botToken,
+				}
+			case "slack":
+				botToken := cfg.Channels.Slack.BotToken
+				if botToken == "" && cfg.Channels.Slack.BotTokenEnv != "" {
+					botToken = k.GetSecret(cfg.Channels.Slack.BotTokenEnv)
+				}
+				appToken := cfg.Channels.Slack.AppToken
+				if appToken == "" && cfg.Channels.Slack.AppTokenEnv != "" {
+					appToken = k.GetSecret(cfg.Channels.Slack.AppTokenEnv)
+				}
+				newChannel.Config.Slack = &channels.SlackChannelConfig{
+					BotToken: botToken,
+					AppToken: appToken,
+				}
+			case "whatsapp":
+				accessToken := cfg.Channels.WhatsApp.AccessToken
+				if accessToken == "" && cfg.Channels.WhatsApp.AccessTokenEnv != "" {
+					accessToken = k.GetSecret(cfg.Channels.WhatsApp.AccessTokenEnv)
+				}
+				newChannel.Config.WhatsApp = &channels.WhatsAppChannelConfig{
+					AccessToken: accessToken,
+					PhoneID:     cfg.Channels.WhatsApp.PhoneNumberID,
+				}
 			case "qq":
+				appSecret := cfg.Channels.QQ.AppSecret
+				if appSecret == "" && cfg.Channels.QQ.AppSecretEnv != "" {
+					appSecret = k.GetSecret(cfg.Channels.QQ.AppSecretEnv)
+				}
 				newChannel.Config.QQ = &channels.QQChannelConfig{
 					AppID:     cfg.Channels.QQ.AppID,
-					AppSecret: os.Getenv(cfg.Channels.QQ.AppSecretEnv),
+					AppSecret: appSecret,
 				}
 			case "dingtalk":
+				clientSecret := cfg.Channels.DingTalk.ClientSecret
+				if clientSecret == "" && cfg.Channels.DingTalk.ClientSecretEnv != "" {
+					clientSecret = k.GetSecret(cfg.Channels.DingTalk.ClientSecretEnv)
+				}
 				newChannel.Config.DingTalk = &channels.DingTalkChannelConfig{
-					AppSecret: os.Getenv(cfg.Channels.DingTalk.SecretEnv),
+					ClientID:     cfg.Channels.DingTalk.ClientID,
+					ClientSecret: clientSecret,
 				}
 			case "feishu":
 				appSecret := cfg.Channels.Feishu.AppSecret
 				if appSecret == "" && cfg.Channels.Feishu.AppSecretEnv != "" {
-					appSecret = os.Getenv(cfg.Channels.Feishu.AppSecretEnv)
+					appSecret = k.GetSecret(cfg.Channels.Feishu.AppSecretEnv)
 				}
 				newChannel.Config.Feishu = &channels.FeishuChannelConfig{
 					AppID:     cfg.Channels.Feishu.AppID,
@@ -1796,16 +2035,27 @@ func (r *Router) handleTestChannel(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	user := GetUserFromContext(req.Context())
+	var cfg *config.Config
+	var err error
+	var k *kernel.Kernel
+	if user != nil && !IsOwner(user) {
+		cfg, err = config.LoadUserConfig(user.Username)
+		k = r.getKernel(req)
+	} else {
+		cfg, err = config.Load("")
+		k = r.kernel
+	}
+	if err != nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"status":  "error",
+			"message": fmt.Sprintf("Failed to load config: %v", err),
+		})
+		return
+	}
+
 	// For Feishu, check config file directly instead of env vars
 	if name == "feishu" {
-		cfg, err := config.Load("")
-		if err != nil {
-			respondJSON(w, http.StatusOK, map[string]interface{}{
-				"status":  "error",
-				"message": fmt.Sprintf("Failed to load config: %v", err),
-			})
-			return
-		}
 		if cfg.Channels.Feishu == nil {
 			respondJSON(w, http.StatusOK, map[string]interface{}{
 				"status":  "error",
@@ -1820,7 +2070,7 @@ func (r *Router) handleTestChannel(w http.ResponseWriter, req *http.Request) {
 			})
 			return
 		}
-		if cfg.Channels.Feishu.AppSecret == "" && cfg.Channels.Feishu.AppSecretEnv == "" {
+		if cfg.Channels.Feishu.AppSecret == "" && (cfg.Channels.Feishu.AppSecretEnv == "" || k.GetSecret(cfg.Channels.Feishu.AppSecretEnv) == "") {
 			respondJSON(w, http.StatusOK, map[string]interface{}{
 				"status":  "error",
 				"message": "Feishu App Secret is missing",
@@ -1834,14 +2084,55 @@ func (r *Router) handleTestChannel(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Check all required env vars are set for other channels
+	// Check all required fields are set for other channels
 	var missing []string
+	var channelConfig *config.ChannelConfig
+	switch name {
+	case "telegram":
+		channelConfig = cfg.Channels.Telegram
+	case "discord":
+		channelConfig = cfg.Channels.Discord
+	case "slack":
+		channelConfig = cfg.Channels.Slack
+	case "whatsapp":
+		channelConfig = cfg.Channels.WhatsApp
+	case "qq":
+		channelConfig = cfg.Channels.QQ
+	case "dingtalk":
+		channelConfig = cfg.Channels.DingTalk
+	}
+
 	for _, fieldDef := range channelMeta.Fields {
-		if fieldDef.Required && fieldDef.EnvVar != nil {
-			value := os.Getenv(*fieldDef.EnvVar)
-			if value == "" {
-				missing = append(missing, *fieldDef.EnvVar)
+		if !fieldDef.Required {
+			continue
+		}
+
+		var value string
+		if fieldDef.FieldType == FieldTypeSecret && fieldDef.EnvVar != nil {
+			value = k.GetSecret(*fieldDef.EnvVar)
+		} else {
+			if channelConfig != nil {
+				switch fieldDef.Key {
+				case "app_id":
+					value = channelConfig.AppID
+				case "client_id":
+					value = channelConfig.ClientID
+				case "phone_number_id":
+					value = channelConfig.PhoneNumberID
+				case "default_agent":
+					value = channelConfig.DefaultAgent
+				case "allowed_users":
+					value = channelConfig.AllowedUsers
+				case "allowed_guilds":
+					value = channelConfig.AllowedGuilds
+				case "allowed_channels":
+					value = channelConfig.AllowedChannels
+				}
 			}
+		}
+
+		if value == "" && fieldDef.EnvVar != nil {
+			missing = append(missing, *fieldDef.EnvVar)
 		}
 	}
 
@@ -1912,7 +2203,7 @@ func (r *Router) handleA2AAgents(w http.ResponseWriter, req *http.Request) {
 
 // handleA2AAgentCard handles GET /.well-known/agent.json — A2A Agent Card
 func (r *Router) handleA2AAgentCard(w http.ResponseWriter, req *http.Request) {
-	agents := r.kernel.AgentRegistry().List()
+	agents := r.getKernel(req).AgentRegistry().List()
 	baseURL := fmt.Sprintf("http://%s", req.Host)
 
 	if len(agents) > 0 {
@@ -1937,8 +2228,8 @@ func (r *Router) handleA2AAgentCard(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleA2AListAgents(w http.ResponseWriter, req *http.Request) {
 	var cards []interface{} = make([]interface{}, 0)
 
-	if r.kernel.A2AClient() != nil {
-		externalAgents := r.kernel.A2AClient().ListExternalAgents()
+	if r.getKernel(req).A2AClient() != nil {
+		externalAgents := r.getKernel(req).A2AClient().ListExternalAgents()
 		for _, extAgent := range externalAgents {
 			cards = append(cards, extAgent.Card)
 		}
@@ -1976,7 +2267,7 @@ func (r *Router) handleA2ASendTask(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	agentRuntime := r.kernel.AgentRuntime()
+	agentRuntime := r.getKernel(req).AgentRuntime()
 
 	var actualAgentID string
 
@@ -1985,7 +2276,7 @@ func (r *Router) handleA2ASendTask(w http.ResponseWriter, req *http.Request) {
 			actualAgentID = r.defaultAgent
 		} else if agentCtx, ok := agentRuntime.FindAgentByName(r.defaultAgent); ok {
 			actualAgentID = agentCtx.ID
-		} else if agentEntry := r.kernel.AgentRegistry().FindByName(r.defaultAgent); agentEntry != nil {
+		} else if agentEntry := r.getKernel(req).AgentRegistry().FindByName(r.defaultAgent); agentEntry != nil {
 			actualAgentID = agentEntry.ID.String()
 		}
 	}
@@ -1996,7 +2287,7 @@ func (r *Router) handleA2ASendTask(w http.ResponseWriter, req *http.Request) {
 			actualAgentID = agentCtx.ID
 			actualAgentName = agentCtx.Name
 		} else {
-			agents := r.kernel.AgentRegistry().List()
+			agents := r.getKernel(req).AgentRegistry().List()
 			if len(agents) == 0 {
 				respondError(w, http.StatusNotFound, "No agents available")
 				return
@@ -2006,7 +2297,7 @@ func (r *Router) handleA2ASendTask(w http.ResponseWriter, req *http.Request) {
 		}
 	} else {
 		if aid, err := uuid.Parse(actualAgentID); err == nil {
-			agentEntry := r.kernel.AgentRegistry().Get(aid)
+			agentEntry := r.getKernel(req).AgentRegistry().Get(aid)
 			if agentEntry != nil {
 				actualAgentName = agentEntry.Name
 			}
@@ -2023,7 +2314,7 @@ func (r *Router) handleA2ASendTask(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	if r.kernel.A2ATaskStore() == nil {
+	if r.getKernel(req).A2ATaskStore() == nil {
 		respondError(w, http.StatusInternalServerError, "A2A not configured")
 		return
 	}
@@ -2039,14 +2330,14 @@ func (r *Router) handleA2ASendTask(w http.ResponseWriter, req *http.Request) {
 			},
 		},
 	}
-	task := r.kernel.A2ATaskStore().CreateTask(actualAgentID, actualAgentName, messages, sessionID)
+	task := r.getKernel(req).A2ATaskStore().CreateTask(actualAgentID, actualAgentName, messages, sessionID)
 	task.Status.State = a2a.A2aTaskStatusWorking
-	r.kernel.A2ATaskStore().UpdateTaskStatus(task.ID, a2a.A2aTaskStatusWorking)
+	r.getKernel(req).A2ATaskStore().UpdateTaskStatus(task.ID, a2a.A2aTaskStatusWorking)
 
-	r.kernel.AuditLog().Record("a2a", actualAgentID, audit.ActionA2ATaskCreated, fmt.Sprintf("task_id=%s", task.ID), "submitted")
+	r.getKernel(req).AuditLog().Record("a2a", actualAgentID, audit.ActionA2ATaskCreated, fmt.Sprintf("task_id=%s", task.ID), "submitted")
 
 	go func() {
-		result, err := r.kernel.SendMessage(context.Background(), actualAgentID, messageText)
+		result, err := r.getKernel(req).SendMessage(context.Background(), actualAgentID, messageText)
 		if err != nil {
 			errorMsg := a2a.A2aMessage{
 				Role: "agent",
@@ -2057,8 +2348,8 @@ func (r *Router) handleA2ASendTask(w http.ResponseWriter, req *http.Request) {
 					},
 				},
 			}
-			r.kernel.A2ATaskStore().FailTask(task.ID, errorMsg)
-			r.kernel.AuditLog().Record("a2a", actualAgentID, audit.ActionA2ATaskFailed, fmt.Sprintf("task_id=%s, error=%v", task.ID, err), "failed")
+			r.getKernel(req).A2ATaskStore().FailTask(task.ID, errorMsg)
+			r.getKernel(req).AuditLog().Record("a2a", actualAgentID, audit.ActionA2ATaskFailed, fmt.Sprintf("task_id=%s, error=%v", task.ID, err), "failed")
 		} else {
 			responseMsg := a2a.A2aMessage{
 				Role: "agent",
@@ -2069,12 +2360,12 @@ func (r *Router) handleA2ASendTask(w http.ResponseWriter, req *http.Request) {
 					},
 				},
 			}
-			r.kernel.A2ATaskStore().CompleteTask(task.ID, responseMsg, []a2a.A2aArtifact{})
-			r.kernel.AuditLog().Record("a2a", actualAgentID, audit.ActionA2ATaskCompleted, fmt.Sprintf("task_id=%s", task.ID), "completed")
+			r.getKernel(req).A2ATaskStore().CompleteTask(task.ID, responseMsg, []a2a.A2aArtifact{})
+			r.getKernel(req).AuditLog().Record("a2a", actualAgentID, audit.ActionA2ATaskCompleted, fmt.Sprintf("task_id=%s", task.ID), "completed")
 		}
 	}()
 
-	if completedTask, ok := r.kernel.A2ATaskStore().GetTask(task.ID); ok {
+	if completedTask, ok := r.getKernel(req).A2ATaskStore().GetTask(task.ID); ok {
 		respondJSON(w, http.StatusOK, completedTask)
 	} else {
 		respondError(w, http.StatusInternalServerError, "Task disappeared after submission")
@@ -2084,12 +2375,12 @@ func (r *Router) handleA2ASendTask(w http.ResponseWriter, req *http.Request) {
 // handleA2AGetTask handles GET /a2a/tasks/{id} — Get task status
 func (r *Router) handleA2AGetTask(w http.ResponseWriter, req *http.Request) {
 	taskID := req.PathValue("id")
-	if r.kernel.A2ATaskStore() == nil {
+	if r.getKernel(req).A2ATaskStore() == nil {
 		respondError(w, http.StatusInternalServerError, "A2A not configured")
 		return
 	}
 
-	if task, ok := r.kernel.A2ATaskStore().GetTask(taskID); ok {
+	if task, ok := r.getKernel(req).A2ATaskStore().GetTask(taskID); ok {
 		respondJSON(w, http.StatusOK, task)
 	} else {
 		respondError(w, http.StatusNotFound, fmt.Sprintf("Task '%s' not found", taskID))
@@ -2099,21 +2390,21 @@ func (r *Router) handleA2AGetTask(w http.ResponseWriter, req *http.Request) {
 // handleA2ACancelTask handles POST /a2a/tasks/{id}/cancel — Cancel a task
 func (r *Router) handleA2ACancelTask(w http.ResponseWriter, req *http.Request) {
 	taskID := req.PathValue("id")
-	if r.kernel.A2ATaskStore() == nil {
+	if r.getKernel(req).A2ATaskStore() == nil {
 		respondError(w, http.StatusInternalServerError, "A2A not configured")
 		return
 	}
 
-	if task, ok := r.kernel.A2ATaskStore().GetTask(taskID); ok {
-		if r.kernel.A2ATaskStore().CancelTask(taskID) {
+	if task, ok := r.getKernel(req).A2ATaskStore().GetTask(taskID); ok {
+		if r.getKernel(req).A2ATaskStore().CancelTask(taskID) {
 			var sessionIDStr string
 			if task.SessionID != nil {
 				sessionIDStr = *task.SessionID
 			} else {
 				sessionIDStr = "default"
 			}
-			r.kernel.AuditLog().Record("a2a", sessionIDStr, audit.ActionA2ATaskCancelled, fmt.Sprintf("task_id=%s", taskID), "cancelled")
-			if updatedTask, ok := r.kernel.A2ATaskStore().GetTask(taskID); ok {
+			r.getKernel(req).AuditLog().Record("a2a", sessionIDStr, audit.ActionA2ATaskCancelled, fmt.Sprintf("task_id=%s", taskID), "cancelled")
+			if updatedTask, ok := r.getKernel(req).A2ATaskStore().GetTask(taskID); ok {
 				respondJSON(w, http.StatusOK, updatedTask)
 			} else {
 				respondError(w, http.StatusInternalServerError, "Task disappeared after cancellation")
@@ -2136,22 +2427,22 @@ func (r *Router) handleA2ADiscoverExternal(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	if r.kernel.A2AClient() == nil {
+	if r.getKernel(req).A2AClient() == nil {
 		respondError(w, http.StatusInternalServerError, "A2A not configured")
 		return
 	}
 
-	card, err := r.kernel.A2AClient().DiscoverAgent(body.URL)
+	card, err := r.getKernel(req).A2AClient().DiscoverAgent(body.URL)
 	if err != nil {
-		r.kernel.AuditLog().Record("a2a", body.URL, audit.ActionA2AAgentDiscovered, fmt.Sprintf("url=%s, error=%v", body.URL, err), "failed")
+		r.getKernel(req).AuditLog().Record("a2a", body.URL, audit.ActionA2AAgentDiscovered, fmt.Sprintf("url=%s, error=%v", body.URL, err), "failed")
 		respondError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 
-	r.kernel.AuditLog().Record("a2a", body.URL, audit.ActionA2AAgentDiscovered, fmt.Sprintf("url=%s, agent=%s", body.URL, card.Name), "success")
+	r.getKernel(req).AuditLog().Record("a2a", body.URL, audit.ActionA2AAgentDiscovered, fmt.Sprintf("url=%s, agent=%s", body.URL, card.Name), "success")
 
 	// Record A2A event
-	r.kernel.A2AClient().RecordAgentDiscoveredEvent(r.kernel.A2AEventStore(), card, body.URL)
+	r.getKernel(req).A2AClient().RecordAgentDiscoveredEvent(r.getKernel(req).A2AEventStore(), card, body.URL)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"url":   body.URL,
@@ -2164,7 +2455,7 @@ func (r *Router) handleA2ATopology(w http.ResponseWriter, req *http.Request) {
 	var topology a2a.Topology
 
 	// Add local agents
-	localAgents := r.kernel.AgentRegistry().List()
+	localAgents := r.getKernel(req).AgentRegistry().List()
 	for _, agent := range localAgents {
 		topology.Nodes = append(topology.Nodes, &a2a.TopoNode{
 			ID:    agent.ID.String(),
@@ -2175,8 +2466,8 @@ func (r *Router) handleA2ATopology(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Add external agents
-	if r.kernel.A2AClient() != nil {
-		externalAgents := r.kernel.A2AClient().ListExternalAgents()
+	if r.getKernel(req).A2AClient() != nil {
+		externalAgents := r.getKernel(req).A2AClient().ListExternalAgents()
 		for _, extAgent := range externalAgents {
 			topology.Nodes = append(topology.Nodes, &a2a.TopoNode{
 				ID:    extAgent.Card.Name,
@@ -2196,7 +2487,7 @@ func (r *Router) handleA2ATopology(w http.ResponseWriter, req *http.Request) {
 
 // handleA2AEvents handles GET /api/a2a/events — Get A2A events
 func (r *Router) handleA2AEvents(w http.ResponseWriter, req *http.Request) {
-	if r.kernel.A2AEventStore() == nil {
+	if r.getKernel(req).A2AEventStore() == nil {
 		respondJSON(w, http.StatusOK, []interface{}{})
 		return
 	}
@@ -2210,12 +2501,13 @@ func (r *Router) handleA2AEvents(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	events := r.kernel.A2AEventStore().ListEvents(limit)
+	events := r.getKernel(req).A2AEventStore().ListEvents(limit)
 	respondJSON(w, http.StatusOK, events)
 }
 
 // handleCommsSend handles POST /api/comms/send — Send a message from one agent to another (local or external)
 func (r *Router) handleCommsSend(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	var body struct {
 		FromAgentID   string `json:"fromAgentId"`
 		FromAgentName string `json:"fromAgentName"`
@@ -2239,8 +2531,8 @@ func (r *Router) handleCommsSend(w http.ResponseWriter, req *http.Request) {
 
 	// Check if agent is external agent
 	var externalAgent *a2a.ExternalAgent
-	if r.kernel.A2AClient() != nil {
-		externalAgents := r.kernel.A2AClient().ListExternalAgents()
+	if k.A2AClient() != nil {
+		externalAgents := k.A2AClient().ListExternalAgents()
 		for _, extAgent := range externalAgents {
 			if extAgent.Card.Name == body.ToAgentID {
 				externalAgent = extAgent
@@ -2254,19 +2546,19 @@ func (r *Router) handleCommsSend(w http.ResponseWriter, req *http.Request) {
 
 	if externalAgent != nil {
 		// Send to external agent first
-		externalTask, err := r.kernel.A2AClient().SendTask(externalAgent.URL, body.Message, nil)
+		externalTask, err := k.A2AClient().SendTask(externalAgent.URL, body.Message, nil)
 		if err != nil {
-			r.kernel.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("message=%s, error=%v", body.Message, err), "failed")
+			k.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("message=%s, error=%v", body.Message, err), "failed")
 			respondError(w, http.StatusBadGateway, err.Error())
 			return
 		}
 
 		// Create task in store with external task ID
 		externalTask.AgentName = body.ToAgentName
-		r.kernel.A2ATaskStore().AddTask(externalTask)
-		r.kernel.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("message=%s, task_id=%s", body.Message, externalTask.ID), "success")
+		k.A2ATaskStore().AddTask(externalTask)
+		k.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("message=%s, task_id=%s", body.Message, externalTask.ID), "success")
 
-		if r.kernel.A2AEventStore() != nil {
+		if k.A2AEventStore() != nil {
 			event := &a2a.A2AEvent{
 				ID:         uuid.New().String(),
 				Timestamp:  time.Now(),
@@ -2278,17 +2570,17 @@ func (r *Router) handleCommsSend(w http.ResponseWriter, req *http.Request) {
 				Detail:     body.Message,
 				Payload:    map[string]interface{}{"task": externalTask},
 			}
-			r.kernel.A2AEventStore().AddEvent(event)
+			k.A2AEventStore().AddEvent(event)
 		}
 
 		// If task is already completed/failed/cancelled, just update status (messages and artifacts are already in the task)
 		if externalTask.Status.State == a2a.A2aTaskStatusCompleted ||
 			externalTask.Status.State == a2a.A2aTaskStatusFailed ||
 			externalTask.Status.State == a2a.A2aTaskStatusCancelled {
-			r.kernel.A2ATaskStore().UpdateTaskStatus(externalTask.ID, externalTask.Status.State)
+			k.A2ATaskStore().UpdateTaskStatus(externalTask.ID, externalTask.Status.State)
 		} else {
 			// Start polling for status
-			r.kernel.A2AClient().StartPolling(externalTask.ID, externalAgent.URL, 2*time.Second)
+			k.A2AClient().StartPolling(externalTask.ID, externalAgent.URL, 2*time.Second)
 		}
 
 		respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -2306,17 +2598,17 @@ func (r *Router) handleCommsSend(w http.ResponseWriter, req *http.Request) {
 			},
 		},
 	}
-	task := r.kernel.A2ATaskStore().CreateTask(body.ToAgentID, body.ToAgentName, messages, nil)
+	task := k.A2ATaskStore().CreateTask(body.ToAgentID, body.ToAgentName, messages, nil)
 
 	// Execute task asynchronously
 	go func() {
 		ctx := context.Background()
-		r.kernel.A2ATaskStore().UpdateTaskStatus(task.ID, a2a.A2aTaskStatusWorking)
+		k.A2ATaskStore().UpdateTaskStatus(task.ID, a2a.A2aTaskStatusWorking)
 
-		response, err := r.kernel.SendMessage(ctx, body.ToAgentID, body.Message)
+		response, err := k.SendMessage(ctx, body.ToAgentID, body.Message)
 		if err != nil {
-			r.kernel.AuditLog().Record("comms", body.ToAgentID, audit.ActionAgentMessage, fmt.Sprintf("to=%s, error=%v", body.ToAgentID, err), "failed")
-			r.kernel.A2ATaskStore().FailTask(task.ID, a2a.A2aMessage{
+			k.AuditLog().Record("comms", body.ToAgentID, audit.ActionAgentMessage, fmt.Sprintf("to=%s, error=%v", body.ToAgentID, err), "failed")
+			k.A2ATaskStore().FailTask(task.ID, a2a.A2aMessage{
 				Role: "assistant",
 				Parts: []a2a.A2aPart{
 					{Type: "text", Text: fmt.Sprintf("Error: %v", err)},
@@ -2325,10 +2617,10 @@ func (r *Router) handleCommsSend(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		r.kernel.AuditLog().Record("comms", body.ToAgentID, audit.ActionAgentMessage, fmt.Sprintf("from=%s, to=%s", body.FromAgentID, body.ToAgentID), "success")
+		k.AuditLog().Record("comms", body.ToAgentID, audit.ActionAgentMessage, fmt.Sprintf("from=%s, to=%s", body.FromAgentID, body.ToAgentID), "success")
 
 		// Complete task with response
-		r.kernel.A2ATaskStore().CompleteTask(task.ID, a2a.A2aMessage{
+		k.A2ATaskStore().CompleteTask(task.ID, a2a.A2aMessage{
 			Role: "assistant",
 			Parts: []a2a.A2aPart{
 				{Type: "text", Text: response},
@@ -2343,6 +2635,7 @@ func (r *Router) handleCommsSend(w http.ResponseWriter, req *http.Request) {
 
 // handleCommsTask handles POST /api/comms/task — Publish a task to an agent's task queue
 func (r *Router) handleCommsTask(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	var body struct {
 		AgentID    string `json:"agentId"`
 		AssignedTo string `json:"assignedTo"`
@@ -2368,7 +2661,7 @@ func (r *Router) handleCommsTask(w http.ResponseWriter, req *http.Request) {
 
 	// If no agent specified, use the first available local agent
 	if agentID == "" {
-		localAgents := r.kernel.AgentRegistry().List()
+		localAgents := k.AgentRegistry().List()
 		if len(localAgents) == 0 {
 			respondError(w, http.StatusBadRequest, "No agents available")
 			return
@@ -2381,8 +2674,8 @@ func (r *Router) handleCommsTask(w http.ResponseWriter, req *http.Request) {
 
 	// Check if agent is external agent
 	var externalAgent *a2a.ExternalAgent
-	if r.kernel.A2AClient() != nil {
-		externalAgents := r.kernel.A2AClient().ListExternalAgents()
+	if k.A2AClient() != nil {
+		externalAgents := k.A2AClient().ListExternalAgents()
 		for _, extAgent := range externalAgents {
 			if extAgent.Card.Name == agentID {
 				externalAgent = extAgent
@@ -2398,25 +2691,25 @@ func (r *Router) handleCommsTask(w http.ResponseWriter, req *http.Request) {
 
 	if externalAgent != nil {
 		// Send to external agent
-		if r.kernel.A2AClient() == nil {
+		if k.A2AClient() == nil {
 			respondError(w, http.StatusInternalServerError, "A2A not configured")
 			return
 		}
 
 		// Send to external agent first
-		externalTask, err := r.kernel.A2AClient().SendTask(externalAgent.URL, message, nil)
+		externalTask, err := k.A2AClient().SendTask(externalAgent.URL, message, nil)
 		if err != nil {
-			r.kernel.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("task=%s, error=%v", body.Title, err), "failed")
+			k.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("task=%s, error=%v", body.Title, err), "failed")
 			respondError(w, http.StatusBadGateway, err.Error())
 			return
 		}
 
 		// Create task in store with external task ID
 		externalTask.AgentName = body.AgentName
-		r.kernel.A2ATaskStore().AddTask(externalTask)
-		r.kernel.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("task=%s, task_id=%s", body.Title, externalTask.ID), "success")
+		k.A2ATaskStore().AddTask(externalTask)
+		k.AuditLog().Record("a2a", externalAgent.URL, audit.ActionA2ATaskSent, fmt.Sprintf("task=%s, task_id=%s", body.Title, externalTask.ID), "success")
 
-		if r.kernel.A2AEventStore() != nil {
+		if k.A2AEventStore() != nil {
 			event := &a2a.A2AEvent{
 				ID:         uuid.New().String(),
 				Timestamp:  time.Now(),
@@ -2428,17 +2721,17 @@ func (r *Router) handleCommsTask(w http.ResponseWriter, req *http.Request) {
 				Detail:     body.Title,
 				Payload:    map[string]interface{}{"description": body.Desc, "task": externalTask},
 			}
-			r.kernel.A2AEventStore().AddEvent(event)
+			k.A2AEventStore().AddEvent(event)
 		}
 
 		// If task is already completed/failed/cancelled, just update status (messages and artifacts are already in the task)
 		if externalTask.Status.State == a2a.A2aTaskStatusCompleted ||
 			externalTask.Status.State == a2a.A2aTaskStatusFailed ||
 			externalTask.Status.State == a2a.A2aTaskStatusCancelled {
-			r.kernel.A2ATaskStore().UpdateTaskStatus(externalTask.ID, externalTask.Status.State)
+			k.A2ATaskStore().UpdateTaskStatus(externalTask.ID, externalTask.Status.State)
 		} else {
 			// Start polling for status
-			r.kernel.A2AClient().StartPolling(externalTask.ID, externalAgent.URL, 2*time.Second)
+			k.A2AClient().StartPolling(externalTask.ID, externalAgent.URL, 2*time.Second)
 		}
 
 		respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -2450,7 +2743,7 @@ func (r *Router) handleCommsTask(w http.ResponseWriter, req *http.Request) {
 	// If agentName not provided, try to get it from registry
 	if body.AgentName == "" {
 		if aid, err := uuid.Parse(agentID); err == nil {
-			agentEntry := r.kernel.AgentRegistry().Get(aid)
+			agentEntry := k.AgentRegistry().Get(aid)
 			if agentEntry != nil {
 				body.AgentName = agentEntry.Name
 			}
@@ -2466,17 +2759,17 @@ func (r *Router) handleCommsTask(w http.ResponseWriter, req *http.Request) {
 			},
 		},
 	}
-	task := r.kernel.A2ATaskStore().CreateTask(agentID, body.AgentName, messages, nil)
+	task := k.A2ATaskStore().CreateTask(agentID, body.AgentName, messages, nil)
 
 	// Execute task asynchronously
 	go func() {
 		ctx := context.Background()
-		r.kernel.A2ATaskStore().UpdateTaskStatus(task.ID, a2a.A2aTaskStatusWorking)
+		k.A2ATaskStore().UpdateTaskStatus(task.ID, a2a.A2aTaskStatusWorking)
 
-		response, err := r.kernel.SendMessage(ctx, agentID, message)
+		response, err := k.SendMessage(ctx, agentID, message)
 		if err != nil {
-			r.kernel.AuditLog().Record("comms", agentID, audit.ActionAgentMessage, fmt.Sprintf("task=%s, error=%v", body.Title, err), "failed")
-			r.kernel.A2ATaskStore().FailTask(task.ID, a2a.A2aMessage{
+			k.AuditLog().Record("comms", agentID, audit.ActionAgentMessage, fmt.Sprintf("task=%s, error=%v", body.Title, err), "failed")
+			k.A2ATaskStore().FailTask(task.ID, a2a.A2aMessage{
 				Role: "assistant",
 				Parts: []a2a.A2aPart{
 					{Type: "text", Text: fmt.Sprintf("Error: %v", err)},
@@ -2485,10 +2778,10 @@ func (r *Router) handleCommsTask(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		r.kernel.AuditLog().Record("comms", agentID, audit.ActionAgentMessage, fmt.Sprintf("task=%s, agent=%s", body.Title, agentID), "success")
+		k.AuditLog().Record("comms", agentID, audit.ActionAgentMessage, fmt.Sprintf("task=%s, agent=%s", body.Title, agentID), "success")
 
 		// Complete task with response
-		r.kernel.A2ATaskStore().CompleteTask(task.ID, a2a.A2aMessage{
+		k.A2ATaskStore().CompleteTask(task.ID, a2a.A2aMessage{
 			Role: "assistant",
 			Parts: []a2a.A2aPart{
 				{Type: "text", Text: response},
@@ -2503,28 +2796,30 @@ func (r *Router) handleCommsTask(w http.ResponseWriter, req *http.Request) {
 
 // handleListTasks handles GET /api/tasks — List all tasks
 func (r *Router) handleListTasks(w http.ResponseWriter, req *http.Request) {
-	if r.kernel.A2ATaskStore() == nil {
+	k := r.getKernel(req)
+	if k.A2ATaskStore() == nil {
 		respondError(w, http.StatusInternalServerError, "Task store not available")
 		return
 	}
-	tasks := r.kernel.A2ATaskStore().ListTasks()
+	tasks := k.A2ATaskStore().ListTasks()
 	respondJSON(w, http.StatusOK, tasks)
 }
 
 // handleGetTask handles GET /api/tasks/{id} — Get a specific task by ID
 func (r *Router) handleGetTask(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	taskID := req.PathValue("id")
 	if taskID == "" {
 		respondError(w, http.StatusBadRequest, "Missing task ID")
 		return
 	}
 
-	if r.kernel.A2ATaskStore() == nil {
+	if k.A2ATaskStore() == nil {
 		respondError(w, http.StatusInternalServerError, "Task store not available")
 		return
 	}
 
-	task, ok := r.kernel.A2ATaskStore().GetTask(taskID)
+	task, ok := k.A2ATaskStore().GetTask(taskID)
 	if !ok {
 		respondError(w, http.StatusNotFound, "Task not found")
 		return
@@ -2535,6 +2830,7 @@ func (r *Router) handleGetTask(w http.ResponseWriter, req *http.Request) {
 
 // handleA2ASendExternal handles POST /api/a2a/send — Send task to an external A2A agent
 func (r *Router) handleA2ASendExternal(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
 	var body struct {
 		URL       string  `json:"url"`
 		Message   string  `json:"message"`
@@ -2554,19 +2850,19 @@ func (r *Router) handleA2ASendExternal(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	if r.kernel.A2AClient() == nil {
+	if k.A2AClient() == nil {
 		respondError(w, http.StatusInternalServerError, "A2A not configured")
 		return
 	}
 
-	task, err := r.kernel.A2AClient().SendTask(body.URL, body.Message, body.SessionID)
+	task, err := k.A2AClient().SendTask(body.URL, body.Message, body.SessionID)
 	if err != nil {
-		r.kernel.AuditLog().Record("a2a", body.URL, audit.ActionA2ATaskSent, fmt.Sprintf("url=%s, error=%v", body.URL, err), "failed")
+		k.AuditLog().Record("a2a", body.URL, audit.ActionA2ATaskSent, fmt.Sprintf("url=%s, error=%v", body.URL, err), "failed")
 		respondError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 
-	r.kernel.AuditLog().Record("a2a", body.URL, audit.ActionA2ATaskSent, fmt.Sprintf("url=%s, task_id=%s", body.URL, task.ID), "success")
+	k.AuditLog().Record("a2a", body.URL, audit.ActionA2ATaskSent, fmt.Sprintf("url=%s, task_id=%s", body.URL, task.ID), "success")
 
 	respondJSON(w, http.StatusOK, task)
 }
@@ -2580,12 +2876,12 @@ func (r *Router) handleA2AExternalTaskStatus(w http.ResponseWriter, req *http.Re
 		return
 	}
 
-	if r.kernel.A2AClient() == nil {
+	if r.getKernel(req).A2AClient() == nil {
 		respondError(w, http.StatusInternalServerError, "A2A not configured")
 		return
 	}
 
-	task, err := r.kernel.A2AClient().GetTaskStatus(url, taskID)
+	task, err := r.getKernel(req).A2AClient().GetTaskStatus(url, taskID)
 	if err != nil {
 		respondError(w, http.StatusBadGateway, err.Error())
 		return
@@ -2607,7 +2903,7 @@ func (r *Router) handleGetAgentSession(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	sessionsStore := r.kernel.SessionStore()
+	sessionsStore := r.getKernel(req).SessionStore()
 	if sessionsStore == nil {
 		respondJSON(w, http.StatusOK, map[string]interface{}{
 			"session_id": "default",
@@ -2669,7 +2965,7 @@ func (r *Router) handleGetAgentSessions(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	sessionsStore := r.kernel.SessionStore()
+	sessionsStore := r.getKernel(req).SessionStore()
 	if sessionsStore == nil {
 		respondJSON(w, http.StatusOK, map[string]interface{}{"sessions": []interface{}{}})
 		return
@@ -2704,8 +3000,8 @@ func (r *Router) handleCreateAgentSession(w http.ResponseWriter, req *http.Reque
 		// Ignore decode errors, use empty label
 	}
 
-	sessionsStore := r.kernel.SessionStore()
-	agent := r.kernel.AgentRegistry().Get(agentID)
+	sessionsStore := r.getKernel(req).SessionStore()
+	agent := r.getKernel(req).AgentRegistry().Get(agentID)
 
 	agentName := ""
 	agentModelProvider := ""
@@ -2785,7 +3081,13 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	agentRuntime := r.kernel.AgentRuntime()
+	k := r.getKernel(req)
+	if !k.IsSetupComplete() {
+		respondError(w, http.StatusBadRequest, "Setup incomplete: Please configure your provider API key in Dashboard Settings Page first")
+		return
+	}
+
+	agentRuntime := k.AgentRuntime()
 	if agentRuntime == nil {
 		respondError(w, http.StatusInternalServerError, "agent runtime not available")
 		return
@@ -2802,7 +3104,7 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 	} else if agentCtx, ok := agentRuntime.FindAgentByName(agentIdentifier); ok {
 		actualAgentID = agentCtx.ID
 	} else {
-		if agentEntry := r.kernel.AgentRegistry().FindByName(agentIdentifier); agentEntry != nil {
+		if agentEntry := r.getKernel(req).AgentRegistry().FindByName(agentIdentifier); agentEntry != nil {
 			actualAgentID = agentEntry.ID.String()
 		} else {
 			if agentCtx, ok := agentRuntime.GetFirstAgent(); ok {
@@ -2815,7 +3117,7 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 	}
 
 	ctx := context.Background()
-	response, inputTokens, outputTokens, err := r.kernel.SendMessageWithUsage(ctx, actualAgentID, reqBody.Message)
+	response, inputTokens, outputTokens, err := r.getKernel(req).SendMessageWithUsage(ctx, actualAgentID, reqBody.Message)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -2944,8 +3246,8 @@ func (r *Router) handleAuditRecent(w http.ResponseWriter, req *http.Request) {
 		n = 1000
 	}
 
-	entries := r.kernel.AuditLog().GetRecent(n)
-	tipHash := r.kernel.AuditLog().GetChainHash()
+	entries := r.getKernel(req).AuditLog().GetRecent(n)
+	tipHash := r.getKernel(req).AuditLog().GetChainHash()
 
 	items := make([]map[string]interface{}, 0, len(entries))
 	for i, entry := range entries {
@@ -2967,7 +3269,7 @@ func (r *Router) handleAuditRecent(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleAuditVerify(w http.ResponseWriter, req *http.Request) {
-	valid, err := r.kernel.AuditLog().Verify()
+	valid, err := r.getKernel(req).AuditLog().Verify()
 	if err != nil {
 		respondJSON(w, http.StatusOK, map[string]interface{}{
 			"valid": false,
@@ -2978,12 +3280,12 @@ func (r *Router) handleAuditVerify(w http.ResponseWriter, req *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"valid":   valid,
-		"entries": r.kernel.AuditLog().Count(),
+		"entries": r.getKernel(req).AuditLog().Count(),
 	})
 }
 
 func (r *Router) handleMcpServers(w http.ResponseWriter, req *http.Request) {
-	servers := r.kernel.GetMcpServers()
+	servers := r.getKernel(req).GetMcpServers()
 	respondJSON(w, http.StatusOK, servers)
 }
 
@@ -3034,7 +3336,7 @@ func (r *Router) handlePatchAgentConfig(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	if r.kernel.AgentRegistry().Get(agentID) == nil {
+	if r.getKernel(req).AgentRegistry().Get(agentID) == nil {
 		respondError(w, http.StatusNotFound, "agent not found")
 		return
 	}
@@ -3051,7 +3353,7 @@ func (r *Router) handlePatchAgentConfig(w http.ResponseWriter, req *http.Request
 	}
 
 	if reqBody.SystemPrompt != nil {
-		if err := r.kernel.AgentRegistry().UpdateSystemPrompt(agentID, *reqBody.SystemPrompt); err != nil {
+		if err := r.getKernel(req).AgentRegistry().UpdateSystemPrompt(agentID, *reqBody.SystemPrompt); err != nil {
 			respondError(w, http.StatusNotFound, "agent not found")
 			return
 		}
@@ -3078,7 +3380,7 @@ func (r *Router) handlePatchAgentConfig(w http.ResponseWriter, req *http.Request
 	}
 
 	if len(identity) > 0 {
-		if err := r.kernel.AgentRegistry().UpdateIdentity(agentID, identity); err != nil {
+		if err := r.getKernel(req).AgentRegistry().UpdateIdentity(agentID, identity); err != nil {
 			respondError(w, http.StatusNotFound, "agent not found")
 			return
 		}
@@ -3219,7 +3521,7 @@ func (r *Router) handleLogsStream(w http.ResponseWriter, req *http.Request) {
 			fmt.Fprintf(w, ": ping\n\n")
 			flusher.Flush()
 		case <-ticker.C:
-			entries := r.kernel.AuditLog().GetRecent(200)
+			entries := r.getKernel(req).AuditLog().GetRecent(200)
 
 			for i, entry := range entries {
 				seq := i + 1
@@ -3312,7 +3614,7 @@ func (r *Router) handleA2AEventsStream(w http.ResponseWriter, req *http.Request)
 			fmt.Fprintf(w, ": ping\n\n")
 			flusher.Flush()
 		case <-ticker.C:
-			events := r.kernel.A2AEventStore().ListEvents(200)
+			events := r.getKernel(req).A2AEventStore().ListEvents(200)
 
 			if firstPoll {
 				if len(events) > 0 {
@@ -3360,7 +3662,7 @@ func (r *Router) handleA2AEventsStream(w http.ResponseWriter, req *http.Request)
 }
 
 func (r *Router) handleUsageSummary(w http.ResponseWriter, req *http.Request) {
-	summary, err := r.kernel.UsageStore().QuerySummary()
+	summary, err := r.getKernel(req).UsageStore().QuerySummary()
 	if err != nil || summary.CallCount == 0 {
 		respondJSON(w, http.StatusOK, map[string]interface{}{
 			"total_input_tokens":  0,
@@ -3381,7 +3683,7 @@ func (r *Router) handleUsageSummary(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleUsageByModel(w http.ResponseWriter, req *http.Request) {
-	models, err := r.kernel.UsageStore().GetUsageByModel()
+	models, err := r.getKernel(req).UsageStore().GetUsageByModel()
 	if err != nil || models == nil || len(models) == 0 {
 		models = []*types.ModelUsage{}
 	}
@@ -3391,7 +3693,7 @@ func (r *Router) handleUsageByModel(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleUsageDaily(w http.ResponseWriter, req *http.Request) {
-	days, err := r.kernel.UsageStore().GetDailyBreakdown(7)
+	days, err := r.getKernel(req).UsageStore().GetDailyBreakdown(7)
 	if err != nil || days == nil || len(days) == 0 {
 		today := time.Now()
 		days = []*types.DailyBreakdown{}
@@ -3406,9 +3708,9 @@ func (r *Router) handleUsageDaily(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	todayCost, _ := r.kernel.UsageStore().GetTodayCost()
+	todayCost, _ := r.getKernel(req).UsageStore().GetTodayCost()
 
-	firstEventDate, _ := r.kernel.UsageStore().GetFirstEventDate()
+	firstEventDate, _ := r.getKernel(req).UsageStore().GetFirstEventDate()
 	if firstEventDate == nil && len(days) > 0 {
 		firstEventDate = &days[0].Date
 	}
@@ -3450,11 +3752,12 @@ func getDefaultHands() []map[string]string {
 }
 
 func (r *Router) handleListHands(w http.ResponseWriter, req *http.Request) {
-	handDefs := r.kernel.HandRegistry().ListDefinitions()
-	instances := r.kernel.HandRegistry().ListInstances()
+	k := r.getKernel(req)
+	handDefs := k.HandRegistry().ListDefinitions()
+	instances := k.HandRegistry().ListInstances()
 
 	// Read locally saved hand status
-	handsStatus := loadHandsStatus()
+	handsStatus := loadHandsStatusForKernel(k)
 	handStatusMap := make(map[string]string)
 	for _, h := range handsStatus {
 		handStatusMap[h["id"]] = h["status"]
@@ -3515,7 +3818,7 @@ func (r *Router) handleListHands(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleActiveHands(w http.ResponseWriter, req *http.Request) {
-	instances := r.kernel.HandRegistry().ListInstances()
+	instances := r.getKernel(req).HandRegistry().ListInstances()
 
 	var activeInstances []map[string]interface{}
 	for _, inst := range instances {
@@ -3538,7 +3841,7 @@ func (r *Router) handleActiveHands(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleGetHand(w http.ResponseWriter, req *http.Request) {
 	handID := req.PathValue("id")
 
-	hand, ok := r.kernel.HandRegistry().GetDefinition(handID)
+	hand, ok := r.getKernel(req).HandRegistry().GetDefinition(handID)
 	if !ok {
 		respondError(w, http.StatusNotFound, "hand not found")
 		return
@@ -3569,13 +3872,19 @@ func (r *Router) handleActivateHand(w http.ResponseWriter, req *http.Request) {
 		defer req.Body.Close()
 	}
 
-	instance, err := r.kernel.ActivateHand(handID, config)
+	k := r.getKernel(req)
+	if !k.IsSetupComplete() {
+		respondError(w, http.StatusBadRequest, "Setup incomplete: Please configure your provider API key in Dashboard Settings Page first")
+		return
+	}
+
+	instance, err := k.ActivateHand(handID, config)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	updateHandStatus(handID, "active")
+	updateHandStatusForKernel(k, handID, "active")
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"success":     true,
@@ -3590,20 +3899,21 @@ func (r *Router) handleActivateHand(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleDeactivateHand(w http.ResponseWriter, req *http.Request) {
 	instanceID := req.PathValue("instanceID")
 
-	instance, ok := r.kernel.HandRegistry().GetInstance(instanceID)
+	k := r.getKernel(req)
+	instance, ok := k.HandRegistry().GetInstance(instanceID)
 	var handID string
 	if ok {
 		handID = instance.HandID
 	}
 
-	err := r.kernel.DeactivateHand(instanceID)
+	err := k.DeactivateHand(instanceID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	if handID != "" {
-		updateHandStatus(handID, "inactive")
+		updateHandStatusForKernel(k, handID, "inactive")
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -3614,20 +3924,21 @@ func (r *Router) handleDeactivateHand(w http.ResponseWriter, req *http.Request) 
 func (r *Router) handlePauseHand(w http.ResponseWriter, req *http.Request) {
 	instanceID := req.PathValue("instanceID")
 
-	instance, ok := r.kernel.HandRegistry().GetInstance(instanceID)
+	k := r.getKernel(req)
+	instance, ok := k.HandRegistry().GetInstance(instanceID)
 	var handID string
 	if ok {
 		handID = instance.HandID
 	}
 
-	err := r.kernel.PauseHand(instanceID)
+	err := k.PauseHand(instanceID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	if handID != "" {
-		updateHandStatus(handID, "paused")
+		updateHandStatusForKernel(k, handID, "paused")
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -3638,20 +3949,21 @@ func (r *Router) handlePauseHand(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleResumeHand(w http.ResponseWriter, req *http.Request) {
 	instanceID := req.PathValue("instanceID")
 
-	instance, ok := r.kernel.HandRegistry().GetInstance(instanceID)
+	k := r.getKernel(req)
+	instance, ok := k.HandRegistry().GetInstance(instanceID)
 	var handID string
 	if ok {
 		handID = instance.HandID
 	}
 
-	err := r.kernel.ResumeHand(instanceID)
+	err := k.ResumeHand(instanceID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	if handID != "" {
-		updateHandStatus(handID, "active")
+		updateHandStatusForKernel(k, handID, "active")
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -3662,13 +3974,13 @@ func (r *Router) handleResumeHand(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleHandInstanceStats(w http.ResponseWriter, req *http.Request) {
 	instanceID := req.PathValue("instanceID")
 
-	instance, ok := r.kernel.HandRegistry().GetInstance(instanceID)
+	instance, ok := r.getKernel(req).HandRegistry().GetInstance(instanceID)
 	if !ok {
 		respondError(w, http.StatusNotFound, "Instance not found")
 		return
 	}
 
-	def, ok := r.kernel.HandRegistry().GetDefinition(instance.HandID)
+	def, ok := r.getKernel(req).HandRegistry().GetDefinition(instance.HandID)
 	if !ok {
 		respondError(w, http.StatusNotFound, "Hand definition not found")
 		return
@@ -3703,7 +4015,7 @@ func (r *Router) handleHandInstanceStats(w http.ResponseWriter, req *http.Reques
 func (r *Router) handleHandInstanceBrowser(w http.ResponseWriter, req *http.Request) {
 	instanceID := req.PathValue("instanceID")
 
-	instance, ok := r.kernel.HandRegistry().GetInstance(instanceID)
+	instance, ok := r.getKernel(req).HandRegistry().GetInstance(instanceID)
 	if !ok {
 		respondError(w, http.StatusNotFound, "Instance not found")
 		return
@@ -3817,7 +4129,7 @@ func (r *Router) handleAPIModels(w http.ResponseWriter, req *http.Request) {
 	tierFilter := req.URL.Query().Get("tier")
 	availableOnly := req.URL.Query().Get("available") == "true" || req.URL.Query().Get("available") == "1"
 
-	allModels := r.kernel.ModelCatalog().ListModels()
+	allModels := r.getKernel(req).ModelCatalog().ListModels()
 	var filteredModels []map[string]interface{}
 
 	for _, m := range allModels {
@@ -3828,7 +4140,7 @@ func (r *Router) handleAPIModels(w http.ResponseWriter, req *http.Request) {
 			continue
 		}
 
-		provider := r.kernel.ModelCatalog().GetProvider(m.Provider)
+		provider := r.getKernel(req).ModelCatalog().GetProvider(m.Provider)
 		available := provider != nil && provider.AuthStatus != types.AuthStatusMissing
 
 		if availableOnly && !available {
@@ -3852,7 +4164,7 @@ func (r *Router) handleAPIModels(w http.ResponseWriter, req *http.Request) {
 	}
 
 	total := len(allModels)
-	availableCount := len(r.kernel.ModelCatalog().AvailableModels())
+	availableCount := len(r.getKernel(req).ModelCatalog().AvailableModels())
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"models":    filteredModels,
@@ -3862,7 +4174,7 @@ func (r *Router) handleAPIModels(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleModelsAliases(w http.ResponseWriter, req *http.Request) {
-	aliases := r.kernel.ModelCatalog().ListAliases()
+	aliases := r.getKernel(req).ModelCatalog().ListAliases()
 	var entries []map[string]interface{}
 
 	for alias, modelID := range aliases {
@@ -3881,13 +4193,13 @@ func (r *Router) handleModelsAliases(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleGetModel(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	model := r.kernel.ModelCatalog().FindModel(id)
+	model := r.getKernel(req).ModelCatalog().FindModel(id)
 	if model == nil {
 		respondError(w, http.StatusNotFound, fmt.Sprintf("Model '%s' not found", id))
 		return
 	}
 
-	provider := r.kernel.ModelCatalog().GetProvider(model.Provider)
+	provider := r.getKernel(req).ModelCatalog().GetProvider(model.Provider)
 	available := provider != nil && provider.AuthStatus != types.AuthStatusMissing
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -3920,7 +4232,7 @@ func (r *Router) handleAddCustomModel(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	r.kernel.ModelCatalog().AddCustomModel(model)
+	r.getKernel(req).ModelCatalog().AddCustomModel(model)
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"status": "ok",
@@ -3930,7 +4242,7 @@ func (r *Router) handleAddCustomModel(w http.ResponseWriter, req *http.Request) 
 func (r *Router) handleDeleteCustomModel(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	deleted := r.kernel.ModelCatalog().RemoveCustomModel(id)
+	deleted := r.getKernel(req).ModelCatalog().RemoveCustomModel(id)
 	if !deleted {
 		respondError(w, http.StatusNotFound, fmt.Sprintf("Custom model '%s' not found", id))
 		return
@@ -3945,7 +4257,7 @@ func (r *Router) handleListCronJobs(w http.ResponseWriter, req *http.Request) {
 	agentIDStr := req.URL.Query().Get("agent_id")
 	var jobs []types.CronJob
 
-	allJobs := r.kernel.CronScheduler().ListAllJobs()
+	allJobs := r.getKernel(req).CronScheduler().ListAllJobs()
 	if agentIDStr != "" {
 		agentID, err := types.ParseAgentID(agentIDStr)
 		if err != nil {
@@ -4002,7 +4314,7 @@ func (r *Router) handleCreateCronJob(w http.ResponseWriter, req *http.Request) {
 		reqBody.Delivery,
 	)
 
-	id, err := r.kernel.CronScheduler().AddJob(job, reqBody.OneShot)
+	id, err := r.getKernel(req).CronScheduler().AddJob(job, reqBody.OneShot)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -4010,6 +4322,53 @@ func (r *Router) handleCreateCronJob(w http.ResponseWriter, req *http.Request) {
 
 	respondJSON(w, http.StatusCreated, map[string]interface{}{
 		"job_id": id.String(),
+	})
+}
+
+func (r *Router) handleUpdateCronJob(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := types.ParseCronJobID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid job ID")
+		return
+	}
+
+	var reqBody struct {
+		AgentID  string             `json:"agent_id"`
+		Name     string             `json:"name"`
+		Enabled  bool               `json:"enabled"`
+		Schedule types.CronSchedule `json:"schedule"`
+		Action   types.CronAction   `json:"action"`
+		Delivery types.CronDelivery `json:"delivery"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	agentID, err := types.ParseAgentID(reqBody.AgentID)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid agent ID")
+		return
+	}
+
+	job := types.NewCronJob(
+		agentID,
+		reqBody.Name,
+		reqBody.Enabled,
+		reqBody.Schedule,
+		reqBody.Action,
+		reqBody.Delivery,
+	)
+
+	if err := r.getKernel(req).CronScheduler().UpdateJob(id, job); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id": idStr,
 	})
 }
 
@@ -4030,7 +4389,7 @@ func (r *Router) handleEnableCronJob(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := r.kernel.CronScheduler().SetEnabled(id, reqBody.Enabled); err != nil {
+	if err := r.getKernel(req).CronScheduler().SetEnabled(id, reqBody.Enabled); err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -4049,7 +4408,7 @@ func (r *Router) handleDeleteCronJob(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if _, err := r.kernel.CronScheduler().RemoveJob(id); err != nil {
+	if _, err := r.getKernel(req).CronScheduler().RemoveJob(id); err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -4067,7 +4426,7 @@ func (r *Router) handleCronJobStatus(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	meta := r.kernel.CronScheduler().GetMeta(id)
+	meta := r.getKernel(req).CronScheduler().GetMeta(id)
 	if meta == nil {
 		respondError(w, http.StatusNotFound, "Job not found")
 		return
@@ -4078,6 +4437,27 @@ func (r *Router) handleCronJobStatus(w http.ResponseWriter, req *http.Request) {
 		"one_shot":           meta.OneShot,
 		"last_status":        meta.LastStatus,
 		"consecutive_errors": meta.ConsecutiveErrors,
+	})
+}
+
+func (r *Router) handleRunCronJob(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := types.ParseCronJobID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid job ID")
+		return
+	}
+
+	k := r.getKernel(req)
+	go func() {
+		if err := k.RunCronJob(context.Background(), id); err != nil {
+			log.Error().Err(err).Str("job_id", id.String()).Msg("Failed to run cron job")
+		}
+	}()
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "started",
+		"job_id": id,
 	})
 }
 
@@ -4238,7 +4618,7 @@ func (r *Router) handleClawhubSkillDetail(w http.ResponseWriter, req *http.Reque
 		authorImage = detail.Owner.Image
 	}
 
-	skillsDir := filepath.Join(r.kernel.Config().DataDir, "skills")
+	skillsDir := filepath.Join(r.getKernel(req).Config().DataDir, "skills")
 	skillDir := filepath.Join(skillsDir, slug)
 	isInstalled := false
 	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
@@ -4278,7 +4658,7 @@ func (r *Router) handleClawhubInstall(w http.ResponseWriter, req *http.Request) 
 	}
 	// fmt.Println("[DEBUG] Request slug:", reqBody.Slug)
 
-	skillsDir := filepath.Join(r.kernel.Config().DataDir, "skills")
+	skillsDir := filepath.Join(r.getKernel(req).Config().DataDir, "skills")
 	// fmt.Println("[DEBUG] Skills directory:", skillsDir)
 
 	client := clawhub.NewClawHubClient()
@@ -4331,7 +4711,7 @@ func (r *Router) handleClawhubInstall(w http.ResponseWriter, req *http.Request) 
 }
 
 func (r *Router) handleListApprovals(w http.ResponseWriter, req *http.Request) {
-	pending := r.kernel.ApprovalManager().ListPending()
+	pending := r.getKernel(req).ApprovalManager().ListPending()
 	total := len(pending)
 
 	var approvals []map[string]interface{}
@@ -4403,7 +4783,7 @@ func (r *Router) handleCreateApproval(w http.ResponseWriter, req *http.Request) 
 	)
 
 	go func() {
-		ch, _ := r.kernel.ApprovalManager().RequestApproval(approvalReq)
+		ch, _ := r.getKernel(req).ApprovalManager().RequestApproval(approvalReq)
 		<-ch
 	}()
 
@@ -4416,7 +4796,7 @@ func (r *Router) handleCreateApproval(w http.ResponseWriter, req *http.Request) 
 func (r *Router) handleApproveApproval(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	if err := r.kernel.ApprovalManager().Resolve(id, approvals.ApprovalDecisionApproved, "api"); err != nil {
+	if err := r.getKernel(req).ApprovalManager().Resolve(id, approvals.ApprovalDecisionApproved, "api"); err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -4431,7 +4811,7 @@ func (r *Router) handleApproveApproval(w http.ResponseWriter, req *http.Request)
 func (r *Router) handleRejectApproval(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	if err := r.kernel.ApprovalManager().Resolve(id, approvals.ApprovalDecisionDenied, "api"); err != nil {
+	if err := r.getKernel(req).ApprovalManager().Resolve(id, approvals.ApprovalDecisionDenied, "api"); err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -4617,14 +4997,195 @@ func (r *Router) handleCreateWorkflow(w http.ResponseWriter, req *http.Request) 
 		CreatedAt:   time.Now(),
 	}
 
-	id := r.kernel.WorkflowEngine().Register(workflow)
+	id := r.getKernel(req).WorkflowEngine().Register(workflow)
 	respondJSON(w, http.StatusCreated, map[string]interface{}{
 		"workflow_id": id,
 	})
 }
 
+func (r *Router) handleUpdateWorkflow(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	workflowID := types.WorkflowID(idStr)
+
+	existingWorkflow := r.getKernel(req).WorkflowEngine().GetWorkflow(workflowID)
+	if existingWorkflow == nil {
+		respondError(w, http.StatusNotFound, "Workflow not found")
+		return
+	}
+
+	var reqBody map[string]interface{}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	name := existingWorkflow.Name
+	if n, ok := reqBody["name"].(string); ok {
+		name = n
+	}
+
+	description := existingWorkflow.Description
+	if d, ok := reqBody["description"].(string); ok {
+		description = d
+	}
+
+	stepsJson, ok := reqBody["steps"].([]interface{})
+	if !ok {
+		respondError(w, http.StatusBadRequest, "Missing 'steps' array")
+		return
+	}
+
+	var steps []types.WorkflowStep
+	for _, s := range stepsJson {
+		stepMap, ok := s.(map[string]interface{})
+		if !ok {
+			respondError(w, http.StatusBadRequest, "Invalid step format")
+			return
+		}
+
+		stepName := "step"
+		if sn, ok := stepMap["name"].(string); ok {
+			stepName = sn
+		}
+
+		var agent types.StepAgent
+		if agentID, ok := stepMap["agent_id"].(string); ok {
+			agent.ID = &agentID
+		} else if agentName, ok := stepMap["agent_name"].(string); ok {
+			agent.Name = &agentName
+		} else if agentObj, ok := stepMap["agent"].(map[string]interface{}); ok {
+			if agentID, ok := agentObj["id"].(string); ok {
+				agent.ID = &agentID
+			} else if agentName, ok := agentObj["name"].(string); ok {
+				agent.Name = &agentName
+			} else {
+				respondError(w, http.StatusBadRequest, fmt.Sprintf("Step '%s' needs 'agent_id', 'agent_name', or 'agent' object with 'id' or 'name'", stepName))
+				return
+			}
+		} else {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("Step '%s' needs 'agent_id', 'agent_name', or 'agent' object with 'id' or 'name'", stepName))
+			return
+		}
+
+		modeType := "sequential"
+		if mt, ok := stepMap["mode"].(string); ok {
+			modeType = mt
+		} else if modeObj, ok := stepMap["mode"].(map[string]interface{}); ok {
+			if mt, ok := modeObj["type"].(string); ok {
+				modeType = mt
+			}
+		}
+
+		var mode types.StepMode
+		switch modeType {
+		case "fan_out":
+			mode = types.StepMode{Type: "fan_out"}
+		case "collect":
+			mode = types.StepMode{Type: "collect"}
+		case "conditional":
+			condition := ""
+			if modeObj, ok := stepMap["mode"].(map[string]interface{}); ok {
+				if c, ok := modeObj["condition"].(string); ok {
+					condition = c
+				}
+			} else if c, ok := stepMap["condition"].(string); ok {
+				condition = c
+			}
+			mode = types.StepMode{Type: "conditional", Condition: &condition}
+		case "loop":
+			maxIterations := uint32(5)
+			until := ""
+			if modeObj, ok := stepMap["mode"].(map[string]interface{}); ok {
+				if mi, ok := modeObj["max_iterations"].(float64); ok {
+					maxIterations = uint32(mi)
+				}
+				if u, ok := modeObj["until"].(string); ok {
+					until = u
+				}
+			} else {
+				if mi, ok := stepMap["max_iterations"].(float64); ok {
+					maxIterations = uint32(mi)
+				}
+				if u, ok := stepMap["until"].(string); ok {
+					until = u
+				}
+			}
+			mode = types.StepMode{Type: "loop", MaxIterations: &maxIterations, Until: &until}
+		default:
+			mode = types.StepMode{Type: "sequential"}
+		}
+
+		errorModeType := "fail"
+		if emt, ok := stepMap["error_mode"].(string); ok {
+			errorModeType = emt
+		} else if errorModeObj, ok := stepMap["error_mode"].(map[string]interface{}); ok {
+			if emt, ok := errorModeObj["type"].(string); ok {
+				errorModeType = emt
+			}
+		}
+
+		var errorMode types.ErrorMode
+		switch errorModeType {
+		case "skip":
+			errorMode = types.ErrorMode{Type: "skip"}
+		case "retry":
+			maxRetries := uint32(3)
+			if errorModeObj, ok := stepMap["error_mode"].(map[string]interface{}); ok {
+				if mr, ok := errorModeObj["max_retries"].(float64); ok {
+					maxRetries = uint32(mr)
+				}
+			} else if mr, ok := stepMap["max_retries"].(float64); ok {
+				maxRetries = uint32(mr)
+			}
+			errorMode = types.ErrorMode{Type: "retry", MaxRetries: &maxRetries}
+		default:
+			errorMode = types.ErrorMode{Type: "fail"}
+		}
+
+		promptTemplate := "{{input}}"
+		if pt, ok := stepMap["prompt"].(string); ok {
+			promptTemplate = pt
+		} else if pt, ok := stepMap["prompt_template"].(string); ok {
+			promptTemplate = pt
+		}
+
+		timeoutSecs := uint64(120)
+		if ts, ok := stepMap["timeout_secs"].(float64); ok {
+			timeoutSecs = uint64(ts)
+		}
+
+		var outputVar *string
+		if ov, ok := stepMap["output_var"].(string); ok {
+			outputVar = &ov
+		}
+
+		steps = append(steps, types.WorkflowStep{
+			Name:           stepName,
+			Agent:          agent,
+			PromptTemplate: promptTemplate,
+			Mode:           mode,
+			TimeoutSecs:    timeoutSecs,
+			ErrorMode:      errorMode,
+			OutputVar:      outputVar,
+		})
+	}
+
+	workflow := types.Workflow{
+		ID:          workflowID,
+		Name:        name,
+		Description: description,
+		Steps:       steps,
+		CreatedAt:   existingWorkflow.CreatedAt,
+	}
+
+	id := r.getKernel(req).WorkflowEngine().Register(workflow)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"workflow_id": id,
+	})
+}
+
 func (r *Router) handleListWorkflows(w http.ResponseWriter, req *http.Request) {
-	workflows := r.kernel.WorkflowEngine().ListWorkflows()
+	workflows := r.getKernel(req).WorkflowEngine().ListWorkflows()
 	result := make([]map[string]interface{}, 0)
 	for _, wf := range workflows {
 		result = append(result, map[string]interface{}{
@@ -4641,7 +5202,7 @@ func (r *Router) handleListWorkflows(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleGetWorkflow(w http.ResponseWriter, req *http.Request) {
 	idStr := req.PathValue("id")
 	workflowID := types.WorkflowID(idStr)
-	workflow := r.kernel.WorkflowEngine().GetWorkflow(workflowID)
+	workflow := r.getKernel(req).WorkflowEngine().GetWorkflow(workflowID)
 	if workflow == nil {
 		respondError(w, http.StatusNotFound, "Workflow not found")
 		return
@@ -4652,7 +5213,7 @@ func (r *Router) handleGetWorkflow(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleDeleteWorkflow(w http.ResponseWriter, req *http.Request) {
 	idStr := req.PathValue("id")
 	workflowID := types.WorkflowID(idStr)
-	deleted := r.kernel.WorkflowEngine().RemoveWorkflow(workflowID)
+	deleted := r.getKernel(req).WorkflowEngine().RemoveWorkflow(workflowID)
 	if !deleted {
 		respondError(w, http.StatusNotFound, "Workflow not found")
 		return
@@ -4678,7 +5239,7 @@ func (r *Router) handleRunWorkflow(w http.ResponseWriter, req *http.Request) {
 		input = i
 	}
 
-	runID := r.kernel.WorkflowEngine().CreateRun(workflowID, input)
+	runID := r.getKernel(req).WorkflowEngine().CreateRun(workflowID, input)
 	if runID == nil {
 		respondError(w, http.StatusBadRequest, "Invalid workflow ID")
 		return
@@ -4690,7 +5251,7 @@ func (r *Router) handleRunWorkflow(w http.ResponseWriter, req *http.Request) {
 
 	resolver := func(agent types.StepAgent) (string, string, bool) {
 		if agent.Name != nil {
-			agentID, ok := r.kernel.FindAgentByName(execCtx, *agent.Name)
+			agentID, ok := r.getKernel(req).FindAgentByName(execCtx, *agent.Name)
 			if ok {
 				return agentID, *agent.Name, true
 			}
@@ -4702,10 +5263,10 @@ func (r *Router) handleRunWorkflow(w http.ResponseWriter, req *http.Request) {
 	}
 
 	sender := func(agentID, prompt string) (string, uint64, uint64, error) {
-		return r.kernel.SendMessageWithUsage(execCtx, agentID, prompt)
+		return r.getKernel(req).SendMessageWithUsage(execCtx, agentID, prompt)
 	}
 
-	output, err := r.kernel.WorkflowEngine().ExecuteRun(*runID, resolver, sender)
+	output, err := r.getKernel(req).WorkflowEngine().ExecuteRun(*runID, resolver, sender)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Workflow execution failed: %v", err))
 		return
@@ -4721,7 +5282,7 @@ func (r *Router) handleRunWorkflow(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleListWorkflowRuns(w http.ResponseWriter, req *http.Request) {
 	idStr := req.PathValue("id")
 	workflowID := types.WorkflowID(idStr)
-	runs := r.kernel.WorkflowEngine().ListRuns(nil, &workflowID)
+	runs := r.getKernel(req).WorkflowEngine().ListRuns(nil, &workflowID)
 	result := make([]map[string]interface{}, 0)
 	for _, run := range runs {
 		var completedAt *string
@@ -4742,7 +5303,7 @@ func (r *Router) handleListWorkflowRuns(w http.ResponseWriter, req *http.Request
 }
 
 func (r *Router) handleListWorkflowTemplates(w http.ResponseWriter, req *http.Request) {
-	templates := r.kernel.ListWorkflowTemplates()
+	templates := r.getKernel(req).ListWorkflowTemplates()
 	result := make([]map[string]interface{}, 0)
 	for _, t := range templates {
 		result = append(result, map[string]interface{}{
@@ -4758,7 +5319,7 @@ func (r *Router) handleListWorkflowTemplates(w http.ResponseWriter, req *http.Re
 
 func (r *Router) handleGetWorkflowTemplate(w http.ResponseWriter, req *http.Request) {
 	id := types.WorkflowTemplateID(req.PathValue("id"))
-	template := r.kernel.GetWorkflowTemplate(id)
+	template := r.getKernel(req).GetWorkflowTemplate(id)
 	if template == nil {
 		respondError(w, http.StatusNotFound, "template not found")
 		return
@@ -4789,7 +5350,7 @@ func (r *Router) handleCreateWorkflowFromTemplate(w http.ResponseWriter, req *ht
 		customDesc = *reqBody.CustomDescription
 	}
 
-	wf, err := r.kernel.CreateWorkflowFromTemplate(types.WorkflowTemplateID(reqBody.TemplateID), customName, customDesc)
+	wf, err := r.getKernel(req).CreateWorkflowFromTemplate(types.WorkflowTemplateID(reqBody.TemplateID), customName, customDesc)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -4810,7 +5371,7 @@ func (r *Router) handleRunWorkflowWithDelivery(w http.ResponseWriter, req *http.
 		return
 	}
 
-	output, err := r.kernel.ExecuteWorkflowWithDelivery(req.Context(), wfID, reqBody.Input, reqBody.Delivery)
+	output, err := r.getKernel(req).ExecuteWorkflowWithDelivery(req.Context(), wfID, reqBody.Input, reqBody.Delivery)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -4875,7 +5436,7 @@ func (r *Router) handleCreateTrigger(w http.ResponseWriter, req *http.Request) {
 		MaxFires:       maxFires,
 	}
 
-	if err := r.kernel.TriggerEngine().Register(trigger); err != nil {
+	if err := r.getKernel(req).TriggerEngine().Register(trigger); err != nil {
 		respondError(w, http.StatusNotFound, "Trigger registration failed (agent not found?)")
 		return
 	}
@@ -4888,7 +5449,7 @@ func (r *Router) handleCreateTrigger(w http.ResponseWriter, req *http.Request) {
 
 func (r *Router) handleListTriggers(w http.ResponseWriter, req *http.Request) {
 	agentID := req.URL.Query().Get("agent_id")
-	triggersList := r.kernel.TriggerEngine().List(agentID)
+	triggersList := r.getKernel(req).TriggerEngine().List(agentID)
 	result := make([]map[string]interface{}, 0)
 	for _, t := range triggersList {
 		patternType := t.Pattern.Type()
@@ -4919,7 +5480,7 @@ func (r *Router) handleListTriggerHistory(w http.ResponseWriter, req *http.Reque
 		}
 	}
 
-	records, err := r.kernel.DB().ListTriggerHistory(triggerID, agentID, limit)
+	records, err := r.getKernel(req).DB().ListTriggerHistory(triggerID, agentID, limit)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to list trigger history")
 		return
@@ -4951,7 +5512,7 @@ func (r *Router) handleDeleteTrigger(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if r.kernel.TriggerEngine().Delete(id) {
+	if r.getKernel(req).TriggerEngine().Delete(id) {
 		respondJSON(w, http.StatusOK, map[string]interface{}{
 			"status":     "removed",
 			"trigger_id": idStr,
@@ -4975,7 +5536,7 @@ func (r *Router) handleUpdateTrigger(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	trigger, ok := r.kernel.TriggerEngine().Get(id)
+	trigger, ok := r.getKernel(req).TriggerEngine().Get(id)
 	if !ok {
 		respondError(w, http.StatusNotFound, "Trigger not found")
 		return
@@ -5006,7 +5567,7 @@ func (r *Router) handleUpdateTrigger(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleGetPairingConfig(w http.ResponseWriter, req *http.Request) {
-	pm := r.kernel.PairingManager()
+	pm := r.getKernel(req).PairingManager()
 	if pm == nil {
 		respondError(w, http.StatusInternalServerError, "Pairing manager not initialized")
 		return
@@ -5058,7 +5619,7 @@ func getLANIPAddress() string {
 }
 
 func (r *Router) handleCreatePairingRequest(w http.ResponseWriter, req *http.Request) {
-	pm := r.kernel.PairingManager()
+	pm := r.getKernel(req).PairingManager()
 	if pm == nil {
 		respondError(w, http.StatusNotFound, "Pairing not enabled")
 		return
@@ -5141,7 +5702,7 @@ func (r *Router) handleCompletePairing(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	pm := r.kernel.PairingManager()
+	pm := r.getKernel(req).PairingManager()
 	if pm == nil {
 		fmt.Printf("[DEBUG] Pairing API - Pairing not enabled\n")
 		respondError(w, http.StatusNotFound, map[string]interface{}{"error": "Pairing not enabled"})
@@ -5192,7 +5753,7 @@ func (r *Router) handlePairingPage(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleListPairedDevices(w http.ResponseWriter, req *http.Request) {
-	pm := r.kernel.PairingManager()
+	pm := r.getKernel(req).PairingManager()
 	if pm == nil {
 		respondError(w, http.StatusNotFound, map[string]interface{}{"error": "Pairing not enabled"})
 		return
@@ -5230,7 +5791,7 @@ func (r *Router) handleNotify(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	pm := r.kernel.PairingManager()
+	pm := r.getKernel(req).PairingManager()
 	if pm == nil {
 		respondError(w, http.StatusNotFound, map[string]interface{}{"error": "Pairing not enabled"})
 		return
@@ -5260,7 +5821,7 @@ func (r *Router) handleRemovePairedDevice(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	pm := r.kernel.PairingManager()
+	pm := r.getKernel(req).PairingManager()
 	if pm == nil {
 		respondError(w, http.StatusNotFound, map[string]interface{}{"error": "Pairing not enabled"})
 		return
@@ -5283,7 +5844,7 @@ func (r *Router) handleGetAgentDeliveries(w http.ResponseWriter, req *http.Reque
 	agentID, err := types.ParseAgentID(idStr)
 	if err != nil {
 		// Try by name
-		entry := r.kernel.AgentRegistry().FindByName(idStr)
+		entry := r.getKernel(req).AgentRegistry().FindByName(idStr)
 		if entry == nil {
 			respondError(w, http.StatusNotFound, "agent not found")
 			return
@@ -5301,7 +5862,7 @@ func (r *Router) handleGetAgentDeliveries(w http.ResponseWriter, req *http.Reque
 		}
 	}
 
-	receipts := r.kernel.DeliveryTracker().Get(agentID, limit)
+	receipts := r.getKernel(req).DeliveryTracker().Get(agentID, limit)
 	if receipts == nil {
 		receipts = []deliv.DeliveryReceipt{}
 	}
@@ -5326,7 +5887,7 @@ func (r *Router) handleGetAllDeliveries(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	receipts := r.kernel.DeliveryTracker().GetAll(limit)
+	receipts := r.getKernel(req).DeliveryTracker().GetAll(limit)
 	if receipts == nil {
 		receipts = []deliv.DeliveryReceipt{}
 	}
@@ -5340,7 +5901,7 @@ func (r *Router) handleGetAllDeliveries(w http.ResponseWriter, req *http.Request
 // handleListDeliveries returns all pending/in-progress/done delivery task entries
 // from the DeliveryRegistry (task-level lifecycle, not per-message receipts).
 func (r *Router) handleListDeliveries(w http.ResponseWriter, req *http.Request) {
-	entries := r.kernel.DeliveryRegistry().List()
+	entries := r.getKernel(req).DeliveryRegistry().List()
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"deliveries": entries,
 		"count":      len(entries),
@@ -5399,4 +5960,84 @@ func (r *Router) handleWizardParse(w http.ResponseWriter, req *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"intent": intent,
 	})
+}
+
+func (r *Router) handleAuthRegister(w http.ResponseWriter, req *http.Request) {
+	if r.authHandler != nil {
+		r.authHandler.HandleRegister(w, req)
+		return
+	}
+	respondError(w, http.StatusNotImplemented, "authentication not enabled")
+}
+
+func (r *Router) handleAuthGetCurrentUser(w http.ResponseWriter, req *http.Request) {
+	if r.authHandler != nil {
+		r.authHandler.HandleGetCurrentUser(w, req)
+		return
+	}
+	respondError(w, http.StatusNotImplemented, "authentication not enabled")
+}
+
+func (r *Router) handleAuthUpdateCurrentUser(w http.ResponseWriter, req *http.Request) {
+	if r.authHandler != nil {
+		r.authHandler.HandleUpdateCurrentUser(w, req)
+		return
+	}
+	respondError(w, http.StatusNotImplemented, "authentication not enabled")
+}
+
+func (r *Router) handleAuthCreateAPIKey(w http.ResponseWriter, req *http.Request) {
+	if r.authHandler != nil {
+		r.authHandler.HandleCreateAPIKey(w, req)
+		return
+	}
+	respondError(w, http.StatusNotImplemented, "authentication not enabled")
+}
+
+func (r *Router) handleAuthListUsers(w http.ResponseWriter, req *http.Request) {
+	if r.authHandler != nil {
+		r.authHandler.HandleListUsers(w, req)
+		return
+	}
+	respondError(w, http.StatusNotImplemented, "authentication not enabled")
+}
+
+func (r *Router) handleAuthGetUser(w http.ResponseWriter, req *http.Request) {
+	if r.authHandler != nil {
+		r.authHandler.HandleGetUser(w, req)
+		return
+	}
+	respondError(w, http.StatusNotImplemented, "authentication not enabled")
+}
+
+func (r *Router) handleAuthUpdateUser(w http.ResponseWriter, req *http.Request) {
+	if r.authHandler != nil {
+		r.authHandler.HandleUpdateUser(w, req)
+		return
+	}
+	respondError(w, http.StatusNotImplemented, "authentication not enabled")
+}
+
+func (r *Router) handleAuthDeleteUser(w http.ResponseWriter, req *http.Request) {
+	if r.authHandler != nil {
+		r.authHandler.HandleDeleteUser(w, req)
+		return
+	}
+	respondError(w, http.StatusNotImplemented, "authentication not enabled")
+}
+
+func (r *Router) handleGitHubLogin(w http.ResponseWriter, req *http.Request) {
+	if r.authHandler != nil {
+		r.authHandler.HandleGitHubLogin(w, req)
+		return
+	}
+	respondError(w, http.StatusNotImplemented, "authentication not enabled")
+}
+
+func (r *Router) handleGitHubCallback(w http.ResponseWriter, req *http.Request) {
+	if r.authHandler != nil {
+		r.authHandler.HandleGitHubCallback(w, req)
+		return
+	}
+	respondError(w, http.StatusNotImplemented, "authentication not enabled")
 }

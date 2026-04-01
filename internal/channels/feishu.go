@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -18,9 +17,9 @@ func init() {
 	RegisterAutoRegister(autoRegisterFeishu)
 }
 
-func autoRegisterFeishu(registry *Registry) error {
-	feishuAppID := os.Getenv("FEISHU_APP_ID")
-	feishuAppSecret := os.Getenv("FEISHU_APP_SECRET")
+func autoRegisterFeishu(registry *Registry, getSecret SecretGetter) error {
+	feishuAppID := getSecret("FEISHU_APP_ID")
+	feishuAppSecret := getSecret("FEISHU_APP_SECRET")
 
 	if feishuAppID != "" && feishuAppSecret != "" {
 		fmt.Println("Auto-registering Feishu channel...")
@@ -116,13 +115,6 @@ func (a *FeishuAdapter) Start() error {
 	if a.Channel.Config.Feishu != nil {
 		appID = a.Channel.Config.Feishu.AppID
 		appSecret = a.Channel.Config.Feishu.AppSecret
-	}
-
-	if appID == "" {
-		appID = os.Getenv("FEISHU_APP_ID")
-	}
-	if appSecret == "" {
-		appSecret = os.Getenv("FEISHU_APP_SECRET")
 	}
 
 	if appID == "" || appSecret == "" {

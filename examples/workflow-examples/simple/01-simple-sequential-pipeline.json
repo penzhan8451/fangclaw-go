@@ -1,0 +1,27 @@
+{
+  "id": "simple-sequential-pipeline",
+  "name": "Simple Sequential Pipeline",
+  "description": "A basic two-step workflow: analyze, then summarize",
+  "steps": [
+    {
+      "name": "analyze",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Please analyze this input carefully: {{input}}",
+      "mode": "sequential",
+      "timeout_secs": 120,
+      "error_mode": "fail"
+    },
+    {
+      "name": "summarize",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Please summarize the following analysis: {{steps.analyze.output}}",
+      "mode": "sequential",
+      "timeout_secs": 120,
+      "error_mode": "fail"
+    }
+  ]
+}

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -89,13 +90,27 @@ const (
 	ClawHubSortRating    ClawHubSort = "rating"
 )
 
+type cacheEntry struct {
+	data      interface{}
+	timestamp time.Time
+}
+
 type ClawHubClient struct {
 	baseURL    string
 	httpClient *http.Client
+	cache      map[string]cacheEntry
+	cacheMu    sync.RWMutex
+	cacheTTL   time.Duration
 }
 
+var defaultClient *ClawHubClient
+var defaultClientOnce sync.Once
+
 func NewClawHubClient() *ClawHubClient {
-	return NewClawHubClientWithURL("https://clawhub.ai/api/v1")
+	defaultClientOnce.Do(func() {
+		defaultClient = NewClawHubClientWithURL("https://clawhub.ai/api/v1")
+	})
+	return defaultClient
 }
 
 func NewClawHubClientWithURL(baseURL string) *ClawHubClient {
@@ -104,12 +119,41 @@ func NewClawHubClientWithURL(baseURL string) *ClawHubClient {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		cache:    make(map[string]cacheEntry),
+		cacheTTL: 5 * time.Minute,
+	}
+}
+
+func (c *ClawHubClient) getFromCache(key string) interface{} {
+	c.cacheMu.RLock()
+	defer c.cacheMu.RUnlock()
+	entry, ok := c.cache[key]
+	if !ok {
+		return nil
+	}
+	if time.Since(entry.timestamp) > c.cacheTTL {
+		return nil
+	}
+	return entry.data
+}
+
+func (c *ClawHubClient) setCache(key string, data interface{}) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	c.cache[key] = cacheEntry{
+		data:      data,
+		timestamp: time.Now(),
 	}
 }
 
 func (c *ClawHubClient) Search(query string, limit uint32) (*ClawHubSearchResponse, error) {
 	if limit > 50 {
 		limit = 50
+	}
+
+	cacheKey := fmt.Sprintf("search:%s:%d", query, limit)
+	if cached := c.getFromCache(cacheKey); cached != nil {
+		return cached.(*ClawHubSearchResponse), nil
 	}
 
 	u := fmt.Sprintf("%s/search?q=%s&limit=%d", c.baseURL, url.QueryEscape(query), limit)
@@ -140,12 +184,18 @@ func (c *ClawHubClient) Search(query string, limit uint32) (*ClawHubSearchRespon
 		return nil, fmt.Errorf("failed to parse ClawHub response: %w", err)
 	}
 
+	c.setCache(cacheKey, &result)
 	return &result, nil
 }
 
 func (c *ClawHubClient) Browse(sort ClawHubSort, limit uint32, cursor *string) (*ClawHubBrowseResponse, error) {
 	if limit > 50 {
 		limit = 50
+	}
+
+	cacheKey := fmt.Sprintf("browse:%s:%d:%v", sort, limit, cursor)
+	if cached := c.getFromCache(cacheKey); cached != nil {
+		return cached.(*ClawHubBrowseResponse), nil
 	}
 
 	u := fmt.Sprintf("%s/skills?limit=%d&sort=%s", c.baseURL, limit, sort)
@@ -180,6 +230,7 @@ func (c *ClawHubClient) Browse(sort ClawHubSort, limit uint32, cursor *string) (
 		return nil, fmt.Errorf("failed to parse ClawHub browse: %w", err)
 	}
 
+	c.setCache(cacheKey, &result)
 	return &result, nil
 }
 

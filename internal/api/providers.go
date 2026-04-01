@@ -11,18 +11,26 @@ import (
 
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
+	"github.com/penzhan8451/fangclaw-go/internal/userdir"
 )
 
-func getSecretsPath() (string, error) {
-	homeDir, err := os.UserHomeDir()
+func getSecretsPath(username string) (string, error) {
+	if username == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(homeDir, ".fangclaw-go", "secrets.env"), nil
+	}
+	mgr, err := userdir.GetDefaultManager()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".fangclaw-go", "secrets.env"), nil
+	return mgr.UserSecretsPath(username), nil
 }
 
-func writeSecretEnv(envVar, key string) error {
-	secretsPath, err := getSecretsPath()
+func writeSecretEnv(envVar, key, username string) error {
+	secretsPath, err := getSecretsPath(username)
 	if err != nil {
 		return err
 	}
@@ -61,8 +69,8 @@ func writeSecretEnv(envVar, key string) error {
 	return os.WriteFile(secretsPath, []byte(strings.Join(lines, "\n")+"\n"), 0600)
 }
 
-func removeSecretEnv(envVar string) error {
-	secretsPath, err := getSecretsPath()
+func removeSecretEnv(envVar, username string) error {
+	secretsPath, err := getSecretsPath(username)
 	if err != nil {
 		return err
 	}
@@ -90,7 +98,8 @@ func removeSecretEnv(envVar string) error {
 }
 
 func (r *Router) handleProviders(w http.ResponseWriter, req *http.Request) {
-	catalog := r.kernel.ModelCatalog()
+	k := r.getKernel(req)
+	catalog := k.ModelCatalog()
 	providers := catalog.ListProviders()
 
 	var result []map[string]interface{}
@@ -133,7 +142,8 @@ func getProviderFromCatalog(catalog *model_catalog.ModelCatalog, id string) *typ
 
 func (r *Router) handleSetProviderKey(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
-	catalog := r.kernel.ModelCatalog()
+	k := r.getKernel(req)
+	catalog := k.ModelCatalog()
 
 	provider := getProviderFromCatalog(catalog, name)
 	if provider == nil {
@@ -160,7 +170,8 @@ func (r *Router) handleSetProviderKey(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	if err := writeSecretEnv(provider.APIKeyEnv, key); err != nil {
+	username := GetUsernameFromContext(req.Context())
+	if err := writeSecretEnv(provider.APIKeyEnv, key, username); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to write secrets.env: %v", err))
 		return
 	}
@@ -177,7 +188,8 @@ func (r *Router) handleSetProviderKey(w http.ResponseWriter, req *http.Request) 
 
 func (r *Router) handleDeleteProviderKey(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
-	catalog := r.kernel.ModelCatalog()
+	k := r.getKernel(req)
+	catalog := k.ModelCatalog()
 
 	provider := getProviderFromCatalog(catalog, name)
 	if provider == nil {
@@ -190,7 +202,8 @@ func (r *Router) handleDeleteProviderKey(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	if err := removeSecretEnv(provider.APIKeyEnv); err != nil {
+	username := GetUsernameFromContext(req.Context())
+	if err := removeSecretEnv(provider.APIKeyEnv, username); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to update secrets.env: %v", err))
 		return
 	}
@@ -207,7 +220,8 @@ func (r *Router) handleDeleteProviderKey(w http.ResponseWriter, req *http.Reques
 
 func (r *Router) handleTestProvider(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
-	catalog := r.kernel.ModelCatalog()
+	k := r.getKernel(req)
+	catalog := k.ModelCatalog()
 
 	provider := getProviderFromCatalog(catalog, name)
 	if provider == nil {
@@ -230,7 +244,8 @@ func (r *Router) handleTestProvider(w http.ResponseWriter, req *http.Request) {
 
 func (r *Router) handleSetProviderURL(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
-	catalog := r.kernel.ModelCatalog()
+	k := r.getKernel(req)
+	catalog := k.ModelCatalog()
 
 	provider := getProviderFromCatalog(catalog, name)
 	if provider == nil {
@@ -256,5 +271,15 @@ func (r *Router) handleSetProviderURL(w http.ResponseWriter, req *http.Request) 
 		"status":   "updated",
 		"provider": name,
 		"base_url": baseURL,
+	})
+}
+
+func (r *Router) handleSetupStatus(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
+	isComplete := k.IsSetupComplete()
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"setup_complete": isComplete,
+		"message":        "Setup complete",
 	})
 }

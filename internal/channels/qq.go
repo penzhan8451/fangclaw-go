@@ -3,7 +3,6 @@ package channels
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -19,9 +18,9 @@ func init() {
 	RegisterAutoRegister(autoRegisterQQ)
 }
 
-func autoRegisterQQ(registry *Registry) error {
-	qqAppID := os.Getenv("QQ_APP_ID")
-	qqAppSecret := os.Getenv("QQ_APP_SECRET")
+func autoRegisterQQ(registry *Registry, getSecret SecretGetter) error {
+	qqAppID := getSecret("QQ_APP_ID")
+	qqAppSecret := getSecret("QQ_APP_SECRET")
 
 	if qqAppID != "" && qqAppSecret != "" {
 		fmt.Println("Auto-registering QQ channel...")

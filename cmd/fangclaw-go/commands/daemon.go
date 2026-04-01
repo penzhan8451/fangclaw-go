@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/penzhan8451/fangclaw-go/internal/api"
+	"github.com/penzhan8451/fangclaw-go/internal/auth"
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
@@ -154,14 +155,17 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to start kernel: %w", err)
 	}
 
-	// Auto-register all configured channels (from env vars)
-	if err := channels.AutoRegisterAll(k.Registry()); err != nil {
+	// Auto-register all configured channels (from kernel secrets)
+	getSecret := func(key string) string {
+		return k.GetSecret(key)
+	}
+	if err := channels.AutoRegisterAll(k.Registry(), getSecret); err != nil {
 		fmt.Printf("Warning: Failed to auto-register some channels: %v\n", err)
 	}
 
 	// Also load channels from config.toml
 	fmt.Println("Loading channels from config file...")
-	started, err := channels.LoadConfiguredChannels(k.Registry(), cfg)
+	started, err := channels.LoadConfiguredChannels(k.Registry(), cfg, getSecret)
 	if err != nil {
 		fmt.Printf("Warning: Failed to load channels from config: %v\n", err)
 	} else if len(started) > 0 {
@@ -255,7 +259,52 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		ListenAddr: cfg.APIListen,
 	}
 
-	if err := api.RunServer(k, apiCfg, defaultAgentID); err != nil {
+	// Get the already configured AuthManager from kernel
+	authManager := k.AuthManager()
+	if authManager == nil {
+		return fmt.Errorf("auth manager not initialized in kernel")
+	}
+	defer authManager.Close()
+
+	// Check if any users exist
+	userCount, err := authManager.UserCount()
+	if err != nil {
+		return fmt.Errorf("failed to count users: %w", err)
+	}
+
+	if userCount == 0 {
+		fmt.Println("\n========================================")
+		fmt.Println("  First time setup - No users found.")
+		fmt.Println("========================================")
+
+		// Check for auto-create owner from env
+		ownerPassword := os.Getenv("FANGCLAW_OWNER_PASSWORD")
+		if ownerPassword != "" {
+			fmt.Println("Auto-creating owner user from FANGCLAW_OWNER_PASSWORD...")
+			_, err := authManager.CreateUser("owner", "", ownerPassword, auth.RoleOwner)
+			if err != nil {
+				return fmt.Errorf("failed to create owner user: %w", err)
+			}
+			fmt.Println("Owner user 'owner' created successfully!")
+		} else {
+			fmt.Println("\n  Creating default owner user...")
+			fmt.Println("  Username: owner")
+			fmt.Println("  Password: owner123")
+			fmt.Println("")
+			fmt.Println("  IMPORTANT: Please change the password after first login!")
+			fmt.Println("")
+
+			_, err := authManager.CreateUser("owner", "", "owner123", auth.RoleOwner)
+			if err != nil {
+				return fmt.Errorf("failed to create default owner user: %w", err)
+			}
+			fmt.Println("Default owner user created successfully!")
+			fmt.Println("You can login with: owner / owner123")
+		}
+	}
+
+	// Run multi-tenant server
+	if err := api.RunMultiTenantServer(k, authManager, apiCfg, defaultAgentID, bridgeManager); err != nil {
 		return fmt.Errorf("server error: %w", err)
 	}
 

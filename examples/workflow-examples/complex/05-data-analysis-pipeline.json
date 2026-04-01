@@ -1,0 +1,94 @@
+{
+  "id": "data-analysis-pipeline",
+  "name": "Data Analysis Pipeline",
+  "description": "Comprehensive data analysis: cleaning, exploration, visualization, insights, and recommendations",
+  "steps": [
+    {
+      "name": "data-assessment",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Assess this dataset. Identify data types, quality issues, missing values, and initial observations:\n\n{{input}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "assessment"
+    },
+    {
+      "name": "data-cleaning",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Provide a data cleaning strategy and cleaned dataset description. Handle missing values, outliers, and inconsistencies:\n\n{{assessment}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "cleaning"
+    },
+    {
+      "name": "exploratory-analysis",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Perform exploratory data analysis. Look for patterns, correlations, distributions, and interesting findings:\n\n{{cleaning}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "exploration"
+    },
+    {
+      "name": "statistical-analysis",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Apply statistical tests and analysis. Calculate key metrics, confidence intervals, and significance:\n\n{{exploration}}",
+      "mode": "fan_out",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "stats"
+    },
+    {
+      "name": "visualization-plan",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Recommend data visualizations that would best illustrate the findings. Include chart types, what to plot, and insights to highlight:\n\n{{stats}}",
+      "mode": "fan_out",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "visualizations"
+    },
+    {
+      "name": "business-insights",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Extract business insights and actionable conclusions from all analyses:\n\nExploration:\n{{exploration}}\n\nStatistics:\n{{stats}}\n\nVisualizations:\n{{visualizations}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "insights"
+    },
+    {
+      "name": "recommendations",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Provide strategic recommendations based on the insights. Include next steps, priorities, and expected outcomes:\n\n{{insights}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "recommendations"
+    },
+    {
+      "name": "final-report",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Compile everything into a professional data analysis report with executive summary, methodology, findings, and appendices:\n\nAssessment:\n{{assessment}}\n\nCleaning:\n{{cleaning}}\n\nExploration:\n{{exploration}}\n\nStatistics:\n{{stats}}\n\nInsights:\n{{insights}}\n\nRecommendations:\n{{recommendations}}",
+      "mode": "sequential",
+      "timeout_secs": 600,
+      "error_mode": "fail"
+    }
+  ]
+}

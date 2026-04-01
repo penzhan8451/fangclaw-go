@@ -30,15 +30,32 @@ type KernelConfig struct {
 	A2a               A2aConfig               `toml:"a2a" json:"a2a"`
 	Browser           BrowserConfig           `toml:"browser" json:"browser"`
 	Include           []string                `toml:"include,omitempty" json:"include,omitempty"`
+	Auth              AuthConfig              `toml:"auth" json:"auth"`
+	UserID            string                  `toml:"-" json:"user_id,omitempty"`
+	Username          string                  `toml:"-" json:"username,omitempty"`
 }
 
+type AuthConfig struct {
+	Enabled    bool              `toml:"enabled" json:"enabled"`
+	DBPath     string            `toml:"db_path" json:"db_path"`
+	SessionTTL string            `toml:"session_ttl" json:"session_ttl"`
+	GitHub     GitHubOAuthConfig `toml:"github" json:"github"`
+}
+
+type GitHubOAuthConfig struct {
+	ClientID     string `toml:"client_id" json:"client_id"`
+	ClientSecret string `toml:"client_secret" json:"client_secret"`
+	Enabled      bool   `toml:"enabled" json:"enabled"`
+}
+
+// internal used by kernel.
 type BrowserConfig struct {
-	Enabled       bool   `toml:"enabled" json:"enabled"`
-	ChromiumPath  string `toml:"chromium_path" json:"chromium_path"`
-	Headless      bool   `toml:"headless" json:"headless"`
-	ViewportWidth int    `toml:"viewport_width" json:"viewport_width"`
-	ViewportHeight int   `toml:"viewport_height" json:"viewport_height"`
-	MaxSessions   int    `toml:"max_sessions" json:"max_sessions"`
+	Enabled        bool   `toml:"enabled" json:"enabled"`
+	ChromiumPath   string `toml:"chromium_path" json:"chromium_path"`
+	Headless       bool   `toml:"headless" json:"headless"`
+	ViewportWidth  int    `toml:"viewport_width" json:"viewport_width"`
+	ViewportHeight int    `toml:"viewport_height" json:"viewport_height"`
+	MaxSessions    int    `toml:"max_sessions" json:"max_sessions"`
 }
 
 // APIConfig represents API server configuration.

@@ -225,17 +225,22 @@ function channelsPage() {
           fields: this.formValues
         });
         this.setupStep = 2;
+        this.testPassed = false;
         // Auto-test after save
         try {
           var testResult = await FangClawGoAPI.post('/api/channels/' + name + '/test', {});
+          console.log('Test result message:', testResult.message);
+          console.log('Test result status:', testResult.status);
           if (testResult.status === 'ok') {
             this.testPassed = true;
             this.setupStep = 3;
             FangClawGoToast.success(this.setupModal.display_name + ' activated!');
           } else {
+            this.testPassed = false;
             FangClawGoToast.success(this.setupModal.display_name + ' saved. ' + (testResult.message || ''));
           }
         } catch(te) {
+          this.testPassed = false;
           FangClawGoToast.success(this.setupModal.display_name + ' saved. Test to verify connection.');
         }
         await this.refreshStatus();

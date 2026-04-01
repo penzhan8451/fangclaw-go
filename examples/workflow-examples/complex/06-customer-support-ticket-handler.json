@@ -1,0 +1,109 @@
+{
+  "id": "support-ticket-handler",
+  "name": "Customer Support Ticket Handler",
+  "description": "Process support tickets: categorize, analyze, draft response, review, and send",
+  "steps": [
+    {
+      "name": "ticket-classification",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Classify this support ticket. Determine category, priority, urgency, and sentiment:\n\n{{input}}",
+      "mode": "sequential",
+      "timeout_secs": 60,
+      "error_mode": "fail",
+      "output_var": "classification"
+    },
+    {
+      "name": "issue-analysis",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Analyze the issue thoroughly. Identify the root cause, potential solutions, and any similar known issues:\n\n{{input}}\n\nClassification: {{classification}}",
+      "mode": "sequential",
+      "timeout_secs": 180,
+      "error_mode": "fail",
+      "output_var": "analysis"
+    },
+    {
+      "name": "check-for-urgency",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Based on the classification, respond with 'URGENT' if this needs immediate attention, otherwise 'NORMAL':\n\n{{classification}}",
+      "mode": "sequential",
+      "timeout_secs": 30,
+      "error_mode": "fail"
+    },
+    {
+      "name": "draft-escalation",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Draft an urgent escalation message for senior support. Highlight the critical nature and need for immediate action:\n\nTicket: {{input}}\n\nAnalysis: {{analysis}}",
+      "mode": {
+        "type": "conditional",
+        "condition": "URGENT"
+      },
+      "timeout_secs": 120,
+      "error_mode": "fail",
+      "output_var": "escalation"
+    },
+    {
+      "name": "draft-response",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Draft a helpful, professional response to the customer. Address their issue, provide solutions, and set clear expectations:\n\nTicket: {{input}}\n\nAnalysis: {{analysis}}",
+      "mode": "sequential",
+      "timeout_secs": 180,
+      "error_mode": "fail",
+      "output_var": "draft_response"
+    },
+    {
+      "name": "response-review",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Review this response for accuracy, tone, completeness, and compliance. Identify any issues:\n\nResponse: {{draft_response}}",
+      "mode": "sequential",
+      "timeout_secs": 120,
+      "error_mode": "fail",
+      "output_var": "review"
+    },
+    {
+      "name": "needs-revision",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Based on the review, respond with 'REVISION_NEEDED' if the response needs changes, otherwise 'OK':\n\n{{review}}",
+      "mode": "sequential",
+      "timeout_secs": 30,
+      "error_mode": "fail"
+    },
+    {
+      "name": "revise-response",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Revise the response based on the review feedback:\n\nOriginal Response:\n{{draft_response}}\n\nReview:\n{{review}}",
+      "mode": {
+        "type": "conditional",
+        "condition": "REVISION_NEEDED"
+      },
+      "timeout_secs": 180,
+      "error_mode": "fail",
+      "output_var": "revised_response"
+    },
+    {
+      "name": "finalize",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Provide the final response. If revised, use the revised version; otherwise use the draft. Also include any escalation if applicable:\n\n{{#if steps.revise-response.output}}{{steps.revise-response.output}}{{else}}{{steps.draft-response.output}}{{/if}}\n\n{{#if steps.draft-escalation.output}}\n\nEscalation Note:\n{{steps.draft-escalation.output}}{{/if}}",
+      "mode": "sequential",
+      "timeout_secs": 60,
+      "error_mode": "fail"
+    }
+  ]
+}

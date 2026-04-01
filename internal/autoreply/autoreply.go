@@ -3,6 +3,7 @@ package autoreply
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -115,26 +116,42 @@ func (are *AutoReplyEngine) ExecuteReply(
 	sendFn func(response string, channel AutoReplyChannel) error,
 	sendToAgentFn func(ctx context.Context, agentID string, message string) (string, error),
 ) error {
+	fmt.Printf("[AutoReply] ExecuteReply called with agentID=%s\n", agentID)
+	
 	select {
 	case are.semaphore <- struct{}{}:
 	case <-ctx.Done():
+		fmt.Printf("[AutoReply] Context done, returning: %v\n", ctx.Err())
 		return ctx.Err()
 	default:
+		fmt.Printf("[AutoReply] No semaphore available, skipping\n")
 		return nil
 	}
 
 	go func() {
-		defer func() { <-are.semaphore }()
+		defer func() { 
+			fmt.Printf("[AutoReply] Releasing semaphore\n")
+			<-are.semaphore 
+		}()
 
+		fmt.Printf("[AutoReply] Starting to send to agent...\n")
 		replyCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 
 		response, err := sendToAgentFn(replyCtx, agentID, message)
 		if err != nil {
+			fmt.Printf("[AutoReply] Error sending message to agent: %v\n", err)
 			return
 		}
+		fmt.Printf("[AutoReply] Received response from agent, len=%d\n", len(response))
 
-		_ = sendFn(response, channel)
+		fmt.Printf("[AutoReply] Calling sendFn...\n")
+		sendErr := sendFn(response, channel)
+		if sendErr != nil {
+			fmt.Printf("[AutoReply] Error sending reply: %v\n", sendErr)
+		} else {
+			fmt.Printf("[AutoReply] Reply sent successfully\n")
+		}
 	}()
 
 	return nil

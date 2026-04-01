@@ -210,6 +210,49 @@ func (cs *CronScheduler) SetEnabled(id types.CronJobID, enabled bool) error {
 	return nil
 }
 
+func (cs *CronScheduler) UpdateJob(id types.CronJobID, job types.CronJob) error {
+	cs.mu.Lock()
+
+	_, exists := cs.jobs[id]
+	if !exists {
+		cs.mu.Unlock()
+		return fmt.Errorf("cron job %s not found", id)
+	}
+
+	agentCount := 0
+	for _, meta := range cs.jobs {
+		if meta.Job.AgentID == job.AgentID && meta.Job.ID != id {
+			agentCount++
+		}
+	}
+
+	if err := job.Validate(agentCount); err != nil {
+		cs.mu.Unlock()
+		return err
+	}
+
+	nextRun := ComputeNextRun(&job.Schedule)
+	job.NextRun = &nextRun
+	job.ID = id
+
+	oldMeta := cs.jobs[id]
+	oldMeta.Job = job
+	oldMeta.ConsecutiveErrors = 0
+	cs.jobs[id] = oldMeta
+
+	log.Info().Str("job_id", id.String()).Str("job_name", job.Name).Msg("Cron: job updated successfully")
+
+	cs.mu.Unlock()
+
+	if err := cs.Persist(); err != nil {
+		log.Warn().Err(err).Msg("Failed to persist after updating job")
+	} else {
+		log.Info().Str("job_id", id.String()).Msg("Cron: job persisted to disk")
+	}
+
+	return nil
+}
+
 func (cs *CronScheduler) GetJob(id types.CronJobID) *types.CronJob {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()

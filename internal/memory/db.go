@@ -204,26 +204,48 @@ func (db *DB) Migrate() error {
 		}
 	}
 
-	// Function to check if column exists
-	columnExists := func(colName string) bool {
+	tableColumnExists := func(tableName, colName string) bool {
 		var dummy int
-		err := db.QueryRow("SELECT 1 FROM pragma_table_info('sessions') WHERE name = ?", colName).Scan(&dummy)
+		err := db.QueryRow("SELECT 1 FROM pragma_table_info(?) WHERE name = ?", tableName, colName).Scan(&dummy)
 		return err == nil
 	}
 
-	// Add agent_name if missing
-	if !columnExists("agent_name") {
+	if !tableColumnExists("sessions", "agent_name") {
 		_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN agent_name TEXT NOT NULL DEFAULT ''")
 	}
 
-	// Add agent_model_provider if missing
-	if !columnExists("agent_model_provider") {
+	if !tableColumnExists("sessions", "agent_model_provider") {
 		_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN agent_model_provider TEXT NOT NULL DEFAULT ''")
 	}
 
-	// Add agent_model_name if missing
-	if !columnExists("agent_model_name") {
+	if !tableColumnExists("sessions", "agent_model_name") {
 		_, _ = db.Exec("ALTER TABLE sessions ADD COLUMN agent_model_name TEXT NOT NULL DEFAULT ''")
+	}
+
+	userIDTables := []string{
+		"agents", "sessions", "memory", "kv_store", "usage",
+		"memories", "triggers", "trigger_history", "cron_jobs", "workflows",
+	}
+	for _, table := range userIDTables {
+		if !tableColumnExists(table, "user_id") {
+			_, _ = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN user_id TEXT NOT NULL DEFAULT ''", table))
+		}
+	}
+
+	userIDIndexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_agents_user_id ON agents(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_memory_user_id ON memory(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_kv_store_user_id ON kv_store(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_usage_user_id ON usage(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_memories_user_id ON memories(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_triggers_user_id ON triggers(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_trigger_history_user_id ON trigger_history(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_cron_jobs_user_id ON cron_jobs(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_workflows_user_id ON workflows(user_id)",
+	}
+	for _, idx := range userIDIndexes {
+		_, _ = db.Exec(idx)
 	}
 
 	return nil
@@ -240,6 +262,7 @@ type AgentRecord struct {
 	ModelName     string
 	CreatedAt     time.Time
 	Metadata      map[string]string
+	UserID        string
 }
 
 // SaveAgent saves an agent to the database.

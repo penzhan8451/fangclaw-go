@@ -28,11 +28,29 @@ function settingsPage() {
     copilotOAuth: { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 },
     loading: true,
     loadError: '',
+    initialized: false,
+
+    async init() {
+      var self = this;
+      if (Alpine.store('app').currentUser) {
+        await self.loadSettings();
+      }
+      self.initialized = true;
+
+      document.addEventListener('user-login', async function() {
+        await self.loadSettings();
+      });
+
+      document.addEventListener('user-logout', function() {
+        self.providers = [];
+        self.models = [];
+        self.loading = true;
+      });
+    },
 
     // -- Dynamic config state --
     configSchema: null,
     configValues: {},
-    configDirty: {},
     configSaving: {},
 
     // -- Security state --
@@ -150,6 +168,10 @@ function settingsPage() {
 
     // -- Settings load --
     async loadSettings() {
+      if (!Alpine.store('app').currentUser) {
+        this.loading = false;
+        return;
+      }
       this.loading = true;
       this.loadError = '';
       try {
@@ -207,7 +229,7 @@ function settingsPage() {
 
     async loadProviders() {
       try {
-        var data = await FangClawGoAPI.get('/api/providers');
+        var data = await FangClawGoAPI.get('/api/user/providers');
         this.providers = data.providers || [];
         for (var i = 0; i < this.providers.length; i++) {
           var p = this.providers[i];
@@ -215,7 +237,9 @@ function settingsPage() {
             this.providerUrlInputs[p.id] = p.base_url;
           }
         }
-      } catch(e) { this.providers = []; }
+      } catch(e) {
+        this.providers = [];
+      }
     },
 
     async loadModels() {
@@ -248,33 +272,31 @@ function settingsPage() {
     async loadConfigSchema() {
       try {
         var results = await Promise.all([
-          FangClawGoAPI.get('/api/config/schema').catch(function() { return {}; }),
-          FangClawGoAPI.get('/api/config')
+          FangClawGoAPI.get('/api/user/config/schema').catch(function() { return {}; }),
+          FangClawGoAPI.get('/api/user/config')
         ]);
         this.configSchema = results[0].sections || null;
         this.configValues = results[1] || {};
       } catch(e) { /* silent */ }
     },
 
-    isConfigDirty(section, field) {
-      return this.configDirty[section + '.' + field] === true;
-    },
-
-    markConfigDirty(section, field) {
-      this.configDirty[section + '.' + field] = true;
-    },
-
-    async saveConfigField(section, field, value) {
-      var key = section + '.' + field;
-      this.configSaving[key] = true;
+    async saveConfigSection(section) {
+      this.configSaving[section] = true;
       try {
-        await FangClawGoAPI.post('/api/config/set', { path: key, value: value });
-        this.configDirty[key] = false;
-        FangClawGoToast.success('Saved ' + key);
+        var sectionData = this.configValues[section] || {};
+        for (var fieldName in sectionData) {
+          if (sectionData.hasOwnProperty(fieldName)) {
+            await FangClawGoAPI.post('/api/user/config/set', { 
+              path: section + '.' + fieldName, 
+              value: sectionData[fieldName] 
+            });
+          }
+        }
+        FangClawGoToast.success('Saved ' + section);
       } catch(e) {
         FangClawGoToast.error('Failed to save: ' + e.message);
       }
-      this.configSaving[key] = false;
+      this.configSaving[section] = false;
     },
 
     get filteredTools() {
@@ -366,11 +388,12 @@ function settingsPage() {
       var key = this.providerKeyInputs[provider.id];
       if (!key || !key.trim()) { FangClawGoToast.error('Please enter an API key'); return; }
       try {
-        await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key.trim() });
+        await FangClawGoAPI.post('/api/user/providers/' + encodeURIComponent(provider.id) + '/key', { key: key.trim() });
         FangClawGoToast.success('API key saved for ' + provider.display_name);
         this.providerKeyInputs[provider.id] = '';
         await this.loadProviders();
         await this.loadModels();
+        await Alpine.store('app').checkSetupStatus();
       } catch(e) {
         FangClawGoToast.error('Failed to save key: ' + e.message);
       }
@@ -378,7 +401,7 @@ function settingsPage() {
 
     async removeProviderKey(provider) {
       try {
-        await FangClawGoAPI.del('/api/providers/' + encodeURIComponent(provider.id) + '/key');
+        await FangClawGoAPI.del('/api/user/providers/' + encodeURIComponent(provider.id) + '/key');
         FangClawGoToast.success('API key removed for ' + provider.display_name);
         await this.loadProviders();
         await this.loadModels();
@@ -439,7 +462,7 @@ function settingsPage() {
       this.providerTesting[provider.id] = true;
       this.providerTestResults[provider.id] = null;
       try {
-        var result = await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
+        var result = await FangClawGoAPI.post('/api/user/providers/' + encodeURIComponent(provider.id) + '/test', {});
         this.providerTestResults[provider.id] = result;
         if (result.status === 'ok') {
           FangClawGoToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');

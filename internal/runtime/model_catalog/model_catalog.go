@@ -13,13 +13,16 @@ import (
 )
 
 type ModelCatalog struct {
-	mu           sync.RWMutex
-	models       []types.ModelCatalogEntry
-	aliases      map[string]string
-	providers    []types.ProviderInfo
-	custom       []types.ModelCatalogEntry
-	configPath   string
-	lastModified time.Time
+	mu              sync.RWMutex
+	models          []types.ModelCatalogEntry
+	aliases         map[string]string
+	providers       []types.ProviderInfo
+	custom          []types.ModelCatalogEntry
+	configPath      string
+	lastModified    time.Time
+	sharedModels    []types.ModelCatalogEntry
+	sharedAliases   map[string]string
+	sharedProviders []types.ProviderInfo
 }
 
 // NewModelCatalog creates a new ModelCatalog, loading from config file if available.
@@ -33,6 +36,20 @@ func NewModelCatalog(configPath string) *ModelCatalog {
 	return catalog
 }
 
+// NewModelCatalogWithShared creates a new ModelCatalog with shared built-in models.
+func NewModelCatalogWithShared(configPath string, sharedModels []types.ModelCatalogEntry, sharedAliases map[string]string, sharedProviders []types.ProviderInfo) *ModelCatalog {
+	catalog := &ModelCatalog{
+		configPath:      configPath,
+		custom:          []types.ModelCatalogEntry{},
+		sharedModels:    sharedModels,
+		sharedAliases:   sharedAliases,
+		sharedProviders: sharedProviders,
+	}
+
+	catalog.loadOrInitializeWithShared()
+	return catalog
+}
+
 // loadOrInitialize loads the catalog from config file, or initializes with defaults.
 func (c *ModelCatalog) loadOrInitialize() {
 	c.mu.Lock()
@@ -42,6 +59,9 @@ func (c *ModelCatalog) loadOrInitialize() {
 		if _, err := os.Stat(c.configPath); err == nil {
 			if err := c.loadFromFileUnsafe(); err == nil {
 				fmt.Printf("Loaded model catalog from %s\n", c.configPath)
+				if err := c.saveToFileUnsafe(); err == nil {
+					fmt.Printf("Updated model catalog at %s\n", c.configPath)
+				}
 				return
 			}
 			fmt.Printf("Failed to load model catalog from %s, using defaults: %v\n", c.configPath, err)
@@ -55,6 +75,37 @@ func (c *ModelCatalog) loadOrInitialize() {
 	}
 
 	c.loadDefaultsUnsafe()
+}
+
+// loadOrInitializeWithShared loads the catalog with shared built-in models.
+func (c *ModelCatalog) loadOrInitializeWithShared() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// When using shared content, don't try to load/save from user directory
+	// Just use the shared content directly
+	c.useSharedContent()
+}
+
+// useSharedContent uses the shared built-in models, aliases, and providers.
+func (c *ModelCatalog) useSharedContent() {
+	if len(c.sharedModels) > 0 {
+		c.models = c.sharedModels
+	} else {
+		c.models = types.BuiltinModels()
+	}
+
+	if len(c.sharedAliases) > 0 {
+		c.aliases = c.sharedAliases
+	} else {
+		c.aliases = types.BuiltinAliases()
+	}
+
+	if len(c.sharedProviders) > 0 {
+		c.providers = c.sharedProviders
+	} else {
+		c.providers = types.BuiltinProviders()
+	}
 }
 
 // loadDefaultsUnsafe loads the built-in defaults (not thread-safe).
@@ -90,10 +141,42 @@ func (c *ModelCatalog) loadFromFileUnsafe() error {
 		return err
 	}
 
+	builtInModels := types.BuiltinModels()
+	builtInProviders := types.BuiltinProviders()
+	builtInAliases := types.BuiltinAliases()
+
+	existingModelIDs := make(map[string]bool)
+	for _, m := range file.Models {
+		existingModelIDs[m.ID] = true
+	}
+
+	for _, m := range builtInModels {
+		if !existingModelIDs[m.ID] {
+			file.Models = append(file.Models, m)
+		}
+	}
+
+	existingProviderIDs := make(map[string]bool)
+	for _, p := range file.Providers {
+		existingProviderIDs[p.ID] = true
+	}
+
+	for _, p := range builtInProviders {
+		if !existingProviderIDs[p.ID] {
+			file.Providers = append(file.Providers, p)
+		}
+	}
+
 	aliases := make(map[string]string)
 	for _, model := range file.Models {
 		for _, alias := range model.Aliases {
 			aliases[strings.ToLower(alias)] = model.ID
+		}
+	}
+
+	for k, v := range builtInAliases {
+		if _, ok := aliases[k]; !ok {
+			aliases[k] = v
 		}
 	}
 
@@ -147,6 +230,11 @@ func (c *ModelCatalog) saveToFileUnsafe() error {
 
 // Reload reloads the catalog from the config file if it has changed.
 func (c *ModelCatalog) Reload() error {
+	// When using shared content, don't reload from file
+	if len(c.sharedModels) > 0 || len(c.sharedAliases) > 0 || len(c.sharedProviders) > 0 {
+		return nil
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -180,11 +268,41 @@ func (c *ModelCatalog) DetectAuth() {
 
 		hasKey := false
 		if c.providers[i].APIKeyEnv != "" {
-			_, hasKey = os.LookupEnv(c.providers[i].APIKeyEnv)
+			// NOTE: Commented out for multi-tenant mode - use DetectAuthWithSecrets instead
+			// _, hasKey = os.LookupEnv(c.providers[i].APIKeyEnv)
 		}
 
 		if c.providers[i].ID == "gemini" && !hasKey {
-			_, hasKey = os.LookupEnv("GOOGLE_API_KEY")
+			// NOTE: Commented out for multi-tenant mode
+			// _, hasKey = os.LookupEnv("GOOGLE_API_KEY")
+		}
+
+		if hasKey {
+			c.providers[i].AuthStatus = types.AuthStatusConfigured
+		} else {
+			c.providers[i].AuthStatus = types.AuthStatusMissing
+		}
+	}
+}
+
+func (c *ModelCatalog) DetectAuthWithSecrets(secrets map[string]string) {
+	_ = c.Reload()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for i := range c.providers {
+		if !c.providers[i].KeyRequired {
+			c.providers[i].AuthStatus = types.AuthStatusNotRequired
+			continue
+		}
+
+		hasKey := false
+		if c.providers[i].APIKeyEnv != "" && secrets != nil {
+			_, hasKey = secrets[c.providers[i].APIKeyEnv]
+		}
+
+		if c.providers[i].ID == "gemini" && !hasKey && secrets != nil {
+			_, hasKey = secrets["GOOGLE_API_KEY"]
 		}
 
 		if hasKey {
@@ -324,4 +442,33 @@ func (c *ModelCatalog) getProviderUnsafe(id string) *types.ProviderInfo {
 		}
 	}
 	return nil
+}
+
+// GetSharedModels returns the shared built-in models.
+func (c *ModelCatalog) GetSharedModels() []types.ModelCatalogEntry {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	result := make([]types.ModelCatalogEntry, len(c.models))
+	copy(result, c.models)
+	return result
+}
+
+// GetSharedAliases returns the shared aliases.
+func (c *ModelCatalog) GetSharedAliases() map[string]string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	result := make(map[string]string, len(c.aliases))
+	for k, v := range c.aliases {
+		result[k] = v
+	}
+	return result
+}
+
+// GetSharedProviders returns the shared providers.
+func (c *ModelCatalog) GetSharedProviders() []types.ProviderInfo {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	result := make([]types.ProviderInfo, len(c.providers))
+	copy(result, c.providers)
+	return result
 }

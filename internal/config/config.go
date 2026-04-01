@@ -12,7 +12,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
-// Config represents the OpenFang configuration.
+// config.toml: Config represents the FangClaw-Go configuration.
 type Config struct {
 	APIListen    string                  `toml:"api_listen"`
 	DefaultModel ModelSettings           `toml:"default_model"`
@@ -23,15 +23,18 @@ type Config struct {
 	Channels     ChannelsConfig          `toml:"channels"`
 	McpServers   []types.McpServerConfig `toml:"mcp_servers,omitempty"`
 	Browser      BrowserSettings         `toml:"browser"`
+	A2a          types.A2aConfig         `toml:"a2a"`
+	Auth         types.AuthConfig        `toml:"auth"`
 }
 
+// config.toml: BrowserSettings represents the browser settings.
 type BrowserSettings struct {
-	Enabled       bool   `toml:"enabled"`
-	ChromiumPath  string `toml:"chromium_path"`
-	Headless      bool   `toml:"headless"`
-	ViewportWidth int    `toml:"viewport_width"`
-	ViewportHeight int   `toml:"viewport_height"`
-	MaxSessions   int    `toml:"max_sessions"`
+	Enabled        bool   `toml:"enabled"`
+	ChromiumPath   string `toml:"chromium_path"`
+	Headless       bool   `toml:"headless"`
+	ViewportWidth  int    `toml:"viewport_width"`
+	ViewportHeight int    `toml:"viewport_height"`
+	MaxSessions    int    `toml:"max_sessions"`
 }
 
 // ChannelsConfig contains configuration for all channel adapters.
@@ -112,6 +115,9 @@ func DefaultConfig() *Config {
 		},
 		Log: LogSettings{
 			Level: "info",
+		},
+		Auth: types.AuthConfig{
+			Enabled: false,
 		},
 	}
 }

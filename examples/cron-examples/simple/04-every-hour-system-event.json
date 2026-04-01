@@ -1,0 +1,17 @@
+{
+  "agent_id": "YOUR-AGENT-ID-HERE",
+  "name": "hourly-system-check",
+  "enabled": true,
+  "schedule": {
+    "kind": "every",
+    "every_secs": 3600
+  },
+  "action": {
+    "kind": "system_event",
+    "text": "hourly_check_event"
+  },
+  "delivery": {
+    "kind": "none"
+  },
+  "one_shot": false
+}

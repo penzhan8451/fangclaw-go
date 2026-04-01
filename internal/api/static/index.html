@@ -3705,6 +3705,239 @@ mark.search-highlight {
   font-size: 12px;
 }
 
+/* Login Page Styles */
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 2.5rem;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+  animation: scaleIn 0.3s var(--ease-spring);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.login-header img {
+  margin-bottom: 1rem;
+}
+
+.login-header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+  letter-spacing: 0.05em;
+  color: var(--text);
+}
+
+.login-header p {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.login-card .form-group {
+  margin-bottom: 1.25rem;
+}
+
+.login-card .form-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.login-card .form-group input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.95rem;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.login-card .form-group input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.login-card .form-group input::placeholder {
+  color: var(--text-muted);
+}
+
+.login-btn {
+  width: 100%;
+  padding: 0.85rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.login-btn:hover:not(:disabled) {
+  background: var(--accent-light);
+}
+
+.login-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.login-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.form-error {
+  background: var(--error-subtle);
+  color: var(--error);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--error-muted);
+}
+
+.login-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.login-footer p {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.login-footer a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.login-footer a:hover {
+  text-decoration: underline;
+}
+
+/* User menu in sidebar */
+.user-menu {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: auto;
+  position: relative;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+  cursor: pointer;
+}
+
+.user-info:hover {
+  background: var(--surface2);
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.user-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-role {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.user-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0.5rem;
+  /* right: 0.5rem; */
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  /* margin-bottom: 0.5rem; */
+  overflow: hidden;
+  display: none;
+}
+
+.user-dropdown.show {
+  display: block;
+}
+
+.user-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.user-dropdown-item:hover {
+  background: var(--surface2);
+}
+
+.user-dropdown-item.danger {
+  color: var(--error);
+}
+
+.user-dropdown-item.danger:hover {
+  background: var(--error-subtle);
+}
+
 pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}/*!
   Theme: GitHub Dark
   Description: Dark theme as seen on github.com
@@ -3718,17 +3951,101 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 </style>
 <body x-data="app" :data-theme="theme">
 
-<!-- API Key Auth Prompt -->
-<div x-show="$store.app.showAuthPrompt" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px)" x-data="{ apiKeyInput: '' }">
-  <div style="background:var(--bg-card,#1e1e2e);border:1px solid var(--border,#333);border-radius:12px;padding:2rem;max-width:400px;width:90%">
-    <h3 style="margin:0 0 0.5rem;font-size:1.1rem">API Key Required</h3>
-    <p style="color:var(--text-dim,#888);font-size:0.85rem;margin:0 0 1rem">This instance requires an API key. Enter the key from your <code>config.toml</code>.</p>
-    <input type="password" x-model="apiKeyInput" placeholder="Enter API key..." @keydown.enter="$store.app.submitApiKey(apiKeyInput)" style="width:100%;padding:0.6rem;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg-input,#151520);color:var(--text,#e0e0e0);font-size:0.9rem;box-sizing:border-box;margin-bottom:0.75rem">
-    <button @click="$store.app.submitApiKey(apiKeyInput)" style="width:100%;padding:0.6rem;border-radius:6px;border:none;background:var(--accent,#7c3aed);color:#fff;font-weight:600;cursor:pointer;font-size:0.9rem">Unlock Dashboard</button>
+<!-- Login Page -->
+<div x-show="$store.app.showLogin" x-data="loginPage()" x-transition style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:var(--bg)">
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <img src="/logo.png" alt="FangClaw-go" width="48" height="48">
+        <h1>FANGCLAW-GO</h1>
+        <p x-show="loginMode === 'login'">Sign in to your account</p>
+        <p x-show="loginMode === 'register'">Create a new account</p>
+      </div>
+      
+      <form @submit.prevent="handleLogin" x-show="loginMode === 'login'">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" x-model="username" placeholder="Enter username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" x-model="password" placeholder="Enter password" required autocomplete="current-password">
+        </div>
+        <div class="form-error" x-show="error" x-text="error"></div>
+        <button type="submit" class="login-btn" :disabled="loading">
+          <span x-show="!loading">Sign In</span>
+          <span x-show="loading">Signing in...</span>
+        </button>
+      </form>
+
+      <div x-show="loginMode === 'login'" style="margin: 16px 0; display: flex; align-items: center; gap: 12px;">
+        <div style="flex: 1; height: 1px; background: var(--border);"></div>
+        <span style="color: var(--text-subtle); font-size: 12px;">or</span>
+        <div style="flex: 1; height: 1px; background: var(--border);"></div>
+      </div>
+
+      <div x-show="loginMode === 'login'" style="padding: 0 0 16px 0;">
+        <a href="/api/auth/github" class="login-btn" style="display: flex; align-items: center; justify-content: center; gap: 8px; background: #24292e; color: white; text-decoration: none;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          Login with GitHub
+        </a>
+      </div>
+
+      <form @submit.prevent="handleRegister" x-show="loginMode === 'register'">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" x-model="username" placeholder="Enter username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>Email (optional)</label>
+          <input type="email" x-model="email" placeholder="Enter email" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" x-model="password" placeholder="Enter password (min 6 characters)" required autocomplete="new-password">
+        </div>
+        <div class="form-error" x-show="error" x-text="error"></div>
+        <button type="submit" class="login-btn" :disabled="loading">
+          <span x-show="!loading">Create Account</span>
+          <span x-show="loading">Creating...</span>
+        </button>
+      </form>
+      
+      <div class="login-footer">
+        <p x-show="loginMode === 'login'">Don't have an account? <a href="#" @click.prevent="loginMode = 'register'; error = ''">Register</a></p>
+        <p x-show="loginMode === 'register'">Already have an account? <a href="#" @click.prevent="loginMode = 'login'; error = ''">Sign In</a></p>
+      </div>
+    </div>
   </div>
 </div>
 
-<div class="app-layout" :class="{ 'focus-mode': $store.app.focusMode }">
+<!-- Setup Guide Page -->
+<div x-show="$store.app.showSetupGuide" x-transition style="position:fixed;inset:0;z-index:9998;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);">
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <img src="/logo.png" alt="FangClaw-go" width="48" height="48">
+        <h1>SETUP REQUIRED</h1>
+        <p>Please configure your API key first</p>
+      </div>
+      
+      <div style="text-align:center;padding:20px 0;">
+        <svg viewBox="0 0 24 24" width="64" height="64" style="fill:var(--text-subtle);">
+          <path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97 0-.33-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.31-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.34-.07.67-.07 1 0 .33.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.06.74 1.69.99l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.26 1.17-.59 1.69-.99l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66z"/>
+        </svg>
+        <p style="margin-top:20px;color:var(--text);">To get started, you need to configure your provider and API key in Settings.</p>
+      </div>
+      
+      <button type="button" class="login-btn" @click="$store.app.goToSettings()">
+        Go to Settings
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="app-layout" :class="{ 'focus-mode': $store.app.focusMode }" x-show="!$store.app.showLogin">
   <!-- Sidebar -->
   <nav class="sidebar" :class="{ collapsed: sidebarCollapsed, 'mobile-open': mobileMenuOpen }">
     <div class="sidebar-header">
@@ -3891,6 +4208,22 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
       </div>
     </div>
 
+    <div class="user-menu" x-data="{ showDropdown: false }" x-show="$store.app.currentUser">
+      <div class="user-info" @click="showDropdown = !showDropdown">
+        <div class="user-avatar" x-text="$store.app.currentUser ? $store.app.currentUser.username.charAt(0).toUpperCase() : ''"></div>
+        <div class="user-details" x-show="!sidebarCollapsed">
+          <div class="user-name" x-text="$store.app.currentUser ? $store.app.currentUser.username : ''"></div>
+          <div class="user-role" x-text="$store.app.currentUser ? $store.app.currentUser.role : ''"></div>
+        </div>
+      </div>
+      <div class="user-dropdown" :class="{ show: showDropdown }">
+        <div class="user-dropdown-item danger" @click="showDropdown = false; $store.app.logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Sign Out
+        </div>
+      </div>
+    </div>
+
     <div class="sidebar-footer">
       <div class="sidebar-label text-xs text-dim" style="padding:0 16px 4px;letter-spacing:0.5px">Ctrl+K agents | Ctrl+N new</div>
     </div>
@@ -3908,7 +4241,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
     <!-- Page: Overview -->
     <template x-if="page === 'overview'">
-      <div x-data="overviewPage" x-init="loadOverview().then(() => startAutoRefresh())" @page-leave.window="stopAutoRefresh()">
+      <div x-data="overviewPage" x-init="init()">
         <div class="page-header">
           <h2>Overview</h2>
           <div class="flex items-center gap-2">
@@ -4921,7 +5254,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
         <!-- Tab: List -->
         <template x-if="wfTab === 'list'">
         <div x-data="workflowsPage">
-        <div class="page-body" x-init="loadWorkflows()">
+        <div class="page-body" x-init="loadData()">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading workflows...</span></div>
           <div x-show="!loading && loadError" class="error-state">
             <span class="error-icon">!</span>
@@ -4951,6 +5284,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                     <td class="text-xs" x-text="new Date(wf.created_at).toLocaleDateString()"></td>
                     <td>
                       <button class="btn btn-primary btn-sm" @click="showRunModal(wf)">Run</button>
+                      <button class="btn btn-ghost btn-sm" @click="openEditWorkflow(wf)">Edit</button>
                       <button class="btn btn-ghost btn-sm" @click="viewRuns(wf)">History</button>
                       <button class="btn btn-danger btn-sm" @click="deleteWorkflow(wf)">Delete</button>
                     </td>
@@ -4983,7 +5317,12 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                       <div class="flex gap-2 items-center">
                         <span class="text-xs text-dim font-bold" x-text="'#' + (i+1)" style="width:24px"></span>
                         <input class="form-input" style="flex:1" x-model="step.name" placeholder="step name, e.g., analyze">
-                        <input class="form-input" style="flex:1" x-model="step.agent_name" placeholder="agent name, e.g., Data Analyst">
+                        <select class="form-select" style="flex:1" x-model="step.agent_name">
+                          <option value="">Select agent...</option>
+                          <template x-for="agent in agents" :key="agent.name">
+                            <option :value="agent.name" x-text="agent.name"></option>
+                          </template>
+                        </select>
                         <select class="form-select" style="width:120px" x-model="step.mode">
                           <option value="sequential">Sequential</option>
                           <option value="fan_out">Fan Out</option>
@@ -5015,6 +5354,61 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   <button class="btn btn-ghost btn-sm mt-2" @click="newWf.steps.push({name:'',agent_name:'',mode:'sequential',prompt:'',condition:'',max_iterations:5,until:'',error_mode:'fail',max_retries:3})">+ Add Step</button>
                 </div>
                 <button class="btn btn-primary btn-block" @click="createWorkflow()">Create</button>
+              </div>
+            </div>
+          </template>
+          <!-- Edit modal -->
+          <template x-if="showEditModal && editingWf">
+            <div class="modal-overlay" @click.self="showEditModal = false" @keydown.escape.window="showEditModal = false">
+              <div class="modal">
+                <div class="modal-header"><h3>Edit Workflow</h3><button class="modal-close" @click="showEditModal = false">&times;</button></div>
+                <div class="form-group"><label>Name</label><input class="form-input" x-model="editingWf.name" placeholder="my-workflow"></div>
+                <div class="form-group"><label>Description</label><input class="form-input" x-model="editingWf.description" placeholder="What does this workflow do?"></div>
+                <div class="mb-4">
+                  <div class="form-group" style="margin:0"><label>Steps</label></div>
+                  <div class="text-xs text-dim mb-2">Each step runs an agent. Use <code style="color:var(--accent)">{{input}}</code> in prompts to pass the previous step's output.</div>
+                  <template x-for="(step, i) in editingWf.steps" :key="i">
+                    <div class="card mt-2" style="padding:10px">
+                      <div class="flex gap-2 items-center">
+                        <span class="text-xs text-dim font-bold" x-text="'#' + (i+1)" style="width:24px"></span>
+                        <input class="form-input" style="flex:1" x-model="step.name" placeholder="step name, e.g., analyze">
+                        <select class="form-select" style="flex:1" x-model="step.agent_name">
+                          <option value="">Select agent...</option>
+                          <template x-for="agent in agents" :key="agent.name">
+                            <option :value="agent.name" x-text="agent.name"></option>
+                          </template>
+                        </select>
+                        <select class="form-select" style="width:120px" x-model="step.mode">
+                          <option value="sequential">Sequential</option>
+                          <option value="fan_out">Fan Out</option>
+                          <option value="conditional">Conditional</option>
+                          <option value="loop">Loop</option>
+                        </select>
+                        <select class="form-select" style="width:100px" x-model="step.error_mode">
+                          <option value="fail">Fail</option>
+                          <option value="skip">Skip</option>
+                          <option value="retry">Retry</option>
+                        </select>
+                        <button class="btn btn-danger btn-sm" @click="editingWf.steps.splice(i,1)">&times;</button>
+                      </div>
+                      <input class="form-input mt-2" x-model="step.prompt" placeholder="e.g., Analyze this: {{input}}  or  Use output from step 1: {{steps.analyze.output}}">
+                      <template x-if="step.mode === 'conditional'">
+                        <input class="form-input mt-2" x-model="step.condition" placeholder="e.g., steps.analyze.output.includes('ERROR') or steps.analyze.output.length > 100">
+                      </template>
+                      <template x-if="step.mode === 'loop'">
+                        <div class="flex gap-2 mt-2">
+                          <input class="form-input" style="flex:1" x-model="step.max_iterations" type="number" placeholder="Max iterations (e.g., 5)" min="1">
+                          <input class="form-input" style="flex:1" x-model="step.until" placeholder="e.g., steps.loop.output.includes('DONE')">
+                        </div>
+                      </template>
+                      <template x-if="step.error_mode === 'retry'">
+                        <input class="form-input mt-2" x-model="step.max_retries" type="number" placeholder="Max retries (e.g., 3)" min="1">
+                      </template>
+                    </div>
+                  </template>
+                  <button class="btn btn-ghost btn-sm mt-2" @click="editingWf.steps.push({name:'',agent_name:'',mode:'sequential',prompt:'',condition:'',max_iterations:5,until:'',error_mode:'fail',max_retries:3})">+ Add Step</button>
+                </div>
+                <button class="btn btn-primary btn-block" @click="saveWorkflow()">Save</button>
               </div>
             </div>
           </template>
@@ -5319,6 +5713,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                               <span x-show="runningJobId === job.id">...</span>
                             </button>
                             <button class="btn btn-ghost btn-sm" @click="toggleJob(job)" x-text="job.enabled ? 'Pause' : 'Enable'"></button>
+                            <button class="btn btn-ghost btn-sm" @click="openEditForm(job)">Edit</button>
                             <button class="btn btn-danger btn-sm" @click="deleteJob(job)">Del</button>
                           </div>
                         </td>
@@ -5393,6 +5788,68 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   <button class="btn btn-primary btn-block mt-4" @click="createJob()" :disabled="creating">
                     <span x-show="!creating">Create Schedule</span>
                     <span x-show="creating">Creating...</span>
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <!-- Edit Job Modal -->
+            <template x-if="showEditForm">
+              <div class="modal-overlay" @click.self="showEditForm = false" @keydown.escape.window="showEditForm = false">
+                <div class="modal">
+                  <div class="modal-header">
+                    <h3>Edit Scheduled Job</h3>
+                    <button class="modal-close" @click="showEditForm = false">&times;</button>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Job Name</label>
+                    <input class="form-input" x-model="editJob.name" placeholder="daily-report">
+                  </div>
+
+                  <div class="form-group">
+                    <label>Cron Expression</label>
+                    <input class="form-input" x-model="editJob.cron" placeholder="0 9 * * 1-5" style="font-family:monospace">
+                    <div class="text-xs text-dim mt-1" x-show="editJob.cron" x-text="describeCron(editJob.cron)"></div>
+                    <div class="text-xs text-dim mt-1">Format: <code>minute hour day-of-month month day-of-week</code></div>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Quick Presets</label>
+                    <div class="flex gap-1 flex-wrap">
+                      <template x-for="preset in cronPresets" :key="preset.cron">
+                        <button class="btn btn-sm" :class="editJob.cron === preset.cron ? 'btn-primary' : 'btn-ghost'" @click="editJob.cron = preset.cron" x-text="preset.label"></button>
+                      </template>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Target Agent</label>
+                    <select class="form-select" x-model="editJob.agent_id">
+                      <option value="">Any available agent</option>
+                      <template x-for="a in availableAgents" :key="a.id">
+                        <option :value="a.id" x-text="a.name + ' (' + (a.model_provider || 'unknown') + ':' + (a.model_name || 'unknown') + ')'"></option>
+                      </template>
+                    </select>
+                    <div class="text-xs text-dim mt-1" x-show="!availableAgents.length">No agents running. <a href="#agents" style="color:var(--accent)">Spawn one first.</a></div>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Message to Send</label>
+                    <textarea class="form-textarea" x-model="editJob.message" placeholder="Generate and email the daily status report..." rows="3"></textarea>
+                    <div class="text-xs text-dim mt-1">The message sent to the agent each time this job runs.</div>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="flex items-center gap-2">
+                      <div class="toggle" :class="{ active: editJob.enabled }" @click="editJob.enabled = !editJob.enabled"></div>
+                      <span x-text="editJob.enabled ? 'Enabled (will start running immediately)' : 'Disabled (paused)'"></span>
+                    </label>
+                  </div>
+
+                  <button class="btn btn-primary btn-block mt-4" @click="updateJob()" :disabled="editing">
+                    <span x-show="!editing">Update Schedule</span>
+                    <span x-show="editing">Updating...</span>
                   </button>
                 </div>
               </div>
@@ -6704,9 +7161,9 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Settings -->
     <template x-if="page === 'settings'">
-      <div x-data="settingsPage">
+      <div x-data="settingsPage" x-init="init()">
         <div class="page-header"><h2>Settings</h2></div>
-        <div class="page-body" x-init="loadSettings()">
+        <div class="page-body">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading settings...</span></div>
           <div x-show="!loading && loadError" class="error-state">
             <span class="error-icon">!</span>
@@ -6931,18 +7388,18 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                               <label class="form-checkbox" style="margin:0">
                                 <input type="checkbox"
                                   :checked="configValues[section] && configValues[section][field.name]"
-                                  @change="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.checked; markConfigDirty(section, field.name)">
+                                  @change="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.checked">
                               </label>
                             </template>
                             <template x-if="field.type === 'number'">
                               <input class="form-input" type="number" style="width:120px"
                                 :value="configValues[section] && configValues[section][field.name]"
-                                @input="configValues[section] = configValues[section] || {}; configValues[section][field.name] = Number($event.target.value); markConfigDirty(section, field.name)">
+                                @input="configValues[section] = configValues[section] || {}; configValues[section][field.name] = Number($event.target.value)">
                             </template>
                             <template x-if="field.type === 'select' && field.options">
                               <select class="form-select" style="width:180px"
                                 :value="configValues[section] && configValues[section][field.name]"
-                                @change="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.value; markConfigDirty(section, field.name)">
+                                @change="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.value">
                                 <template x-for="opt in field.options" :key="opt">
                                   <option :value="opt" x-text="opt" :selected="configValues[section] && configValues[section][field.name] === opt"></option>
                                 </template>
@@ -6951,18 +7408,18 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                             <template x-if="!field.type || field.type === 'string'">
                               <input class="form-input" type="text" style="flex:1"
                                 :value="configValues[section] && configValues[section][field.name]"
-                                @input="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.value; markConfigDirty(section, field.name)">
+                                @input="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.value">
                             </template>
-                            <button class="btn btn-primary btn-sm" x-show="isConfigDirty(section, field.name)"
-                              @click="saveConfigField(section, field.name, configValues[section] && configValues[section][field.name])"
-                              :disabled="configSaving[section + '.' + field.name]">
-                              <span x-show="!configSaving[section + '.' + field.name]">Save</span>
-                              <span x-show="configSaving[section + '.' + field.name]" class="spinner" style="width:12px;height:12px;border-width:2px"></span>
-                            </button>
                           </div>
                           <div class="text-xs text-dim" x-show="field.description" x-text="field.description" style="grid-column:1/-1;padding-left:2px"></div>
                         </div>
                       </template>
+                    </div>
+                    <div style="margin-top:12px;text-align:right">
+                      <button class="btn btn-primary" @click="saveConfigSection(section)" :disabled="configSaving[section]">
+                        <span x-show="!configSaving[section]">Save</span>
+                        <span x-show="configSaving[section]" class="spinner" style="width:14px;height:14px;border-width:2px"></span>
+                      </button>
                     </div>
                   </div>
                 </template>
@@ -6972,7 +7429,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <!-- Raw JSON fallback -->
             <div class="card mt-4" style="border-left:3px solid var(--border)">
               <div class="card-header" style="font-size:12px;cursor:pointer" @click="$el.nextElementSibling.style.display = $el.nextElementSibling.style.display === 'none' ? 'block' : 'none'">Raw Config JSON (click to toggle)</div>
-              <pre style="font-size:11px;white-space:pre-wrap;overflow:auto;max-height:400px;color:var(--text-dim);line-height:1.5;display:none" x-text="JSON.stringify(config, null, 2)"></pre>
+              <pre style="font-size:11px;white-space:pre-wrap;overflow:auto;max-height:400px;color:var(--text-dim);line-height:1.5;display:none" x-text="JSON.stringify(configValues, null, 2)"></pre>
             </div>
           </div>
 
@@ -7088,11 +7545,11 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <!-- Network tab -->
           <div x-show="tab === 'network'" x-data="{
             netStatus: null, a2aAgents: [], a2aDiscoverUrl: '', a2aDiscovering: false,
-            async loadNetStatus() { try { this.netStatus = await (await fetch('/api/network/status')).json(); } catch(e) {} },
-            async loadA2aAgents() { try { let r = await (await fetch('/api/a2a/agents')).json(); this.a2aAgents = r.agents || []; } catch(e) {} },
+            async loadNetStatus() { try { this.netStatus = await FangClawGoAPI.get('/api/network/status'); } catch(e) {} },
+            async loadA2aAgents() { try { let r = await FangClawGoAPI.get('/api/a2a/agents'); this.a2aAgents = r.agents || []; } catch(e) {} },
             async discoverA2a() {
               if (!this.a2aDiscoverUrl) return; this.a2aDiscovering = true;
-              try { await fetch('/api/a2a/discover', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:this.a2aDiscoverUrl})}); this.a2aDiscoverUrl=''; await this.loadA2aAgents(); } catch(e) {}
+              try { await FangClawGoAPI.post('/api/a2a/discover', {url:this.a2aDiscoverUrl}); this.a2aDiscoverUrl=''; await this.loadA2aAgents(); } catch(e) {}
               this.a2aDiscovering = false;
             }
           }" x-init="loadNetStatus(); loadA2aAgents()">
@@ -7180,8 +7637,8 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
               this.budgetLoading = true;
               try {
                 let [b, a] = await Promise.all([
-                  fetch('/api/budget').then(r => r.json()),
-                  fetch('/api/budget/agents').then(r => r.json())
+                  FangClawGoAPI.get('/api/budget'),
+                  FangClawGoAPI.get('/api/budget/agents')
                 ]);
                 this.budgetData = b;
                 this.agentRanking = a.agents || [];
@@ -7206,7 +7663,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 if (+this.editMonthly !== this.budgetData.monthly_limit) body.max_monthly_usd = +this.editMonthly;
                 let alertVal = (+this.editAlert) / 100;
                 if (Math.abs(alertVal - this.budgetData.alert_threshold) > 0.001) body.alert_threshold = alertVal;
-                await fetch('/api/budget', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                await FangClawGoAPI.put('/api/budget', body);
                 this.editMode = false;
                 await this.loadBudget();
               } catch(e) { alert('Failed to save: ' + e); }
@@ -8255,7 +8712,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <h2>Setup Wizard</h2>
           <button class="btn btn-ghost btn-sm" @click="finishAndDismiss()">Skip Setup</button>
         </div>
-        <div class="page-body" x-init="loadData()">
+        <div class="page-body">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading...</span></div>
           <div x-show="!loading && error" class="error-state">
             <span class="error-icon">!</span>
@@ -8429,7 +8886,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
               <div class="card-grid" style="grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));margin-bottom:20px">
                 <template x-for="(tpl, i) in filteredTemplates" :key="tpl.id">
-                  <div class="card wizard-template-card" :class="{ 'wizard-template-selected': selectedTemplate === templates.indexOf(tpl) }" @click="selectTemplate(templates.indexOf(tpl))" style="cursor:pointer">
+                  <div class="card wizard-template-card" :class="{ 'wizard-template-selected': selectedTemplate === templates.findIndex(function(item) { return item.id === tpl.id; }) }" @click="selectTemplate(templates.findIndex(function(item) { return item.id === tpl.id; }))" style="cursor:pointer">
                     <div class="flex items-center gap-2 mb-2">
                       <span class="channel-icon" style="background:var(--accent);color:var(--bg-primary);font-weight:700" x-text="tpl.icon"></span>
                       <div>
@@ -8452,7 +8909,8 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                   <label>Agent Name</label>
                   <input class="form-input" type="text" x-model="agentName" placeholder="my-assistant" style="max-width:320px" @keydown.enter="createAgent()">
                 </div>
-                <div class="text-xs text-dim" x-text="'Will use ' + templates[selectedTemplate].provider + ' / ' + templates[selectedTemplate].model + ' with ' + profileInfo(templates[selectedTemplate].profile).label + ' profile'"></div>
+                <div class="text-xs text-dim" x-show="selectedTemplateObj" x-text="selectedTemplateText"></div>
+                <div class="text-xs text-dim" x-show="!selectedTemplateObj">Loading templates...</div>
                 <div class="mt-2">
                   <button class="btn btn-primary" @click="createAgent()" :disabled="creatingAgent || !agentName.trim()">
                     <span x-show="!creatingAgent">Create Agent</span>
@@ -10442,11 +10900,34 @@ var FangClawGoAPI = (function() {
 
   function onConnectionChange(fn) { _connectionListeners.push(fn); }
 
+  var _authErrorHandler = null;
+  
+  function setAuthErrorHandler(handler) {
+    _authErrorHandler = handler;
+  }
+
   function request(method, path, body) {
     var opts = { method: method, headers: headers() };
     if (body !== undefined) opts.body = JSON.stringify(body);
     return fetch(BASE + path, opts).then(function(r) {
       if (_connectionState !== 'connected') setConnectionState('connected');
+      
+      if (r.status === 401) {
+        if (_authErrorHandler) {
+          _authErrorHandler();
+        }
+        return r.text().then(function(text) {
+          var msg = '';
+          try {
+            var json = JSON.parse(text);
+            msg = json.error || r.statusText;
+          } catch(e) {
+            msg = r.statusText;
+          }
+          throw new Error(friendlyError(r.status, msg));
+        });
+      }
+      
       if (!r.ok) {
         return r.text().then(function(text) {
           var msg = '';
@@ -10593,6 +11074,7 @@ var FangClawGoAPI = (function() {
   return {
     setAuthToken: setAuthToken,
     getToken: getToken,
+    setAuthErrorHandler: setAuthErrorHandler,
     get: get,
     post: post,
     put: put,
@@ -10701,6 +11183,14 @@ document.addEventListener('alpine:init', function() {
   // Restore saved API key on load
   var savedKey = localStorage.getItem('fangclawgo-api-key');
   if (savedKey) FangClawGoAPI.setAuthToken(savedKey);
+  
+  // Set up auth error handler for 401 responses
+  FangClawGoAPI.setAuthErrorHandler(function() {
+    var store = Alpine.store('app');
+    if (store && store.currentUser) {
+      store.logout();
+    }
+  });
 
   Alpine.store('app', {
     agents: [],
@@ -10713,13 +11203,18 @@ document.addEventListener('alpine:init', function() {
     agentCount: 0,
     pendingAgent: null,
     pendingSession: null,
-    focusMode: localStorage.getItem('openfang-focus') === 'true',
+    focusMode: localStorage.getItem('fangclawgo-focus') === 'true',
     showOnboarding: false,
     showAuthPrompt: false,
+    showLogin: false,
+    currentUser: null,
+    pollIntervalId: null,
+    setupComplete: false,
+    showSetupGuide: false,
 
     toggleFocusMode() {
       this.focusMode = !this.focusMode;
-      localStorage.setItem('openfang-focus', this.focusMode);
+      localStorage.setItem('fangclawgo-focus', this.focusMode);
     },
 
     async refreshAgents() {
@@ -10766,23 +11261,81 @@ document.addEventListener('alpine:init', function() {
     },
 
     async checkAuth() {
-      try {
-        // Use a protected endpoint (not in the public allowlist) to detect
-        // whether the server requires an API key.
-        await FangClawGoAPI.get('/api/tools');
-        this.showAuthPrompt = false;
-      } catch(e) {
-        if (e.message && (e.message.indexOf('Not authorized') >= 0 || e.message.indexOf('401') >= 0 || e.message.indexOf('Missing Authorization') >= 0 || e.message.indexOf('Unauthorized') >= 0)) {
-          // Only show prompt if we don't already have a saved key
-          var saved = localStorage.getItem('openfang-api-key');
-          if (saved) {
-            // Saved key might be stale — clear it and show prompt
-            FangClawGoAPI.setAuthToken('');
-            localStorage.removeItem('openfang-api-key');
-          }
-          this.showAuthPrompt = true;
-        }
+      var self = this;
+      var token = localStorage.getItem('fangclawgo-token');
+      
+      if (!token) {
+        this.currentUser = null;
+        this.showLogin = true;
+        return false;
       }
+
+      FangClawGoAPI.setAuthToken(token);
+
+      try {
+        var user = await FangClawGoAPI.get('/api/auth/me');
+        this.currentUser = user;
+        this.showLogin = false;
+        document.dispatchEvent(new CustomEvent('user-login', { detail: { user: user } }));
+        return true;
+      } catch(e) {
+        console.warn('[FangClaw-Go] Auth check failed:', e.message);
+        this.currentUser = null;
+        this.showLogin = true;
+        return false;
+      }
+    },
+
+    async checkSetupStatus() {
+      try {
+        var status = await FangClawGoAPI.get('/api/setup/status');
+        this.setupComplete = status.setup_complete;
+        console.log('[FangClaw-Go] checkSetupStatus:', this.setupComplete);
+        if (!this.setupComplete && this.currentUser) {
+          this.showSetupGuide = true;
+        }
+      } catch(e) {
+        this.setupComplete = false;
+      }
+    },
+
+    requireSetupCheck() {
+      if (!this.setupComplete) {
+        this.showSetupGuide = true;
+        return false;
+      }
+      return true;
+    },
+
+    goToSettings() {
+      this.showSetupGuide = false;
+      if (window.navigate) {
+        window.navigate('settings');
+      } else {
+        window.location.hash = 'settings';
+      }
+    },
+
+    login(token, user) {
+      localStorage.setItem('fangclawgo-token', token);
+      FangClawGoAPI.setAuthToken(token);
+      this.currentUser = user;
+      this.showLogin = false;
+      this.refreshAgents();
+      this.checkSetupStatus();
+      document.dispatchEvent(new CustomEvent('user-login', { detail: { user: user } }));
+    },
+
+    logout() {
+      localStorage.removeItem('fangclawgo-token');
+      FangClawGoAPI.setAuthToken('');
+      this.currentUser = null;
+      this.showLogin = true;
+      if (this.pollIntervalId) {
+        clearInterval(this.pollIntervalId);
+        this.pollIntervalId = null;
+      }
+      document.dispatchEvent(new CustomEvent('user-logout'));
     },
 
     submitApiKey(key) {
@@ -10884,11 +11437,41 @@ function app() {
         Alpine.store('app').connectionState = state;
       });
 
-      // Initial data load
-      this.pollStatus();
-      Alpine.store('app').checkOnboarding();
-      Alpine.store('app').checkAuth();
-      setInterval(function() { self.pollStatus(); }, 5000);
+      // Check for GitHub login success callback
+      var urlParams = new URLSearchParams(window.location.search);
+      var githubLoginSuccess = urlParams.get('github_login') === 'success';
+      var token = urlParams.get('token');
+      
+      if (githubLoginSuccess && token) {
+        var store = Alpine.store('app');
+        // Set the token immediately
+        localStorage.setItem('fangclawgo-token', token);
+        FangClawGoAPI.setAuthToken(token);
+        // Remove query params from URL without reloading
+        var newUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, '', newUrl);
+        // Then check auth to get the user info
+        store.checkAuth().then(function() {
+          if (store.currentUser) {
+            store.checkSetupStatus();
+            self.pollStatus();
+            store.checkOnboarding();
+            store.pollIntervalId = setInterval(function() { self.pollStatus(); }, 10000);
+            FangClawGoToast.success('Welcome, ' + store.currentUser.username + '!');
+          }
+        });
+      } else {
+        // Initial data load - check auth first
+        var store = Alpine.store('app');
+        store.checkAuth().then(function() {
+          if (store.currentUser) {
+            store.checkSetupStatus();
+            self.pollStatus();
+            store.checkOnboarding();
+            store.pollIntervalId = setInterval(function() { self.pollStatus(); }, 10000);
+          }
+        });
+      }
     },
 
     navigate(p) {
@@ -10920,12 +11503,91 @@ function app() {
 
     async pollStatus() {
       var store = Alpine.store('app');
+      if (!store.currentUser) {
+        if (store.pollIntervalId) {
+          clearInterval(store.pollIntervalId);
+          store.pollIntervalId = null;
+        }
+        return;
+      }
       await store.checkStatus();
       await store.refreshAgents();
       this.connected = store.connected;
       this.version = store.version;
       this.agentCount = store.agentCount;
       this.wsConnected = FangClawGoAPI.isWsConnected();
+    }
+  };
+}
+
+function loginPage() {
+  return {
+    username: '',
+    password: '',
+    email: '',
+    error: '',
+    loading: false,
+    loginMode: 'login',
+
+    async handleLogin() {
+      var self = this;
+      self.error = '';
+      
+      if (!self.username || !self.password) {
+        self.error = 'Username and password are required';
+        return;
+      }
+
+      self.loading = true;
+
+      try {
+        var response = await FangClawGoAPI.post('/api/auth/login', {
+          username: self.username,
+          password: self.password
+        });
+
+        Alpine.store('app').login(response.token, response.user);
+        FangClawGoToast.success('Welcome back, ' + response.user.username + '!');
+      } catch(e) {
+        self.error = e.message || 'Login failed. Please check your credentials.';
+        FangClawGoToast.error(self.error);
+      } finally {
+        self.loading = false;
+      }
+    },
+
+    async handleRegister() {
+      var self = this;
+      self.error = '';
+      
+      if (!self.username || !self.password) {
+        self.error = 'Username and password are required';
+        return;
+      }
+
+      if (self.password.length < 6) {
+        self.error = 'Password must be at least 6 characters';
+        return;
+      }
+
+      self.loading = true;
+
+      try {
+        var response = await FangClawGoAPI.post('/api/auth/register', {
+          username: self.username,
+          email: self.email,
+          password: self.password
+        });
+
+        FangClawGoToast.success('Account created! Please sign in.');
+        self.loginMode = 'login';
+        self.error = '';
+      } catch(e) {
+        self.error = e.message || 'Registration failed.';
+        FangClawGoToast.error(self.error);
+      } finally {
+        self.loading = false;
+      }
     }
   };
 }
@@ -10943,12 +11605,42 @@ function overviewPage() {
     providers: [],
     mcpServers: [],
     skillCount: 0,
-    loading: true,
+    loading: false,
     loadError: '',
     refreshTimer: null,
     lastRefresh: null,
+    initialized: false,
+
+    async init() {
+      var self = this;
+      if (Alpine.store('app').currentUser) {
+        await self.loadOverview();
+        self.startAutoRefresh();
+      }
+      self.initialized = true;
+
+      document.addEventListener('user-login', async function() {
+        if (!self.loading) {
+          await self.loadOverview();
+          self.startAutoRefresh();
+        }
+      });
+
+      document.addEventListener('user-logout', function() {
+        self.stopAutoRefresh();
+        self.health = {};
+        self.status = {};
+        self.usageSummary = {};
+        self.recentAudit = [];
+        self.channels = [];
+        self.providers = [];
+        self.mcpServers = [];
+        self.skillCount = 0;
+      });
+    },
 
     async loadOverview() {
+      if (!Alpine.store('app').currentUser) return;
       this.loading = true;
       this.loadError = '';
       try {
@@ -11046,7 +11738,7 @@ function overviewPage() {
 
     async loadProviders() {
       try {
-        var data = await FangClawGoAPI.get('/api/providers');
+        var data = await FangClawGoAPI.get('/api/user/providers');
         this.providers = data.providers || [];
       } catch(e) { this.providers = []; }
     },
@@ -11582,7 +12274,9 @@ function chatPage() {
     },
 
     selectAgent(agent, skipWelcome) {
-      this.currentAgent = agent;
+      var agents = Alpine.store('app').agents;
+      var realAgent = agents.find(function(a) { return a.id === agent.id; });
+      this.currentAgent = realAgent || agent;
       this.messages = [];
       this.connectWs(agent.id);
       if (!skipWelcome) {
@@ -12491,6 +13185,16 @@ function agentsPage() {
 
     async init() {
       var self = this;
+      
+      if (!Alpine.store('app').currentUser) {
+        this.loading = false;
+        document.addEventListener('user-login', async function() {
+          await self.loadData();
+          await self.loadTemplates();
+        });
+        return;
+      }
+
       this.loading = true;
       this.loadError = '';
       try {
@@ -12505,12 +13209,14 @@ function agentsPage() {
       // If a pending agent was set (e.g. from wizard or redirect), open chat inline
       var store = Alpine.store('app');
       if (store.pendingAgent) {
-        this.activeChatAgent = store.pendingAgent;
+        var realAgent = this.agents.find(function(a) { return a.id === store.pendingAgent.id; });
+        this.activeChatAgent = realAgent || store.pendingAgent;
       }
       // Watch for future pendingAgent changes
       this.$watch('$store.app.pendingAgent', function(agent) {
         if (agent) {
-          self.activeChatAgent = agent;
+          var realAgent = self.agents.find(function(a) { return a.id === agent.id; });
+          self.activeChatAgent = realAgent || agent;
         }
       });
     },
@@ -12532,7 +13238,7 @@ function agentsPage() {
       try {
         var results = await Promise.all([
           FangClawGoAPI.get('/api/agent-templates'),
-          FangClawGoAPI.get('/api/providers').catch(function() { return { providers: [] }; })
+          FangClawGoAPI.get('/api/user/providers').catch(function() { return { providers: [] }; })
         ]);
         this.builtinTemplates = results[0].templates || [];
         this.tplProviders = results[1].providers || [];
@@ -12677,6 +13383,10 @@ function agentsPage() {
     async spawnSmartAgent() {
       if (!this.smartManifest) return;
       
+      if (!Alpine.store('app').requireSetupCheck()) {
+        return;
+      }
+      
       this.spawning = true;
       var self = this;
       
@@ -12728,7 +13438,7 @@ function agentsPage() {
       
       var self = this;
       try {
-        var data = await FangClawGoAPI.get('/api/providers');
+        var data = await FangClawGoAPI.get('/api/user/providers');
         self.spawnProviders = data.providers || [];
         
         if (self.spawnProviders.length > 0) {
@@ -12812,6 +13522,10 @@ function agentsPage() {
     },
 
     async spawnAgent() {
+      if (!Alpine.store('app').requireSetupCheck()) {
+        return;
+      }
+      
       this.spawning = true;
       var toml = this.spawnMode === 'wizard' ? this.generateToml() : this.spawnToml;
       if (!toml.trim()) {
@@ -12935,6 +13649,10 @@ function agentsPage() {
 
     // -- Template methods --
     async spawnFromTemplate(name) { 
+      if (!Alpine.store('app').requireSetupCheck()) {
+        return;
+      }
+      
       try {
         console.log('Spawning from template id:', name);
         var res = await FangClawGoAPI.post('/api/templates/' + encodeURIComponent(name) + '/spawn');
@@ -12996,7 +13714,10 @@ function workflowsPage() {
   return {
     // -- Workflows state --
     workflows: [],
+    agents: [],
     showCreateModal: false,
+    showEditModal: false,
+    editingWf: null,
     runModal: null,
     runInput: '',
     runResult: '',
@@ -13018,7 +13739,18 @@ function workflowsPage() {
       this.loading = false;
     },
 
-    async loadData() { return this.loadWorkflows(); },
+    async loadAgents() {
+      try {
+        var list = await FangClawGoAPI.get('/api/agents');
+        this.agents = Array.isArray(list) ? list : [];
+      } catch(e) {
+        this.agents = [];
+      }
+    },
+
+    async loadData() { 
+      await Promise.all([this.loadWorkflows(), this.loadAgents()]);
+    },
 
     async createWorkflow() {
       var steps = this.newWf.steps.map(function(s) {
@@ -13047,6 +13779,68 @@ function workflowsPage() {
         await this.loadWorkflows();
       } catch(e) {
         FangClawGoToast.error('Failed to create workflow: ' + e.message);
+      }
+    },
+
+    async openEditWorkflow(wf) {
+      try {
+        var fullWf = await FangClawGoAPI.get('/api/workflows/' + wf.id);
+        var copy = JSON.parse(JSON.stringify(fullWf));
+        if (Array.isArray(copy.steps)) {
+          copy.steps = copy.steps.map(function(s) {
+            return {
+              name: s.name || '',
+              agent_name: (s.agent && s.agent.name) || '',
+              mode: (s.mode && s.mode.type) || 'sequential',
+              prompt: s.prompt_template || '',
+              condition: (s.mode && s.mode.condition) || '',
+              max_iterations: (s.mode && s.mode.max_iterations) || 5,
+              until: (s.mode && s.mode.until) || '',
+              error_mode: (s.error_mode && s.error_mode.type) || 'fail',
+              max_retries: (s.error_mode && s.error_mode.max_retries) || 3
+            };
+          });
+        } else {
+          copy.steps = [{ name: '', agent_name: '', mode: 'sequential', prompt: '', condition: '', max_iterations: 5, until: '', error_mode: 'fail', max_retries: 3 }];
+        }
+        this.editingWf = copy;
+        this.showEditModal = true;
+      } catch(e) {
+        FangClawGoToast.error('Failed to load workflow: ' + e.message);
+      }
+    },
+
+    async saveWorkflow() {
+      if (!Array.isArray(this.editingWf.steps)) {
+        FangClawGoToast.error('Invalid workflow steps');
+        return;
+      }
+      var steps = this.editingWf.steps.map(function(s) {
+        var step = { name: s.name || 'step', agent_name: s.agent_name, mode: s.mode, prompt: s.prompt || '{{input}}', error_mode: s.error_mode || 'fail' };
+        if (s.mode === 'conditional') {
+          step.condition = s.condition || '';
+        } else if (s.mode === 'loop') {
+          if (s.max_iterations) {
+            step.max_iterations = parseInt(s.max_iterations, 10) || 5;
+          }
+          if (s.until) {
+            step.until = s.until;
+          }
+        }
+        if (s.error_mode === 'retry' && s.max_retries) {
+          step.max_retries = parseInt(s.max_retries, 10) || 3;
+        }
+        return step;
+      });
+      try {
+        var wfName = this.editingWf.name;
+        await FangClawGoAPI.put('/api/workflows/' + this.editingWf.id, { name: wfName, description: this.editingWf.description, steps: steps });
+        this.showEditModal = false;
+        this.editingWf = null;
+        FangClawGoToast.success('Workflow "' + wfName + '" saved');
+        await this.loadWorkflows();
+      } catch(e) {
+        FangClawGoToast.error('Failed to save workflow: ' + e.message);
       }
     },
 
@@ -13958,17 +14752,22 @@ function channelsPage() {
           fields: this.formValues
         });
         this.setupStep = 2;
+        this.testPassed = false;
         // Auto-test after save
         try {
           var testResult = await FangClawGoAPI.post('/api/channels/' + name + '/test', {});
+          console.log('Test result message:', testResult.message);
+          console.log('Test result status:', testResult.status);
           if (testResult.status === 'ok') {
             this.testPassed = true;
             this.setupStep = 3;
             FangClawGoToast.success(this.setupModal.display_name + ' activated!');
           } else {
+            this.testPassed = false;
             FangClawGoToast.success(this.setupModal.display_name + ' saved. ' + (testResult.message || ''));
           }
         } catch(te) {
+          this.testPassed = false;
           FangClawGoToast.success(this.setupModal.display_name + ' saved. Test to verify connection.');
         }
         await this.refreshStatus();
@@ -14691,6 +15490,11 @@ function handsPage() {
 
     async launchHand() {
       if (!this.setupWizard) return;
+      
+      if (!Alpine.store('app').requireSetupCheck()) {
+        return;
+      }
+      
       var handId = this.setupWizard.id;
       var config = {};
       for (var key in this.settingsValues) {
@@ -14701,6 +15505,13 @@ function handsPage() {
         var data = await FangClawGoAPI.post('/api/hands/' + handId + '/activate', { config: config });
         this.showToast('Hand "' + handId + '" activated as ' + (data.agent_name || data.instance_id));
         this.closeSetupWizard();
+        // Update local hand status
+        for (var i = 0; i < this.hands.length; i++) {
+          if (this.hands[i].id === handId) {
+            this.hands[i].status = 'active';
+            break;
+          }
+        }
         await this.loadActive();
         this.tab = 'active';
       } catch(e) {
@@ -14732,6 +15543,13 @@ function handsPage() {
       try {
         await FangClawGoAPI.post('/api/hands/instances/' + inst.instance_id + '/pause', {});
         inst.status = 'Paused';
+        // Update local hand status
+        for (var i = 0; i < this.hands.length; i++) {
+          if (this.hands[i].id === inst.hand_id) {
+            this.hands[i].status = 'paused';
+            break;
+          }
+        }
       } catch(e) {
         this.showToast('Pause failed: ' + (e.message || 'unknown error'));
       }
@@ -14741,6 +15559,13 @@ function handsPage() {
       try {
         await FangClawGoAPI.post('/api/hands/instances/' + inst.instance_id + '/resume', {});
         inst.status = 'Active';
+        // Update local hand status
+        for (var i = 0; i < this.hands.length; i++) {
+          if (this.hands[i].id === inst.hand_id) {
+            this.hands[i].status = 'active';
+            break;
+          }
+        }
       } catch(e) {
         this.showToast('Resume failed: ' + (e.message || 'unknown error'));
       }
@@ -14753,6 +15578,13 @@ function handsPage() {
         try {
           await FangClawGoAPI.delete('/api/hands/instances/' + inst.instance_id);
           self.instances = self.instances.filter(function(i) { return i.instance_id !== inst.instance_id; });
+          // Update local hand status
+          for (var i = 0; i < self.hands.length; i++) {
+            if (self.hands[i].id === inst.hand_id) {
+              self.hands[i].status = 'inactive';
+              break;
+            }
+          }
           FangClawGoToast.success('Hand deactivated.');
         } catch(e) {
           FangClawGoToast.error('Deactivation failed: ' + (e.message || 'unknown error'));
@@ -14793,7 +15625,7 @@ function handsPage() {
       var self = this;
       this.activateResult = msg;
       if (this._toastTimer) clearTimeout(this._toastTimer);
-      this._toastTimer = setTimeout(function() { self.activateResult = null; }, 4000);
+      this._toastTimer = setTimeout(function() { self.activateResult = null; }, 6000);
     },
 
     // ── Browser Viewer ───────────────────────────────────────────────────
@@ -14902,6 +15734,18 @@ function schedulerPage() {
       enabled: true
     },
     creating: false,
+
+    // -- Edit Job form --
+    showEditForm: false,
+    editingJobId: '',
+    editJob: {
+      name: '',
+      cron: '',
+      agent_id: '',
+      message: '',
+      enabled: true
+    },
+    editing: false,
 
     // -- Create Trigger form --
     showCreateTriggerForm: false,
@@ -15100,8 +15944,10 @@ function schedulerPage() {
       this.runningJobId = job.id;
       try {
         var result = await FangClawGoAPI.post('/api/schedules/' + job.id + '/run', {});
-        if (result.status === 'completed') {
-          FangClawGoToast.success('Schedule "' + (job.name || 'job') + '" executed successfully');
+        console.log("Schedules: Run Now Result:", result);
+        
+        if (result.status === 'started' || result.status === 'completed') {
+          FangClawGoToast.success('Schedule "' + (job.name || 'job') + '" execution started');
           job.last_run = new Date().toISOString();
         } else {
           FangClawGoToast.error('Schedule run failed: ' + (result.error || 'Unknown error'));
@@ -15110,6 +15956,56 @@ function schedulerPage() {
         FangClawGoToast.error('Run Now is not yet available for cron jobs');
       }
       this.runningJobId = '';
+    },
+
+    openEditForm(job) {
+      this.editingJobId = job.id;
+      this.editJob = {
+        name: job.name || '',
+        cron: job.cron || '',
+        agent_id: job.agent_id || '',
+        message: job.message || '',
+        enabled: job.enabled !== false
+      };
+      this.showEditForm = true;
+    },
+
+    async updateJob() {
+      if (!this.editJob.name.trim()) {
+        FangClawGoToast.error('Job name is required');
+        return;
+      }
+      if (!this.editJob.cron.trim()) {
+        FangClawGoToast.error('Cron expression is required');
+        return;
+      }
+
+      this.editing = true;
+      try {
+        await FangClawGoAPI.put('/api/schedules/' + this.editingJobId, {
+          agent_id: this.editJob.agent_id,
+          name: this.editJob.name,
+          enabled: this.editJob.enabled,
+          schedule: {
+            kind: 'cron',
+            expr: this.editJob.cron
+          },
+          action: {
+            kind: 'agent_turn',
+            message: this.editJob.message
+          },
+          delivery: {
+            kind: 'none'
+          }
+        });
+        FangClawGoToast.success('Schedule updated successfully');
+        this.showEditForm = false;
+        await this.loadData();
+      } catch(e) {
+        console.error("Failed to update schedule:", e);
+        FangClawGoToast.error('Failed to update schedule');
+      }
+      this.editing = false;
     },
 
     // ── Trigger helpers ──
@@ -15375,11 +16271,29 @@ function settingsPage() {
     copilotOAuth: { polling: false, userCode: '', verificationUri: '', pollId: '', interval: 5 },
     loading: true,
     loadError: '',
+    initialized: false,
+
+    async init() {
+      var self = this;
+      if (Alpine.store('app').currentUser) {
+        await self.loadSettings();
+      }
+      self.initialized = true;
+
+      document.addEventListener('user-login', async function() {
+        await self.loadSettings();
+      });
+
+      document.addEventListener('user-logout', function() {
+        self.providers = [];
+        self.models = [];
+        self.loading = true;
+      });
+    },
 
     // -- Dynamic config state --
     configSchema: null,
     configValues: {},
-    configDirty: {},
     configSaving: {},
 
     // -- Security state --
@@ -15497,6 +16411,10 @@ function settingsPage() {
 
     // -- Settings load --
     async loadSettings() {
+      if (!Alpine.store('app').currentUser) {
+        this.loading = false;
+        return;
+      }
       this.loading = true;
       this.loadError = '';
       try {
@@ -15554,7 +16472,7 @@ function settingsPage() {
 
     async loadProviders() {
       try {
-        var data = await FangClawGoAPI.get('/api/providers');
+        var data = await FangClawGoAPI.get('/api/user/providers');
         this.providers = data.providers || [];
         for (var i = 0; i < this.providers.length; i++) {
           var p = this.providers[i];
@@ -15562,7 +16480,9 @@ function settingsPage() {
             this.providerUrlInputs[p.id] = p.base_url;
           }
         }
-      } catch(e) { this.providers = []; }
+      } catch(e) {
+        this.providers = [];
+      }
     },
 
     async loadModels() {
@@ -15595,33 +16515,31 @@ function settingsPage() {
     async loadConfigSchema() {
       try {
         var results = await Promise.all([
-          FangClawGoAPI.get('/api/config/schema').catch(function() { return {}; }),
-          FangClawGoAPI.get('/api/config')
+          FangClawGoAPI.get('/api/user/config/schema').catch(function() { return {}; }),
+          FangClawGoAPI.get('/api/user/config')
         ]);
         this.configSchema = results[0].sections || null;
         this.configValues = results[1] || {};
       } catch(e) { /* silent */ }
     },
 
-    isConfigDirty(section, field) {
-      return this.configDirty[section + '.' + field] === true;
-    },
-
-    markConfigDirty(section, field) {
-      this.configDirty[section + '.' + field] = true;
-    },
-
-    async saveConfigField(section, field, value) {
-      var key = section + '.' + field;
-      this.configSaving[key] = true;
+    async saveConfigSection(section) {
+      this.configSaving[section] = true;
       try {
-        await FangClawGoAPI.post('/api/config/set', { path: key, value: value });
-        this.configDirty[key] = false;
-        FangClawGoToast.success('Saved ' + key);
+        var sectionData = this.configValues[section] || {};
+        for (var fieldName in sectionData) {
+          if (sectionData.hasOwnProperty(fieldName)) {
+            await FangClawGoAPI.post('/api/user/config/set', { 
+              path: section + '.' + fieldName, 
+              value: sectionData[fieldName] 
+            });
+          }
+        }
+        FangClawGoToast.success('Saved ' + section);
       } catch(e) {
         FangClawGoToast.error('Failed to save: ' + e.message);
       }
-      this.configSaving[key] = false;
+      this.configSaving[section] = false;
     },
 
     get filteredTools() {
@@ -15713,11 +16631,12 @@ function settingsPage() {
       var key = this.providerKeyInputs[provider.id];
       if (!key || !key.trim()) { FangClawGoToast.error('Please enter an API key'); return; }
       try {
-        await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key.trim() });
+        await FangClawGoAPI.post('/api/user/providers/' + encodeURIComponent(provider.id) + '/key', { key: key.trim() });
         FangClawGoToast.success('API key saved for ' + provider.display_name);
         this.providerKeyInputs[provider.id] = '';
         await this.loadProviders();
         await this.loadModels();
+        await Alpine.store('app').checkSetupStatus();
       } catch(e) {
         FangClawGoToast.error('Failed to save key: ' + e.message);
       }
@@ -15725,7 +16644,7 @@ function settingsPage() {
 
     async removeProviderKey(provider) {
       try {
-        await FangClawGoAPI.del('/api/providers/' + encodeURIComponent(provider.id) + '/key');
+        await FangClawGoAPI.del('/api/user/providers/' + encodeURIComponent(provider.id) + '/key');
         FangClawGoToast.success('API key removed for ' + provider.display_name);
         await this.loadProviders();
         await this.loadModels();
@@ -15786,7 +16705,7 @@ function settingsPage() {
       this.providerTesting[provider.id] = true;
       this.providerTestResults[provider.id] = null;
       try {
-        var result = await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
+        var result = await FangClawGoAPI.post('/api/user/providers/' + encodeURIComponent(provider.id) + '/test', {});
         this.providerTestResults[provider.id] = result;
         if (result.status === 'ok') {
           FangClawGoToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
@@ -16689,6 +17608,7 @@ function wizardPage() {
     totalSteps: 6,
     loading: false,
     error: '',
+    initialized: false,
 
     // Step 2: Provider setup
     providers: [],
@@ -16705,6 +17625,31 @@ function wizardPage() {
     agentName: 'my-assistant',
     creatingAgent: false,
     createdAgent: null,
+
+    async init() {
+      var self = this;
+      if (Alpine.store('app').currentUser) {
+        await self.loadData();
+      }
+      self.initialized = true;
+      document.addEventListener('user-login', async function() {
+        await self.loadData();
+      });
+      document.addEventListener('user-logout', function() {
+        self.templates = [];
+      });
+    },
+
+    get selectedTemplateObj() {
+      return this.templates[this.selectedTemplate] || null;
+    },
+
+    get selectedTemplateText() {
+      var tpl = this.selectedTemplateObj;
+      if (!tpl) return '';
+      var profile = this.profileInfo(tpl.profile);
+      return 'Will use ' + tpl.provider + ' / ' + tpl.model + ' with ' + profile.label + ' profile';
+    },
 
     // Step 3: Category filtering
     templateCategory: 'All',
@@ -16795,6 +17740,36 @@ function wizardPage() {
         token_placeholder: 'xoxb-...',
         token_env: 'SLACK_BOT_TOKEN',
         help: 'Create a Slack app at api.slack.com/apps and install it to your workspace.'
+      },
+      {
+        name: 'qq',
+        display_name: 'QQ',
+        icon: 'QQ',
+        description: 'Connect your agent to a QQ bot.',
+        token_label: 'App ID and App Secret',
+        token_placeholder: 'Enter your QQ App ID and App Secret',
+        token_env: 'QQ_APP_ID',
+        help: 'Create a QQ Bot at bot.q.qq.com to get your App ID and App Secret.'
+      },
+      {
+        name: 'feishu',
+        display_name: '飞书 Feishu',
+        icon: 'FS',
+        description: 'Connect your agent to Feishu (Lark).',
+        token_label: 'App ID and App Secret',
+        token_placeholder: 'Enter your Feishu App ID and App Secret',
+        token_env: 'FEISHU_APP_ID',
+        help: 'Create a Feishu App at open.feishu.cn to get your App ID and App Secret.'
+      },
+      {
+        name: 'dingtalk',
+        display_name: '钉钉 DingTalk',
+        icon: 'DT',
+        description: 'Connect your agent to DingTalk.',
+        token_label: 'Client ID and Client Secret',
+        token_placeholder: 'Enter your DingTalk Client ID and Client Secret',
+        token_env: 'DINGTALK_CLIENT_ID',
+        help: 'Create a DingTalk App at open-dingtalk.com to get your Client ID and Client Secret.'
       }
     ],
     channelToken: '',
@@ -16811,6 +17786,10 @@ function wizardPage() {
     // ── Lifecycle ──
 
     async loadData() {
+      if (!Alpine.store('app').currentUser) {
+        this.loading = false;
+        return;
+      }
       this.loading = true;
       this.error = '';
       try {
@@ -16827,6 +17806,7 @@ function wizardPage() {
     async loadTemplates() {
       try {
         var data = await FangClawGoAPI.get('/api/agent-templates');
+        // console.log('Loaded Agent templates:', data.templates || []);
         this.templates = data.templates || [];
       } catch(e) {
         this.templates = [];
@@ -16882,7 +17862,7 @@ function wizardPage() {
 
     async loadProviders() {
       try {
-        var data = await FangClawGoAPI.get('/api/providers');
+        var data = await FangClawGoAPI.get('/api/user/providers');
         this.providers = data.providers || [];
         // Pre-select first unconfigured provider, or first one
         var unconfigured = this.providers.filter(function(p) {
@@ -16957,7 +17937,7 @@ function wizardPage() {
       }
       this.savingKey = true;
       try {
-        await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key });
+        await FangClawGoAPI.post('/api/user/providers/' + encodeURIComponent(provider.id) + '/key', { key: key });
         this.apiKeyInput = '';
         this.keySaved = true;
         this.setupSummary.provider = provider.display_name;
@@ -16977,7 +17957,7 @@ function wizardPage() {
       this.testingProvider = true;
       this.testResult = null;
       try {
-        var result = await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
+        var result = await FangClawGoAPI.post('/api/user/providers/' + encodeURIComponent(provider.id) + '/test', {});
         this.testResult = result;
         if (result.status === 'ok') {
           FangClawGoToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
@@ -17019,13 +17999,12 @@ function wizardPage() {
         model = this.defaultModelForProvider(provider) || tpl.model;
       }
 
-      var toml = '[agent]\n';
-      toml += 'name = "' + name.replace(/"/g, '\\"') + '"\n';
+      var toml = 'name = "' + name.replace(/"/g, '\\"') + '"\n';
       toml += 'description = "' + tpl.description.replace(/"/g, '\\"') + '"\n';
-      toml += 'profile = "' + tpl.profile + '"\n\n';
+      toml += 'profile = "' + tpl.profile + '"\n';
+      toml += 'system_prompt = """\n' + tpl.system_prompt + '\n"""\n\n';
       toml += '[model]\nprovider = "' + provider + '"\n';
-      toml += 'name = "' + model + '"\n\n';
-      toml += '[prompt]\nsystem = """\n' + tpl.system_prompt + '\n"""\n';
+      toml += 'model = "' + model + '"\n';
 
       this.creatingAgent = true;
       try {
@@ -17434,7 +18413,8 @@ function a2aPage() {
     startWebSocket() {
       var self = this;
       var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      var url = protocol + '//' + window.location.host + '/ws/a2a/tasks';
+      var token = localStorage.getItem('fangclawgo-token') || '';
+      var url = protocol + '//' + window.location.host + '/ws/a2a/tasks?token=' + encodeURIComponent(token);
       
       this.ws = new WebSocket(url);
       

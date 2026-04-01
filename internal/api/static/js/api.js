@@ -155,11 +155,34 @@ var FangClawGoAPI = (function() {
 
   function onConnectionChange(fn) { _connectionListeners.push(fn); }
 
+  var _authErrorHandler = null;
+  
+  function setAuthErrorHandler(handler) {
+    _authErrorHandler = handler;
+  }
+
   function request(method, path, body) {
     var opts = { method: method, headers: headers() };
     if (body !== undefined) opts.body = JSON.stringify(body);
     return fetch(BASE + path, opts).then(function(r) {
       if (_connectionState !== 'connected') setConnectionState('connected');
+      
+      if (r.status === 401) {
+        if (_authErrorHandler) {
+          _authErrorHandler();
+        }
+        return r.text().then(function(text) {
+          var msg = '';
+          try {
+            var json = JSON.parse(text);
+            msg = json.error || r.statusText;
+          } catch(e) {
+            msg = r.statusText;
+          }
+          throw new Error(friendlyError(r.status, msg));
+        });
+      }
+      
       if (!r.ok) {
         return r.text().then(function(text) {
           var msg = '';
@@ -306,6 +329,7 @@ var FangClawGoAPI = (function() {
   return {
     setAuthToken: setAuthToken,
     getToken: getToken,
+    setAuthErrorHandler: setAuthErrorHandler,
     get: get,
     post: post,
     put: put,

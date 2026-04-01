@@ -186,7 +186,8 @@ function a2aPage() {
     startWebSocket() {
       var self = this;
       var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      var url = protocol + '//' + window.location.host + '/ws/a2a/tasks';
+      var token = localStorage.getItem('fangclawgo-token') || '';
+      var url = protocol + '//' + window.location.host + '/ws/a2a/tasks?token=' + encodeURIComponent(token);
       
       this.ws = new WebSocket(url);
       

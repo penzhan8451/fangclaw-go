@@ -11,12 +11,42 @@ function overviewPage() {
     providers: [],
     mcpServers: [],
     skillCount: 0,
-    loading: true,
+    loading: false,
     loadError: '',
     refreshTimer: null,
     lastRefresh: null,
+    initialized: false,
+
+    async init() {
+      var self = this;
+      if (Alpine.store('app').currentUser) {
+        await self.loadOverview();
+        self.startAutoRefresh();
+      }
+      self.initialized = true;
+
+      document.addEventListener('user-login', async function() {
+        if (!self.loading) {
+          await self.loadOverview();
+          self.startAutoRefresh();
+        }
+      });
+
+      document.addEventListener('user-logout', function() {
+        self.stopAutoRefresh();
+        self.health = {};
+        self.status = {};
+        self.usageSummary = {};
+        self.recentAudit = [];
+        self.channels = [];
+        self.providers = [];
+        self.mcpServers = [];
+        self.skillCount = 0;
+      });
+    },
 
     async loadOverview() {
+      if (!Alpine.store('app').currentUser) return;
       this.loading = true;
       this.loadError = '';
       try {
@@ -114,7 +144,7 @@ function overviewPage() {
 
     async loadProviders() {
       try {
-        var data = await FangClawGoAPI.get('/api/providers');
+        var data = await FangClawGoAPI.get('/api/user/providers');
         this.providers = data.providers || [];
       } catch(e) { this.providers = []; }
     },

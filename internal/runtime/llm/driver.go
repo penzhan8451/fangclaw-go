@@ -88,6 +88,7 @@ type Config struct {
 	Moonshot   MoonshotConfig   `json:"moonshot,omitempty"`
 	MiniMax    MiniMaxConfig    `json:"minimax,omitempty"`
 	Qianfan    QianfanConfig    `json:"qianfan,omitempty"`
+	VolcEngine VolcEngineConfig `json:"volcengine,omitempty"`
 }
 
 // AnthropicConfig holds Anthropic API configuration.
@@ -152,6 +153,12 @@ type MiniMaxConfig struct {
 
 // QianfanConfig holds Qianfan API configuration.
 type QianfanConfig struct {
+	APIKey string `json:"api_key,omitempty"`
+	Model  string `json:"model,omitempty"`
+}
+
+// VolcEngineConfig holds VolcEngine API configuration.
+type VolcEngineConfig struct {
 	APIKey string `json:"api_key,omitempty"`
 	Model  string `json:"model,omitempty"`
 }

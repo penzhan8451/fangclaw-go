@@ -34,6 +34,18 @@ function schedulerPage() {
     },
     creating: false,
 
+    // -- Edit Job form --
+    showEditForm: false,
+    editingJobId: '',
+    editJob: {
+      name: '',
+      cron: '',
+      agent_id: '',
+      message: '',
+      enabled: true
+    },
+    editing: false,
+
     // -- Create Trigger form --
     showCreateTriggerForm: false,
     newTrigger: {
@@ -231,8 +243,10 @@ function schedulerPage() {
       this.runningJobId = job.id;
       try {
         var result = await FangClawGoAPI.post('/api/schedules/' + job.id + '/run', {});
-        if (result.status === 'completed') {
-          FangClawGoToast.success('Schedule "' + (job.name || 'job') + '" executed successfully');
+        console.log("Schedules: Run Now Result:", result);
+        
+        if (result.status === 'started' || result.status === 'completed') {
+          FangClawGoToast.success('Schedule "' + (job.name || 'job') + '" execution started');
           job.last_run = new Date().toISOString();
         } else {
           FangClawGoToast.error('Schedule run failed: ' + (result.error || 'Unknown error'));
@@ -241,6 +255,56 @@ function schedulerPage() {
         FangClawGoToast.error('Run Now is not yet available for cron jobs');
       }
       this.runningJobId = '';
+    },
+
+    openEditForm(job) {
+      this.editingJobId = job.id;
+      this.editJob = {
+        name: job.name || '',
+        cron: job.cron || '',
+        agent_id: job.agent_id || '',
+        message: job.message || '',
+        enabled: job.enabled !== false
+      };
+      this.showEditForm = true;
+    },
+
+    async updateJob() {
+      if (!this.editJob.name.trim()) {
+        FangClawGoToast.error('Job name is required');
+        return;
+      }
+      if (!this.editJob.cron.trim()) {
+        FangClawGoToast.error('Cron expression is required');
+        return;
+      }
+
+      this.editing = true;
+      try {
+        await FangClawGoAPI.put('/api/schedules/' + this.editingJobId, {
+          agent_id: this.editJob.agent_id,
+          name: this.editJob.name,
+          enabled: this.editJob.enabled,
+          schedule: {
+            kind: 'cron',
+            expr: this.editJob.cron
+          },
+          action: {
+            kind: 'agent_turn',
+            message: this.editJob.message
+          },
+          delivery: {
+            kind: 'none'
+          }
+        });
+        FangClawGoToast.success('Schedule updated successfully');
+        this.showEditForm = false;
+        await this.loadData();
+      } catch(e) {
+        console.error("Failed to update schedule:", e);
+        FangClawGoToast.error('Failed to update schedule');
+      }
+      this.editing = false;
     },
 
     // ── Trigger helpers ──

@@ -3,7 +3,6 @@ package channels
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -15,9 +14,9 @@ func init() {
 	RegisterAutoRegister(autoRegisterDingTalk)
 }
 
-func autoRegisterDingTalk(registry *Registry) error {
-	dingtalkClientID := os.Getenv("DINGTALK_CLIENT_ID")
-	dingtalkClientSecret := os.Getenv("DINGTALK_CLIENT_SECRET")
+func autoRegisterDingTalk(registry *Registry, getSecret SecretGetter) error {
+	dingtalkClientID := getSecret("DINGTALK_CLIENT_ID")
+	dingtalkClientSecret := getSecret("DINGTALK_CLIENT_SECRET")
 
 	if dingtalkClientID != "" && dingtalkClientSecret != "" {
 		fmt.Println("Auto-registering DingTalk channel...")
@@ -144,13 +143,6 @@ func (a *DingTalkAdapter) Start() error {
 	if a.Channel.Config.DingTalk != nil {
 		clientID = a.Channel.Config.DingTalk.ClientID
 		clientSecret = a.Channel.Config.DingTalk.ClientSecret
-	}
-
-	if clientID == "" {
-		clientID = os.Getenv("DINGTALK_CLIENT_ID")
-	}
-	if clientSecret == "" {
-		clientSecret = os.Getenv("DINGTALK_CLIENT_SECRET")
 	}
 
 	if clientID == "" || clientSecret == "" {

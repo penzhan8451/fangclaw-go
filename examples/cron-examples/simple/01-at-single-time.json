@@ -1,0 +1,17 @@
+{
+  "agent_id": "YOUR-AGENT-ID-HERE",
+  "name": "single-time-reminder",
+  "enabled": true,
+  "schedule": {
+    "kind": "at",
+    "at": "2026-04-02T10:00:00+08:00"
+  },
+  "action": {
+    "kind": "agent_turn",
+    "message": "请提醒我今天的会议安排"
+  },
+  "delivery": {
+    "kind": "last_channel"
+  },
+  "one_shot": true
+}

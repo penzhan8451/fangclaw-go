@@ -3,7 +3,6 @@ package channels
 
 import (
 	"context"
-	"os"
 	"sync"
 	"time"
 
@@ -146,6 +145,7 @@ type Channel struct {
 	ID        string               `json:"id"`
 	Name      string               `json:"name"`
 	Type      ChannelType          `json:"type"`
+	Owner     string               `json:"owner,omitempty"`
 	State     ChannelState         `json:"state"`
 	Config    ChannelAdapterConfig `json:"config"`
 	CreatedAt time.Time            `json:"created_at"`
@@ -285,8 +285,11 @@ type Adapter interface {
 // AdapterFactory is a function that creates an adapter for a channel.
 type AdapterFactory func(channel *Channel) (Adapter, error)
 
+// SecretGetter is a function that retrieves a secret by key.
+type SecretGetter func(key string) string
+
 // AutoRegisterFunc is a function that auto-registers a channel.
-type AutoRegisterFunc func(registry *Registry) error
+type AutoRegisterFunc func(registry *Registry, getSecret SecretGetter) error
 
 var autoRegisterFuncs []AutoRegisterFunc
 
@@ -296,9 +299,9 @@ func RegisterAutoRegister(f AutoRegisterFunc) {
 }
 
 // AutoRegisterAll runs all registered auto-register functions.
-func AutoRegisterAll(registry *Registry) error {
+func AutoRegisterAll(registry *Registry, getSecret SecretGetter) error {
 	for _, f := range autoRegisterFuncs {
-		if err := f(registry); err != nil {
+		if err := f(registry, getSecret); err != nil {
 			return err
 		}
 	}
@@ -306,7 +309,7 @@ func AutoRegisterAll(registry *Registry) error {
 }
 
 // LoadConfiguredChannels loads all configured channels from the given config and registers them.
-func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, error) {
+func LoadConfiguredChannels(registry *Registry, cfg *config.Config, getSecret SecretGetter) ([]string, error) {
 	var started []string
 
 	// Check each channel type
@@ -350,7 +353,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 			if cfg.Channels.Telegram != nil {
 				botToken := cfg.Channels.Telegram.BotToken
 				if botToken == "" && cfg.Channels.Telegram.BotTokenEnv != "" {
-					botToken = os.Getenv(cfg.Channels.Telegram.BotTokenEnv)
+					botToken = getSecret(cfg.Channels.Telegram.BotTokenEnv)
 				}
 				isConfigured = botToken != ""
 			}
@@ -358,7 +361,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 			if cfg.Channels.Discord != nil {
 				botToken := cfg.Channels.Discord.BotToken
 				if botToken == "" && cfg.Channels.Discord.BotTokenEnv != "" {
-					botToken = os.Getenv(cfg.Channels.Discord.BotTokenEnv)
+					botToken = getSecret(cfg.Channels.Discord.BotTokenEnv)
 				}
 				isConfigured = botToken != ""
 			}
@@ -366,11 +369,11 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 			if cfg.Channels.Slack != nil {
 				botToken := cfg.Channels.Slack.BotToken
 				if botToken == "" && cfg.Channels.Slack.BotTokenEnv != "" {
-					botToken = os.Getenv(cfg.Channels.Slack.BotTokenEnv)
+					botToken = getSecret(cfg.Channels.Slack.BotTokenEnv)
 				}
 				appToken := cfg.Channels.Slack.AppToken
 				if appToken == "" && cfg.Channels.Slack.AppTokenEnv != "" {
-					appToken = os.Getenv(cfg.Channels.Slack.AppTokenEnv)
+					appToken = getSecret(cfg.Channels.Slack.AppTokenEnv)
 				}
 				isConfigured = botToken != "" && appToken != ""
 			}
@@ -378,7 +381,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 			if cfg.Channels.WhatsApp != nil {
 				accessToken := cfg.Channels.WhatsApp.AccessToken
 				if accessToken == "" && cfg.Channels.WhatsApp.AccessTokenEnv != "" {
-					accessToken = os.Getenv(cfg.Channels.WhatsApp.AccessTokenEnv)
+					accessToken = getSecret(cfg.Channels.WhatsApp.AccessTokenEnv)
 				}
 				isConfigured = (accessToken != "" || cfg.Channels.WhatsApp.PhoneNumberID != "")
 			}
@@ -386,7 +389,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 			if cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" {
 				appSecret := cfg.Channels.QQ.AppSecret
 				if appSecret == "" && cfg.Channels.QQ.AppSecretEnv != "" {
-					appSecret = os.Getenv(cfg.Channels.QQ.AppSecretEnv)
+					appSecret = getSecret(cfg.Channels.QQ.AppSecretEnv)
 				}
 				isConfigured = appSecret != ""
 			}
@@ -394,7 +397,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 			if cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.ClientID != "" {
 				clientSecret := cfg.Channels.DingTalk.ClientSecret
 				if clientSecret == "" && cfg.Channels.DingTalk.ClientSecretEnv != "" {
-					clientSecret = os.Getenv(cfg.Channels.DingTalk.ClientSecretEnv)
+					clientSecret = getSecret(cfg.Channels.DingTalk.ClientSecretEnv)
 				}
 				isConfigured = clientSecret != ""
 			}
@@ -402,7 +405,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 			if cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" {
 				appSecret := cfg.Channels.Feishu.AppSecret
 				if appSecret == "" && cfg.Channels.Feishu.AppSecretEnv != "" {
-					appSecret = os.Getenv(cfg.Channels.Feishu.AppSecretEnv)
+					appSecret = getSecret(cfg.Channels.Feishu.AppSecretEnv)
 				}
 				isConfigured = appSecret != ""
 			}
@@ -425,7 +428,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 		case "telegram":
 			botToken := cfg.Channels.Telegram.BotToken
 			if botToken == "" && cfg.Channels.Telegram.BotTokenEnv != "" {
-				botToken = os.Getenv(cfg.Channels.Telegram.BotTokenEnv)
+				botToken = getSecret(cfg.Channels.Telegram.BotTokenEnv)
 			}
 			newChannel.Config.Telegram = &TelegramChannelConfig{
 				BotToken: botToken,
@@ -433,7 +436,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 		case "discord":
 			botToken := cfg.Channels.Discord.BotToken
 			if botToken == "" && cfg.Channels.Discord.BotTokenEnv != "" {
-				botToken = os.Getenv(cfg.Channels.Discord.BotTokenEnv)
+				botToken = getSecret(cfg.Channels.Discord.BotTokenEnv)
 			}
 			newChannel.Config.Discord = &DiscordChannelConfig{
 				BotToken: botToken,
@@ -441,11 +444,11 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 		case "slack":
 			botToken := cfg.Channels.Slack.BotToken
 			if botToken == "" && cfg.Channels.Slack.BotTokenEnv != "" {
-				botToken = os.Getenv(cfg.Channels.Slack.BotTokenEnv)
+				botToken = getSecret(cfg.Channels.Slack.BotTokenEnv)
 			}
 			appToken := cfg.Channels.Slack.AppToken
 			if appToken == "" && cfg.Channels.Slack.AppTokenEnv != "" {
-				appToken = os.Getenv(cfg.Channels.Slack.AppTokenEnv)
+				appToken = getSecret(cfg.Channels.Slack.AppTokenEnv)
 			}
 			newChannel.Config.Slack = &SlackChannelConfig{
 				BotToken: botToken,
@@ -454,7 +457,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 		case "whatsapp":
 			accessToken := cfg.Channels.WhatsApp.AccessToken
 			if accessToken == "" && cfg.Channels.WhatsApp.AccessTokenEnv != "" {
-				accessToken = os.Getenv(cfg.Channels.WhatsApp.AccessTokenEnv)
+				accessToken = getSecret(cfg.Channels.WhatsApp.AccessTokenEnv)
 			}
 			newChannel.Config.WhatsApp = &WhatsAppChannelConfig{
 				AccessToken: accessToken,
@@ -463,7 +466,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 		case "qq":
 			appSecret := cfg.Channels.QQ.AppSecret
 			if appSecret == "" && cfg.Channels.QQ.AppSecretEnv != "" {
-				appSecret = os.Getenv(cfg.Channels.QQ.AppSecretEnv)
+				appSecret = getSecret(cfg.Channels.QQ.AppSecretEnv)
 			}
 			newChannel.Config.QQ = &QQChannelConfig{
 				AppID:     cfg.Channels.QQ.AppID,
@@ -472,11 +475,11 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 		case "dingtalk":
 			clientID := cfg.Channels.DingTalk.ClientID
 			if clientID == "" && cfg.Channels.DingTalk.ClientIDEnv != "" {
-				clientID = os.Getenv(cfg.Channels.DingTalk.ClientIDEnv)
+				clientID = getSecret(cfg.Channels.DingTalk.ClientIDEnv)
 			}
 			clientSecret := cfg.Channels.DingTalk.ClientSecret
 			if clientSecret == "" && cfg.Channels.DingTalk.ClientSecretEnv != "" {
-				clientSecret = os.Getenv(cfg.Channels.DingTalk.ClientSecretEnv)
+				clientSecret = getSecret(cfg.Channels.DingTalk.ClientSecretEnv)
 			}
 			newChannel.Config.DingTalk = &DingTalkChannelConfig{
 				ClientID:     clientID,
@@ -485,7 +488,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 		case "feishu":
 			appSecret := cfg.Channels.Feishu.AppSecret
 			if appSecret == "" && cfg.Channels.Feishu.AppSecretEnv != "" {
-				appSecret = os.Getenv(cfg.Channels.Feishu.AppSecretEnv)
+				appSecret = getSecret(cfg.Channels.Feishu.AppSecretEnv)
 			}
 			newChannel.Config.Feishu = &FeishuChannelConfig{
 				AppID:     cfg.Channels.Feishu.AppID,
@@ -495,6 +498,200 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config) ([]string, e
 
 		if err := registry.RegisterChannel(newChannel); err == nil {
 			// Try to start the adapter
+			if adapter, ok := registry.GetAdapter(newChannel.ID); ok {
+				if err := adapter.Start(); err == nil {
+					started = append(started, ct.name)
+				}
+			}
+		}
+	}
+
+	return started, nil
+}
+
+// LoadConfiguredChannelsWithOwner loads all configured channels from the given config and registers them with owner.
+func LoadConfiguredChannelsWithOwner(registry *Registry, cfg *config.Config, getSecret SecretGetter, owner string) ([]string, error) {
+	var started []string
+
+	channelTypes := []struct {
+		name string
+		typ  ChannelType
+	}{
+		{"telegram", ChannelTypeTelegram},
+		{"discord", ChannelTypeDiscord},
+		{"slack", ChannelTypeSlack},
+		{"whatsapp", ChannelTypeWhatsApp},
+		{"qq", ChannelTypeQQ},
+		{"dingtalk", ChannelTypeDingTalk},
+		{"feishu", ChannelTypeFeishu},
+	}
+
+	for _, ct := range channelTypes {
+		_, hasFactory := registry.GetFactory(ct.typ)
+		if !hasFactory {
+			continue
+		}
+
+		existingChannels := registry.ListChannels()
+		alreadyExists := false
+		for _, ch := range existingChannels {
+			if ch.Type == ct.typ && ch.Owner == owner {
+				alreadyExists = true
+				break
+			}
+		}
+		if alreadyExists {
+			continue
+		}
+
+		isConfigured := false
+		switch ct.name {
+		case "telegram":
+			if cfg.Channels.Telegram != nil {
+				botToken := cfg.Channels.Telegram.BotToken
+				if botToken == "" && cfg.Channels.Telegram.BotTokenEnv != "" {
+					botToken = getSecret(cfg.Channels.Telegram.BotTokenEnv)
+				}
+				isConfigured = botToken != ""
+			}
+		case "discord":
+			if cfg.Channels.Discord != nil {
+				botToken := cfg.Channels.Discord.BotToken
+				if botToken == "" && cfg.Channels.Discord.BotTokenEnv != "" {
+					botToken = getSecret(cfg.Channels.Discord.BotTokenEnv)
+				}
+				isConfigured = botToken != ""
+			}
+		case "slack":
+			if cfg.Channels.Slack != nil {
+				botToken := cfg.Channels.Slack.BotToken
+				if botToken == "" && cfg.Channels.Slack.BotTokenEnv != "" {
+					botToken = getSecret(cfg.Channels.Slack.BotTokenEnv)
+				}
+				appToken := cfg.Channels.Slack.AppToken
+				if appToken == "" && cfg.Channels.Slack.AppTokenEnv != "" {
+					appToken = getSecret(cfg.Channels.Slack.AppTokenEnv)
+				}
+				isConfigured = botToken != "" && appToken != ""
+			}
+		case "whatsapp":
+			if cfg.Channels.WhatsApp != nil {
+				accessToken := cfg.Channels.WhatsApp.AccessToken
+				if accessToken == "" && cfg.Channels.WhatsApp.AccessTokenEnv != "" {
+					accessToken = getSecret(cfg.Channels.WhatsApp.AccessTokenEnv)
+				}
+				isConfigured = (accessToken != "" || cfg.Channels.WhatsApp.PhoneNumberID != "")
+			}
+		case "qq":
+			if cfg.Channels.QQ != nil && cfg.Channels.QQ.AppID != "" {
+				appSecret := cfg.Channels.QQ.AppSecret
+				if appSecret == "" && cfg.Channels.QQ.AppSecretEnv != "" {
+					appSecret = getSecret(cfg.Channels.QQ.AppSecretEnv)
+				}
+				isConfigured = appSecret != ""
+			}
+		case "dingtalk":
+			if cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.ClientID != "" {
+				clientSecret := cfg.Channels.DingTalk.ClientSecret
+				if clientSecret == "" && cfg.Channels.DingTalk.ClientSecretEnv != "" {
+					clientSecret = getSecret(cfg.Channels.DingTalk.ClientSecretEnv)
+				}
+				isConfigured = clientSecret != ""
+			}
+		case "feishu":
+			if cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" {
+				appSecret := cfg.Channels.Feishu.AppSecret
+				if appSecret == "" && cfg.Channels.Feishu.AppSecretEnv != "" {
+					appSecret = getSecret(cfg.Channels.Feishu.AppSecretEnv)
+				}
+				isConfigured = appSecret != ""
+			}
+		}
+
+		if !isConfigured {
+			continue
+		}
+
+		newChannel := &Channel{
+			Name:  ct.name,
+			Type:  ct.typ,
+			Owner: owner,
+			State: ChannelStateIdle,
+		}
+
+		switch ct.name {
+		case "telegram":
+			botToken := cfg.Channels.Telegram.BotToken
+			if botToken == "" && cfg.Channels.Telegram.BotTokenEnv != "" {
+				botToken = getSecret(cfg.Channels.Telegram.BotTokenEnv)
+			}
+			newChannel.Config.Telegram = &TelegramChannelConfig{
+				BotToken: botToken,
+			}
+		case "discord":
+			botToken := cfg.Channels.Discord.BotToken
+			if botToken == "" && cfg.Channels.Discord.BotTokenEnv != "" {
+				botToken = getSecret(cfg.Channels.Discord.BotTokenEnv)
+			}
+			newChannel.Config.Discord = &DiscordChannelConfig{
+				BotToken: botToken,
+			}
+		case "slack":
+			botToken := cfg.Channels.Slack.BotToken
+			if botToken == "" && cfg.Channels.Slack.BotTokenEnv != "" {
+				botToken = getSecret(cfg.Channels.Slack.BotTokenEnv)
+			}
+			appToken := cfg.Channels.Slack.AppToken
+			if appToken == "" && cfg.Channels.Slack.AppTokenEnv != "" {
+				appToken = getSecret(cfg.Channels.Slack.AppTokenEnv)
+			}
+			newChannel.Config.Slack = &SlackChannelConfig{
+				BotToken: botToken,
+				AppToken: appToken,
+			}
+		case "whatsapp":
+			accessToken := cfg.Channels.WhatsApp.AccessToken
+			if accessToken == "" && cfg.Channels.WhatsApp.AccessTokenEnv != "" {
+				accessToken = getSecret(cfg.Channels.WhatsApp.AccessTokenEnv)
+			}
+			newChannel.Config.WhatsApp = &WhatsAppChannelConfig{
+				AccessToken: accessToken,
+				PhoneID:     cfg.Channels.WhatsApp.PhoneNumberID,
+			}
+		case "qq":
+			appSecret := cfg.Channels.QQ.AppSecret
+			if appSecret == "" && cfg.Channels.QQ.AppSecretEnv != "" {
+				appSecret = getSecret(cfg.Channels.QQ.AppSecretEnv)
+			}
+			newChannel.Config.QQ = &QQChannelConfig{
+				AppID:     cfg.Channels.QQ.AppID,
+				AppSecret: appSecret,
+			}
+		case "dingtalk":
+			clientID := cfg.Channels.DingTalk.ClientID
+			if clientID == "" && cfg.Channels.DingTalk.ClientIDEnv != "" {
+				clientID = getSecret(cfg.Channels.DingTalk.ClientIDEnv)
+			}
+			clientSecret := cfg.Channels.DingTalk.ClientSecret
+			if clientSecret == "" && cfg.Channels.DingTalk.ClientSecretEnv != "" {
+				clientSecret = getSecret(cfg.Channels.DingTalk.ClientSecretEnv)
+			}
+			newChannel.Config.DingTalk = &DingTalkChannelConfig{
+				ClientID:     clientID,
+				ClientSecret: clientSecret,
+			}
+		case "feishu":
+			appSecret := cfg.Channels.Feishu.AppSecret
+			if appSecret == "" && cfg.Channels.Feishu.AppSecretEnv != "" {
+				appSecret = getSecret(cfg.Channels.Feishu.AppSecretEnv)
+			}
+			newChannel.Config.Feishu = &FeishuChannelConfig{
+				AppID:     cfg.Channels.Feishu.AppID,
+				AppSecret: appSecret,
+			}
+		}
+
+		if err := registry.RegisterChannel(newChannel); err == nil {
 			if adapter, ok := registry.GetAdapter(newChannel.ID); ok {
 				if err := adapter.Start(); err == nil {
 					started = append(started, ct.name)

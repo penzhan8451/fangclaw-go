@@ -1,0 +1,40 @@
+{
+  "id": "error-handling-retry",
+  "name": "Error Handling with Retry",
+  "description": "Demonstrate error handling with automatic retries",
+  "steps": [
+    {
+      "name": "reliable-step",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Analyze this and be very thorough: {{input}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": {
+        "type": "retry",
+        "max_retries": 3
+      }
+    },
+    {
+      "name": "optional-step",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Try to enhance the analysis, but it's okay if this fails",
+      "mode": "sequential",
+      "timeout_secs": 60,
+      "error_mode": "skip"
+    },
+    {
+      "name": "finalize",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Finalize and format the results: {{input}}",
+      "mode": "sequential",
+      "timeout_secs": 60,
+      "error_mode": "fail"
+    }
+  ]
+}

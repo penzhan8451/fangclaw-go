@@ -1,16 +1,100 @@
 <body x-data="app" :data-theme="theme">
 
-<!-- API Key Auth Prompt -->
-<div x-show="$store.app.showAuthPrompt" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px)" x-data="{ apiKeyInput: '' }">
-  <div style="background:var(--bg-card,#1e1e2e);border:1px solid var(--border,#333);border-radius:12px;padding:2rem;max-width:400px;width:90%">
-    <h3 style="margin:0 0 0.5rem;font-size:1.1rem">API Key Required</h3>
-    <p style="color:var(--text-dim,#888);font-size:0.85rem;margin:0 0 1rem">This instance requires an API key. Enter the key from your <code>config.toml</code>.</p>
-    <input type="password" x-model="apiKeyInput" placeholder="Enter API key..." @keydown.enter="$store.app.submitApiKey(apiKeyInput)" style="width:100%;padding:0.6rem;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg-input,#151520);color:var(--text,#e0e0e0);font-size:0.9rem;box-sizing:border-box;margin-bottom:0.75rem">
-    <button @click="$store.app.submitApiKey(apiKeyInput)" style="width:100%;padding:0.6rem;border-radius:6px;border:none;background:var(--accent,#7c3aed);color:#fff;font-weight:600;cursor:pointer;font-size:0.9rem">Unlock Dashboard</button>
+<!-- Login Page -->
+<div x-show="$store.app.showLogin" x-data="loginPage()" x-transition style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:var(--bg)">
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <img src="/logo.png" alt="FangClaw-go" width="48" height="48">
+        <h1>FANGCLAW-GO</h1>
+        <p x-show="loginMode === 'login'">Sign in to your account</p>
+        <p x-show="loginMode === 'register'">Create a new account</p>
+      </div>
+      
+      <form @submit.prevent="handleLogin" x-show="loginMode === 'login'">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" x-model="username" placeholder="Enter username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" x-model="password" placeholder="Enter password" required autocomplete="current-password">
+        </div>
+        <div class="form-error" x-show="error" x-text="error"></div>
+        <button type="submit" class="login-btn" :disabled="loading">
+          <span x-show="!loading">Sign In</span>
+          <span x-show="loading">Signing in...</span>
+        </button>
+      </form>
+
+      <div x-show="loginMode === 'login'" style="margin: 16px 0; display: flex; align-items: center; gap: 12px;">
+        <div style="flex: 1; height: 1px; background: var(--border);"></div>
+        <span style="color: var(--text-subtle); font-size: 12px;">or</span>
+        <div style="flex: 1; height: 1px; background: var(--border);"></div>
+      </div>
+
+      <div x-show="loginMode === 'login'" style="padding: 0 0 16px 0;">
+        <a href="/api/auth/github" class="login-btn" style="display: flex; align-items: center; justify-content: center; gap: 8px; background: #24292e; color: white; text-decoration: none;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          Login with GitHub
+        </a>
+      </div>
+
+      <form @submit.prevent="handleRegister" x-show="loginMode === 'register'">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" x-model="username" placeholder="Enter username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>Email (optional)</label>
+          <input type="email" x-model="email" placeholder="Enter email" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" x-model="password" placeholder="Enter password (min 6 characters)" required autocomplete="new-password">
+        </div>
+        <div class="form-error" x-show="error" x-text="error"></div>
+        <button type="submit" class="login-btn" :disabled="loading">
+          <span x-show="!loading">Create Account</span>
+          <span x-show="loading">Creating...</span>
+        </button>
+      </form>
+      
+      <div class="login-footer">
+        <p x-show="loginMode === 'login'">Don't have an account? <a href="#" @click.prevent="loginMode = 'register'; error = ''">Register</a></p>
+        <p x-show="loginMode === 'register'">Already have an account? <a href="#" @click.prevent="loginMode = 'login'; error = ''">Sign In</a></p>
+      </div>
+    </div>
   </div>
 </div>
 
-<div class="app-layout" :class="{ 'focus-mode': $store.app.focusMode }">
+<!-- Setup Guide Page -->
+<div x-show="$store.app.showSetupGuide" x-transition style="position:fixed;inset:0;z-index:9998;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);">
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <img src="/logo.png" alt="FangClaw-go" width="48" height="48">
+        <h1>SETUP REQUIRED</h1>
+        <p>Please configure your API key first</p>
+      </div>
+      
+      <div style="text-align:center;padding:20px 0;">
+        <svg viewBox="0 0 24 24" width="64" height="64" style="fill:var(--text-subtle);">
+          <path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97 0-.33-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.31-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.34-.07.67-.07 1 0 .33.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.06.74 1.69.99l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.26 1.17-.59 1.69-.99l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66z"/>
+        </svg>
+        <p style="margin-top:20px;color:var(--text);">To get started, you need to configure your provider and API key in Settings.</p>
+      </div>
+      
+      <button type="button" class="login-btn" @click="$store.app.goToSettings()">
+        Go to Settings
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="app-layout" :class="{ 'focus-mode': $store.app.focusMode }" x-show="!$store.app.showLogin">
   <!-- Sidebar -->
   <nav class="sidebar" :class="{ collapsed: sidebarCollapsed, 'mobile-open': mobileMenuOpen }">
     <div class="sidebar-header">
@@ -173,6 +257,22 @@
       </div>
     </div>
 
+    <div class="user-menu" x-data="{ showDropdown: false }" x-show="$store.app.currentUser">
+      <div class="user-info" @click="showDropdown = !showDropdown">
+        <div class="user-avatar" x-text="$store.app.currentUser ? $store.app.currentUser.username.charAt(0).toUpperCase() : ''"></div>
+        <div class="user-details" x-show="!sidebarCollapsed">
+          <div class="user-name" x-text="$store.app.currentUser ? $store.app.currentUser.username : ''"></div>
+          <div class="user-role" x-text="$store.app.currentUser ? $store.app.currentUser.role : ''"></div>
+        </div>
+      </div>
+      <div class="user-dropdown" :class="{ show: showDropdown }">
+        <div class="user-dropdown-item danger" @click="showDropdown = false; $store.app.logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Sign Out
+        </div>
+      </div>
+    </div>
+
     <div class="sidebar-footer">
       <div class="sidebar-label text-xs text-dim" style="padding:0 16px 4px;letter-spacing:0.5px">Ctrl+K agents | Ctrl+N new</div>
     </div>
@@ -190,7 +290,7 @@
 
     <!-- Page: Overview -->
     <template x-if="page === 'overview'">
-      <div x-data="overviewPage" x-init="loadOverview().then(() => startAutoRefresh())" @page-leave.window="stopAutoRefresh()">
+      <div x-data="overviewPage" x-init="init()">
         <div class="page-header">
           <h2>Overview</h2>
           <div class="flex items-center gap-2">
@@ -1203,7 +1303,7 @@
         <!-- Tab: List -->
         <template x-if="wfTab === 'list'">
         <div x-data="workflowsPage">
-        <div class="page-body" x-init="loadWorkflows()">
+        <div class="page-body" x-init="loadData()">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading workflows...</span></div>
           <div x-show="!loading && loadError" class="error-state">
             <span class="error-icon">!</span>
@@ -1233,6 +1333,7 @@
                     <td class="text-xs" x-text="new Date(wf.created_at).toLocaleDateString()"></td>
                     <td>
                       <button class="btn btn-primary btn-sm" @click="showRunModal(wf)">Run</button>
+                      <button class="btn btn-ghost btn-sm" @click="openEditWorkflow(wf)">Edit</button>
                       <button class="btn btn-ghost btn-sm" @click="viewRuns(wf)">History</button>
                       <button class="btn btn-danger btn-sm" @click="deleteWorkflow(wf)">Delete</button>
                     </td>
@@ -1265,7 +1366,12 @@
                       <div class="flex gap-2 items-center">
                         <span class="text-xs text-dim font-bold" x-text="'#' + (i+1)" style="width:24px"></span>
                         <input class="form-input" style="flex:1" x-model="step.name" placeholder="step name, e.g., analyze">
-                        <input class="form-input" style="flex:1" x-model="step.agent_name" placeholder="agent name, e.g., Data Analyst">
+                        <select class="form-select" style="flex:1" x-model="step.agent_name">
+                          <option value="">Select agent...</option>
+                          <template x-for="agent in agents" :key="agent.name">
+                            <option :value="agent.name" x-text="agent.name"></option>
+                          </template>
+                        </select>
                         <select class="form-select" style="width:120px" x-model="step.mode">
                           <option value="sequential">Sequential</option>
                           <option value="fan_out">Fan Out</option>
@@ -1297,6 +1403,61 @@
                   <button class="btn btn-ghost btn-sm mt-2" @click="newWf.steps.push({name:'',agent_name:'',mode:'sequential',prompt:'',condition:'',max_iterations:5,until:'',error_mode:'fail',max_retries:3})">+ Add Step</button>
                 </div>
                 <button class="btn btn-primary btn-block" @click="createWorkflow()">Create</button>
+              </div>
+            </div>
+          </template>
+          <!-- Edit modal -->
+          <template x-if="showEditModal && editingWf">
+            <div class="modal-overlay" @click.self="showEditModal = false" @keydown.escape.window="showEditModal = false">
+              <div class="modal">
+                <div class="modal-header"><h3>Edit Workflow</h3><button class="modal-close" @click="showEditModal = false">&times;</button></div>
+                <div class="form-group"><label>Name</label><input class="form-input" x-model="editingWf.name" placeholder="my-workflow"></div>
+                <div class="form-group"><label>Description</label><input class="form-input" x-model="editingWf.description" placeholder="What does this workflow do?"></div>
+                <div class="mb-4">
+                  <div class="form-group" style="margin:0"><label>Steps</label></div>
+                  <div class="text-xs text-dim mb-2">Each step runs an agent. Use <code style="color:var(--accent)">{{input}}</code> in prompts to pass the previous step's output.</div>
+                  <template x-for="(step, i) in editingWf.steps" :key="i">
+                    <div class="card mt-2" style="padding:10px">
+                      <div class="flex gap-2 items-center">
+                        <span class="text-xs text-dim font-bold" x-text="'#' + (i+1)" style="width:24px"></span>
+                        <input class="form-input" style="flex:1" x-model="step.name" placeholder="step name, e.g., analyze">
+                        <select class="form-select" style="flex:1" x-model="step.agent_name">
+                          <option value="">Select agent...</option>
+                          <template x-for="agent in agents" :key="agent.name">
+                            <option :value="agent.name" x-text="agent.name"></option>
+                          </template>
+                        </select>
+                        <select class="form-select" style="width:120px" x-model="step.mode">
+                          <option value="sequential">Sequential</option>
+                          <option value="fan_out">Fan Out</option>
+                          <option value="conditional">Conditional</option>
+                          <option value="loop">Loop</option>
+                        </select>
+                        <select class="form-select" style="width:100px" x-model="step.error_mode">
+                          <option value="fail">Fail</option>
+                          <option value="skip">Skip</option>
+                          <option value="retry">Retry</option>
+                        </select>
+                        <button class="btn btn-danger btn-sm" @click="editingWf.steps.splice(i,1)">&times;</button>
+                      </div>
+                      <input class="form-input mt-2" x-model="step.prompt" placeholder="e.g., Analyze this: {{input}}  or  Use output from step 1: {{steps.analyze.output}}">
+                      <template x-if="step.mode === 'conditional'">
+                        <input class="form-input mt-2" x-model="step.condition" placeholder="e.g., steps.analyze.output.includes('ERROR') or steps.analyze.output.length > 100">
+                      </template>
+                      <template x-if="step.mode === 'loop'">
+                        <div class="flex gap-2 mt-2">
+                          <input class="form-input" style="flex:1" x-model="step.max_iterations" type="number" placeholder="Max iterations (e.g., 5)" min="1">
+                          <input class="form-input" style="flex:1" x-model="step.until" placeholder="e.g., steps.loop.output.includes('DONE')">
+                        </div>
+                      </template>
+                      <template x-if="step.error_mode === 'retry'">
+                        <input class="form-input mt-2" x-model="step.max_retries" type="number" placeholder="Max retries (e.g., 3)" min="1">
+                      </template>
+                    </div>
+                  </template>
+                  <button class="btn btn-ghost btn-sm mt-2" @click="editingWf.steps.push({name:'',agent_name:'',mode:'sequential',prompt:'',condition:'',max_iterations:5,until:'',error_mode:'fail',max_retries:3})">+ Add Step</button>
+                </div>
+                <button class="btn btn-primary btn-block" @click="saveWorkflow()">Save</button>
               </div>
             </div>
           </template>
@@ -1601,6 +1762,7 @@
                               <span x-show="runningJobId === job.id">...</span>
                             </button>
                             <button class="btn btn-ghost btn-sm" @click="toggleJob(job)" x-text="job.enabled ? 'Pause' : 'Enable'"></button>
+                            <button class="btn btn-ghost btn-sm" @click="openEditForm(job)">Edit</button>
                             <button class="btn btn-danger btn-sm" @click="deleteJob(job)">Del</button>
                           </div>
                         </td>
@@ -1675,6 +1837,68 @@
                   <button class="btn btn-primary btn-block mt-4" @click="createJob()" :disabled="creating">
                     <span x-show="!creating">Create Schedule</span>
                     <span x-show="creating">Creating...</span>
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <!-- Edit Job Modal -->
+            <template x-if="showEditForm">
+              <div class="modal-overlay" @click.self="showEditForm = false" @keydown.escape.window="showEditForm = false">
+                <div class="modal">
+                  <div class="modal-header">
+                    <h3>Edit Scheduled Job</h3>
+                    <button class="modal-close" @click="showEditForm = false">&times;</button>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Job Name</label>
+                    <input class="form-input" x-model="editJob.name" placeholder="daily-report">
+                  </div>
+
+                  <div class="form-group">
+                    <label>Cron Expression</label>
+                    <input class="form-input" x-model="editJob.cron" placeholder="0 9 * * 1-5" style="font-family:monospace">
+                    <div class="text-xs text-dim mt-1" x-show="editJob.cron" x-text="describeCron(editJob.cron)"></div>
+                    <div class="text-xs text-dim mt-1">Format: <code>minute hour day-of-month month day-of-week</code></div>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Quick Presets</label>
+                    <div class="flex gap-1 flex-wrap">
+                      <template x-for="preset in cronPresets" :key="preset.cron">
+                        <button class="btn btn-sm" :class="editJob.cron === preset.cron ? 'btn-primary' : 'btn-ghost'" @click="editJob.cron = preset.cron" x-text="preset.label"></button>
+                      </template>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Target Agent</label>
+                    <select class="form-select" x-model="editJob.agent_id">
+                      <option value="">Any available agent</option>
+                      <template x-for="a in availableAgents" :key="a.id">
+                        <option :value="a.id" x-text="a.name + ' (' + (a.model_provider || 'unknown') + ':' + (a.model_name || 'unknown') + ')'"></option>
+                      </template>
+                    </select>
+                    <div class="text-xs text-dim mt-1" x-show="!availableAgents.length">No agents running. <a href="#agents" style="color:var(--accent)">Spawn one first.</a></div>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Message to Send</label>
+                    <textarea class="form-textarea" x-model="editJob.message" placeholder="Generate and email the daily status report..." rows="3"></textarea>
+                    <div class="text-xs text-dim mt-1">The message sent to the agent each time this job runs.</div>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="flex items-center gap-2">
+                      <div class="toggle" :class="{ active: editJob.enabled }" @click="editJob.enabled = !editJob.enabled"></div>
+                      <span x-text="editJob.enabled ? 'Enabled (will start running immediately)' : 'Disabled (paused)'"></span>
+                    </label>
+                  </div>
+
+                  <button class="btn btn-primary btn-block mt-4" @click="updateJob()" :disabled="editing">
+                    <span x-show="!editing">Update Schedule</span>
+                    <span x-show="editing">Updating...</span>
                   </button>
                 </div>
               </div>
@@ -2986,9 +3210,9 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
     <!-- Page: Settings -->
     <template x-if="page === 'settings'">
-      <div x-data="settingsPage">
+      <div x-data="settingsPage" x-init="init()">
         <div class="page-header"><h2>Settings</h2></div>
-        <div class="page-body" x-init="loadSettings()">
+        <div class="page-body">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading settings...</span></div>
           <div x-show="!loading && loadError" class="error-state">
             <span class="error-icon">!</span>
@@ -3213,18 +3437,18 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                               <label class="form-checkbox" style="margin:0">
                                 <input type="checkbox"
                                   :checked="configValues[section] && configValues[section][field.name]"
-                                  @change="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.checked; markConfigDirty(section, field.name)">
+                                  @change="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.checked">
                               </label>
                             </template>
                             <template x-if="field.type === 'number'">
                               <input class="form-input" type="number" style="width:120px"
                                 :value="configValues[section] && configValues[section][field.name]"
-                                @input="configValues[section] = configValues[section] || {}; configValues[section][field.name] = Number($event.target.value); markConfigDirty(section, field.name)">
+                                @input="configValues[section] = configValues[section] || {}; configValues[section][field.name] = Number($event.target.value)">
                             </template>
                             <template x-if="field.type === 'select' && field.options">
                               <select class="form-select" style="width:180px"
                                 :value="configValues[section] && configValues[section][field.name]"
-                                @change="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.value; markConfigDirty(section, field.name)">
+                                @change="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.value">
                                 <template x-for="opt in field.options" :key="opt">
                                   <option :value="opt" x-text="opt" :selected="configValues[section] && configValues[section][field.name] === opt"></option>
                                 </template>
@@ -3233,18 +3457,18 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                             <template x-if="!field.type || field.type === 'string'">
                               <input class="form-input" type="text" style="flex:1"
                                 :value="configValues[section] && configValues[section][field.name]"
-                                @input="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.value; markConfigDirty(section, field.name)">
+                                @input="configValues[section] = configValues[section] || {}; configValues[section][field.name] = $event.target.value">
                             </template>
-                            <button class="btn btn-primary btn-sm" x-show="isConfigDirty(section, field.name)"
-                              @click="saveConfigField(section, field.name, configValues[section] && configValues[section][field.name])"
-                              :disabled="configSaving[section + '.' + field.name]">
-                              <span x-show="!configSaving[section + '.' + field.name]">Save</span>
-                              <span x-show="configSaving[section + '.' + field.name]" class="spinner" style="width:12px;height:12px;border-width:2px"></span>
-                            </button>
                           </div>
                           <div class="text-xs text-dim" x-show="field.description" x-text="field.description" style="grid-column:1/-1;padding-left:2px"></div>
                         </div>
                       </template>
+                    </div>
+                    <div style="margin-top:12px;text-align:right">
+                      <button class="btn btn-primary" @click="saveConfigSection(section)" :disabled="configSaving[section]">
+                        <span x-show="!configSaving[section]">Save</span>
+                        <span x-show="configSaving[section]" class="spinner" style="width:14px;height:14px;border-width:2px"></span>
+                      </button>
                     </div>
                   </div>
                 </template>
@@ -3254,7 +3478,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <!-- Raw JSON fallback -->
             <div class="card mt-4" style="border-left:3px solid var(--border)">
               <div class="card-header" style="font-size:12px;cursor:pointer" @click="$el.nextElementSibling.style.display = $el.nextElementSibling.style.display === 'none' ? 'block' : 'none'">Raw Config JSON (click to toggle)</div>
-              <pre style="font-size:11px;white-space:pre-wrap;overflow:auto;max-height:400px;color:var(--text-dim);line-height:1.5;display:none" x-text="JSON.stringify(config, null, 2)"></pre>
+              <pre style="font-size:11px;white-space:pre-wrap;overflow:auto;max-height:400px;color:var(--text-dim);line-height:1.5;display:none" x-text="JSON.stringify(configValues, null, 2)"></pre>
             </div>
           </div>
 
@@ -3370,11 +3594,11 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <!-- Network tab -->
           <div x-show="tab === 'network'" x-data="{
             netStatus: null, a2aAgents: [], a2aDiscoverUrl: '', a2aDiscovering: false,
-            async loadNetStatus() { try { this.netStatus = await (await fetch('/api/network/status')).json(); } catch(e) {} },
-            async loadA2aAgents() { try { let r = await (await fetch('/api/a2a/agents')).json(); this.a2aAgents = r.agents || []; } catch(e) {} },
+            async loadNetStatus() { try { this.netStatus = await FangClawGoAPI.get('/api/network/status'); } catch(e) {} },
+            async loadA2aAgents() { try { let r = await FangClawGoAPI.get('/api/a2a/agents'); this.a2aAgents = r.agents || []; } catch(e) {} },
             async discoverA2a() {
               if (!this.a2aDiscoverUrl) return; this.a2aDiscovering = true;
-              try { await fetch('/api/a2a/discover', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:this.a2aDiscoverUrl})}); this.a2aDiscoverUrl=''; await this.loadA2aAgents(); } catch(e) {}
+              try { await FangClawGoAPI.post('/api/a2a/discover', {url:this.a2aDiscoverUrl}); this.a2aDiscoverUrl=''; await this.loadA2aAgents(); } catch(e) {}
               this.a2aDiscovering = false;
             }
           }" x-init="loadNetStatus(); loadA2aAgents()">
@@ -3462,8 +3686,8 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
               this.budgetLoading = true;
               try {
                 let [b, a] = await Promise.all([
-                  fetch('/api/budget').then(r => r.json()),
-                  fetch('/api/budget/agents').then(r => r.json())
+                  FangClawGoAPI.get('/api/budget'),
+                  FangClawGoAPI.get('/api/budget/agents')
                 ]);
                 this.budgetData = b;
                 this.agentRanking = a.agents || [];
@@ -3488,7 +3712,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 if (+this.editMonthly !== this.budgetData.monthly_limit) body.max_monthly_usd = +this.editMonthly;
                 let alertVal = (+this.editAlert) / 100;
                 if (Math.abs(alertVal - this.budgetData.alert_threshold) > 0.001) body.alert_threshold = alertVal;
-                await fetch('/api/budget', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                await FangClawGoAPI.put('/api/budget', body);
                 this.editMode = false;
                 await this.loadBudget();
               } catch(e) { alert('Failed to save: ' + e); }
@@ -4537,7 +4761,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <h2>Setup Wizard</h2>
           <button class="btn btn-ghost btn-sm" @click="finishAndDismiss()">Skip Setup</button>
         </div>
-        <div class="page-body" x-init="loadData()">
+        <div class="page-body">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading...</span></div>
           <div x-show="!loading && error" class="error-state">
             <span class="error-icon">!</span>
@@ -4711,7 +4935,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
               <div class="card-grid" style="grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));margin-bottom:20px">
                 <template x-for="(tpl, i) in filteredTemplates" :key="tpl.id">
-                  <div class="card wizard-template-card" :class="{ 'wizard-template-selected': selectedTemplate === templates.indexOf(tpl) }" @click="selectTemplate(templates.indexOf(tpl))" style="cursor:pointer">
+                  <div class="card wizard-template-card" :class="{ 'wizard-template-selected': selectedTemplate === templates.findIndex(function(item) { return item.id === tpl.id; }) }" @click="selectTemplate(templates.findIndex(function(item) { return item.id === tpl.id; }))" style="cursor:pointer">
                     <div class="flex items-center gap-2 mb-2">
                       <span class="channel-icon" style="background:var(--accent);color:var(--bg-primary);font-weight:700" x-text="tpl.icon"></span>
                       <div>
@@ -4734,7 +4958,8 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                   <label>Agent Name</label>
                   <input class="form-input" type="text" x-model="agentName" placeholder="my-assistant" style="max-width:320px" @keydown.enter="createAgent()">
                 </div>
-                <div class="text-xs text-dim" x-text="'Will use ' + templates[selectedTemplate].provider + ' / ' + templates[selectedTemplate].model + ' with ' + profileInfo(templates[selectedTemplate].profile).label + ' profile'"></div>
+                <div class="text-xs text-dim" x-show="selectedTemplateObj" x-text="selectedTemplateText"></div>
+                <div class="text-xs text-dim" x-show="!selectedTemplateObj">Loading templates...</div>
                 <div class="mt-2">
                   <button class="btn btn-primary" @click="createAgent()" :disabled="creatingAgent || !agentName.trim()">
                     <span x-show="!creatingAgent">Create Agent</span>

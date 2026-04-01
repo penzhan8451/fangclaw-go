@@ -1,0 +1,41 @@
+{
+  "id": "conditional-workflow",
+  "name": "Conditional Workflow",
+  "description": "Execute a step only if a specific condition is met",
+  "steps": [
+    {
+      "name": "analyze-content",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Analyze the following content and respond with 'HAS_ERROR' if it contains errors, otherwise 'OK': {{input}}",
+      "mode": "sequential",
+      "timeout_secs": 60,
+      "error_mode": "fail",
+      "output_var": "analysis"
+    },
+    {
+      "name": "fix-errors",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Please fix the errors in this content: {{input}}",
+      "mode": {
+        "type": "conditional",
+        "condition": "HAS_ERROR"
+      },
+      "timeout_secs": 120,
+      "error_mode": "fail"
+    },
+    {
+      "name": "final-output",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Provide the final version of the content: {{input}}",
+      "mode": "sequential",
+      "timeout_secs": 60,
+      "error_mode": "fail"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "agent_id": "YOUR-AGENT-ID-HERE",
+  "name": "weekly-summary-to-email",
+  "enabled": true,
+  "schedule": {
+    "kind": "cron",
+    "expr": "0 9 * * 0"
+  },
+  "action": {
+    "kind": "agent_turn",
+    "message": "请整理上周的所有重要事件和活动，生成一份清晰的周报",
+    "timeout_secs": 600
+  },
+  "delivery": {
+    "kind": "last_channel"
+  },
+  "one_shot": false
+}

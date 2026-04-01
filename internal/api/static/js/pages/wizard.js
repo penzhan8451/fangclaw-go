@@ -7,6 +7,7 @@ function wizardPage() {
     totalSteps: 6,
     loading: false,
     error: '',
+    initialized: false,
 
     // Step 2: Provider setup
     providers: [],
@@ -23,6 +24,31 @@ function wizardPage() {
     agentName: 'my-assistant',
     creatingAgent: false,
     createdAgent: null,
+
+    async init() {
+      var self = this;
+      if (Alpine.store('app').currentUser) {
+        await self.loadData();
+      }
+      self.initialized = true;
+      document.addEventListener('user-login', async function() {
+        await self.loadData();
+      });
+      document.addEventListener('user-logout', function() {
+        self.templates = [];
+      });
+    },
+
+    get selectedTemplateObj() {
+      return this.templates[this.selectedTemplate] || null;
+    },
+
+    get selectedTemplateText() {
+      var tpl = this.selectedTemplateObj;
+      if (!tpl) return '';
+      var profile = this.profileInfo(tpl.profile);
+      return 'Will use ' + tpl.provider + ' / ' + tpl.model + ' with ' + profile.label + ' profile';
+    },
 
     // Step 3: Category filtering
     templateCategory: 'All',
@@ -113,6 +139,36 @@ function wizardPage() {
         token_placeholder: 'xoxb-...',
         token_env: 'SLACK_BOT_TOKEN',
         help: 'Create a Slack app at api.slack.com/apps and install it to your workspace.'
+      },
+      {
+        name: 'qq',
+        display_name: 'QQ',
+        icon: 'QQ',
+        description: 'Connect your agent to a QQ bot.',
+        token_label: 'App ID and App Secret',
+        token_placeholder: 'Enter your QQ App ID and App Secret',
+        token_env: 'QQ_APP_ID',
+        help: 'Create a QQ Bot at bot.q.qq.com to get your App ID and App Secret.'
+      },
+      {
+        name: 'feishu',
+        display_name: '飞书 Feishu',
+        icon: 'FS',
+        description: 'Connect your agent to Feishu (Lark).',
+        token_label: 'App ID and App Secret',
+        token_placeholder: 'Enter your Feishu App ID and App Secret',
+        token_env: 'FEISHU_APP_ID',
+        help: 'Create a Feishu App at open.feishu.cn to get your App ID and App Secret.'
+      },
+      {
+        name: 'dingtalk',
+        display_name: '钉钉 DingTalk',
+        icon: 'DT',
+        description: 'Connect your agent to DingTalk.',
+        token_label: 'Client ID and Client Secret',
+        token_placeholder: 'Enter your DingTalk Client ID and Client Secret',
+        token_env: 'DINGTALK_CLIENT_ID',
+        help: 'Create a DingTalk App at open-dingtalk.com to get your Client ID and Client Secret.'
       }
     ],
     channelToken: '',
@@ -129,6 +185,10 @@ function wizardPage() {
     // ── Lifecycle ──
 
     async loadData() {
+      if (!Alpine.store('app').currentUser) {
+        this.loading = false;
+        return;
+      }
       this.loading = true;
       this.error = '';
       try {
@@ -145,6 +205,7 @@ function wizardPage() {
     async loadTemplates() {
       try {
         var data = await FangClawGoAPI.get('/api/agent-templates');
+        // console.log('Loaded Agent templates:', data.templates || []);
         this.templates = data.templates || [];
       } catch(e) {
         this.templates = [];
@@ -200,7 +261,7 @@ function wizardPage() {
 
     async loadProviders() {
       try {
-        var data = await FangClawGoAPI.get('/api/providers');
+        var data = await FangClawGoAPI.get('/api/user/providers');
         this.providers = data.providers || [];
         // Pre-select first unconfigured provider, or first one
         var unconfigured = this.providers.filter(function(p) {
@@ -275,7 +336,7 @@ function wizardPage() {
       }
       this.savingKey = true;
       try {
-        await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/key', { key: key });
+        await FangClawGoAPI.post('/api/user/providers/' + encodeURIComponent(provider.id) + '/key', { key: key });
         this.apiKeyInput = '';
         this.keySaved = true;
         this.setupSummary.provider = provider.display_name;
@@ -295,7 +356,7 @@ function wizardPage() {
       this.testingProvider = true;
       this.testResult = null;
       try {
-        var result = await FangClawGoAPI.post('/api/providers/' + encodeURIComponent(provider.id) + '/test', {});
+        var result = await FangClawGoAPI.post('/api/user/providers/' + encodeURIComponent(provider.id) + '/test', {});
         this.testResult = result;
         if (result.status === 'ok') {
           FangClawGoToast.success(provider.display_name + ' connected (' + (result.latency_ms || '?') + 'ms)');
@@ -337,13 +398,12 @@ function wizardPage() {
         model = this.defaultModelForProvider(provider) || tpl.model;
       }
 
-      var toml = '[agent]\n';
-      toml += 'name = "' + name.replace(/"/g, '\\"') + '"\n';
+      var toml = 'name = "' + name.replace(/"/g, '\\"') + '"\n';
       toml += 'description = "' + tpl.description.replace(/"/g, '\\"') + '"\n';
-      toml += 'profile = "' + tpl.profile + '"\n\n';
+      toml += 'profile = "' + tpl.profile + '"\n';
+      toml += 'system_prompt = """\n' + tpl.system_prompt + '\n"""\n\n';
       toml += '[model]\nprovider = "' + provider + '"\n';
-      toml += 'name = "' + model + '"\n\n';
-      toml += '[prompt]\nsystem = """\n' + tpl.system_prompt + '\n"""\n';
+      toml += 'model = "' + model + '"\n';
 
       this.creatingAgent = true;
       try {

@@ -171,6 +171,16 @@ function agentsPage() {
 
     async init() {
       var self = this;
+      
+      if (!Alpine.store('app').currentUser) {
+        this.loading = false;
+        document.addEventListener('user-login', async function() {
+          await self.loadData();
+          await self.loadTemplates();
+        });
+        return;
+      }
+
       this.loading = true;
       this.loadError = '';
       try {
@@ -185,12 +195,14 @@ function agentsPage() {
       // If a pending agent was set (e.g. from wizard or redirect), open chat inline
       var store = Alpine.store('app');
       if (store.pendingAgent) {
-        this.activeChatAgent = store.pendingAgent;
+        var realAgent = this.agents.find(function(a) { return a.id === store.pendingAgent.id; });
+        this.activeChatAgent = realAgent || store.pendingAgent;
       }
       // Watch for future pendingAgent changes
       this.$watch('$store.app.pendingAgent', function(agent) {
         if (agent) {
-          self.activeChatAgent = agent;
+          var realAgent = self.agents.find(function(a) { return a.id === agent.id; });
+          self.activeChatAgent = realAgent || agent;
         }
       });
     },
@@ -212,7 +224,7 @@ function agentsPage() {
       try {
         var results = await Promise.all([
           FangClawGoAPI.get('/api/agent-templates'),
-          FangClawGoAPI.get('/api/providers').catch(function() { return { providers: [] }; })
+          FangClawGoAPI.get('/api/user/providers').catch(function() { return { providers: [] }; })
         ]);
         this.builtinTemplates = results[0].templates || [];
         this.tplProviders = results[1].providers || [];
@@ -357,6 +369,10 @@ function agentsPage() {
     async spawnSmartAgent() {
       if (!this.smartManifest) return;
       
+      if (!Alpine.store('app').requireSetupCheck()) {
+        return;
+      }
+      
       this.spawning = true;
       var self = this;
       
@@ -408,7 +424,7 @@ function agentsPage() {
       
       var self = this;
       try {
-        var data = await FangClawGoAPI.get('/api/providers');
+        var data = await FangClawGoAPI.get('/api/user/providers');
         self.spawnProviders = data.providers || [];
         
         if (self.spawnProviders.length > 0) {
@@ -492,6 +508,10 @@ function agentsPage() {
     },
 
     async spawnAgent() {
+      if (!Alpine.store('app').requireSetupCheck()) {
+        return;
+      }
+      
       this.spawning = true;
       var toml = this.spawnMode === 'wizard' ? this.generateToml() : this.spawnToml;
       if (!toml.trim()) {
@@ -615,6 +635,10 @@ function agentsPage() {
 
     // -- Template methods --
     async spawnFromTemplate(name) { 
+      if (!Alpine.store('app').requireSetupCheck()) {
+        return;
+      }
+      
       try {
         console.log('Spawning from template id:', name);
         var res = await FangClawGoAPI.post('/api/templates/' + encodeURIComponent(name) + '/spawn');

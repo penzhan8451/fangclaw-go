@@ -90,6 +90,14 @@ document.addEventListener('alpine:init', function() {
   // Restore saved API key on load
   var savedKey = localStorage.getItem('fangclawgo-api-key');
   if (savedKey) FangClawGoAPI.setAuthToken(savedKey);
+  
+  // Set up auth error handler for 401 responses
+  FangClawGoAPI.setAuthErrorHandler(function() {
+    var store = Alpine.store('app');
+    if (store && store.currentUser) {
+      store.logout();
+    }
+  });
 
   Alpine.store('app', {
     agents: [],
@@ -102,13 +110,18 @@ document.addEventListener('alpine:init', function() {
     agentCount: 0,
     pendingAgent: null,
     pendingSession: null,
-    focusMode: localStorage.getItem('openfang-focus') === 'true',
+    focusMode: localStorage.getItem('fangclawgo-focus') === 'true',
     showOnboarding: false,
     showAuthPrompt: false,
+    showLogin: false,
+    currentUser: null,
+    pollIntervalId: null,
+    setupComplete: false,
+    showSetupGuide: false,
 
     toggleFocusMode() {
       this.focusMode = !this.focusMode;
-      localStorage.setItem('openfang-focus', this.focusMode);
+      localStorage.setItem('fangclawgo-focus', this.focusMode);
     },
 
     async refreshAgents() {
@@ -155,23 +168,81 @@ document.addEventListener('alpine:init', function() {
     },
 
     async checkAuth() {
-      try {
-        // Use a protected endpoint (not in the public allowlist) to detect
-        // whether the server requires an API key.
-        await FangClawGoAPI.get('/api/tools');
-        this.showAuthPrompt = false;
-      } catch(e) {
-        if (e.message && (e.message.indexOf('Not authorized') >= 0 || e.message.indexOf('401') >= 0 || e.message.indexOf('Missing Authorization') >= 0 || e.message.indexOf('Unauthorized') >= 0)) {
-          // Only show prompt if we don't already have a saved key
-          var saved = localStorage.getItem('openfang-api-key');
-          if (saved) {
-            // Saved key might be stale — clear it and show prompt
-            FangClawGoAPI.setAuthToken('');
-            localStorage.removeItem('openfang-api-key');
-          }
-          this.showAuthPrompt = true;
-        }
+      var self = this;
+      var token = localStorage.getItem('fangclawgo-token');
+      
+      if (!token) {
+        this.currentUser = null;
+        this.showLogin = true;
+        return false;
       }
+
+      FangClawGoAPI.setAuthToken(token);
+
+      try {
+        var user = await FangClawGoAPI.get('/api/auth/me');
+        this.currentUser = user;
+        this.showLogin = false;
+        document.dispatchEvent(new CustomEvent('user-login', { detail: { user: user } }));
+        return true;
+      } catch(e) {
+        console.warn('[FangClaw-Go] Auth check failed:', e.message);
+        this.currentUser = null;
+        this.showLogin = true;
+        return false;
+      }
+    },
+
+    async checkSetupStatus() {
+      try {
+        var status = await FangClawGoAPI.get('/api/setup/status');
+        this.setupComplete = status.setup_complete;
+        console.log('[FangClaw-Go] checkSetupStatus:', this.setupComplete);
+        if (!this.setupComplete && this.currentUser) {
+          this.showSetupGuide = true;
+        }
+      } catch(e) {
+        this.setupComplete = false;
+      }
+    },
+
+    requireSetupCheck() {
+      if (!this.setupComplete) {
+        this.showSetupGuide = true;
+        return false;
+      }
+      return true;
+    },
+
+    goToSettings() {
+      this.showSetupGuide = false;
+      if (window.navigate) {
+        window.navigate('settings');
+      } else {
+        window.location.hash = 'settings';
+      }
+    },
+
+    login(token, user) {
+      localStorage.setItem('fangclawgo-token', token);
+      FangClawGoAPI.setAuthToken(token);
+      this.currentUser = user;
+      this.showLogin = false;
+      this.refreshAgents();
+      this.checkSetupStatus();
+      document.dispatchEvent(new CustomEvent('user-login', { detail: { user: user } }));
+    },
+
+    logout() {
+      localStorage.removeItem('fangclawgo-token');
+      FangClawGoAPI.setAuthToken('');
+      this.currentUser = null;
+      this.showLogin = true;
+      if (this.pollIntervalId) {
+        clearInterval(this.pollIntervalId);
+        this.pollIntervalId = null;
+      }
+      document.dispatchEvent(new CustomEvent('user-logout'));
     },
 
     submitApiKey(key) {
@@ -273,11 +344,41 @@ function app() {
         Alpine.store('app').connectionState = state;
       });
 
-      // Initial data load
-      this.pollStatus();
-      Alpine.store('app').checkOnboarding();
-      Alpine.store('app').checkAuth();
-      setInterval(function() { self.pollStatus(); }, 5000);
+      // Check for GitHub login success callback
+      var urlParams = new URLSearchParams(window.location.search);
+      var githubLoginSuccess = urlParams.get('github_login') === 'success';
+      var token = urlParams.get('token');
+      
+      if (githubLoginSuccess && token) {
+        var store = Alpine.store('app');
+        // Set the token immediately
+        localStorage.setItem('fangclawgo-token', token);
+        FangClawGoAPI.setAuthToken(token);
+        // Remove query params from URL without reloading
+        var newUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, '', newUrl);
+        // Then check auth to get the user info
+        store.checkAuth().then(function() {
+          if (store.currentUser) {
+            store.checkSetupStatus();
+            self.pollStatus();
+            store.checkOnboarding();
+            store.pollIntervalId = setInterval(function() { self.pollStatus(); }, 10000);
+            FangClawGoToast.success('Welcome, ' + store.currentUser.username + '!');
+          }
+        });
+      } else {
+        // Initial data load - check auth first
+        var store = Alpine.store('app');
+        store.checkAuth().then(function() {
+          if (store.currentUser) {
+            store.checkSetupStatus();
+            self.pollStatus();
+            store.checkOnboarding();
+            store.pollIntervalId = setInterval(function() { self.pollStatus(); }, 10000);
+          }
+        });
+      }
     },
 
     navigate(p) {
@@ -309,12 +410,91 @@ function app() {
 
     async pollStatus() {
       var store = Alpine.store('app');
+      if (!store.currentUser) {
+        if (store.pollIntervalId) {
+          clearInterval(store.pollIntervalId);
+          store.pollIntervalId = null;
+        }
+        return;
+      }
       await store.checkStatus();
       await store.refreshAgents();
       this.connected = store.connected;
       this.version = store.version;
       this.agentCount = store.agentCount;
       this.wsConnected = FangClawGoAPI.isWsConnected();
+    }
+  };
+}
+
+function loginPage() {
+  return {
+    username: '',
+    password: '',
+    email: '',
+    error: '',
+    loading: false,
+    loginMode: 'login',
+
+    async handleLogin() {
+      var self = this;
+      self.error = '';
+      
+      if (!self.username || !self.password) {
+        self.error = 'Username and password are required';
+        return;
+      }
+
+      self.loading = true;
+
+      try {
+        var response = await FangClawGoAPI.post('/api/auth/login', {
+          username: self.username,
+          password: self.password
+        });
+
+        Alpine.store('app').login(response.token, response.user);
+        FangClawGoToast.success('Welcome back, ' + response.user.username + '!');
+      } catch(e) {
+        self.error = e.message || 'Login failed. Please check your credentials.';
+        FangClawGoToast.error(self.error);
+      } finally {
+        self.loading = false;
+      }
+    },
+
+    async handleRegister() {
+      var self = this;
+      self.error = '';
+      
+      if (!self.username || !self.password) {
+        self.error = 'Username and password are required';
+        return;
+      }
+
+      if (self.password.length < 6) {
+        self.error = 'Password must be at least 6 characters';
+        return;
+      }
+
+      self.loading = true;
+
+      try {
+        var response = await FangClawGoAPI.post('/api/auth/register', {
+          username: self.username,
+          email: self.email,
+          password: self.password
+        });
+
+        FangClawGoToast.success('Account created! Please sign in.');
+        self.loginMode = 'login';
+        self.error = '';
+      } catch(e) {
+        self.error = e.message || 'Registration failed.';
+        FangClawGoToast.error(self.error);
+      } finally {
+        self.loading = false;
+      }
     }
   };
 }
