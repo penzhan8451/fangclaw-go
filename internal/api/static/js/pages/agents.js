@@ -69,6 +69,11 @@ function agentsPage() {
     filesLoading: false,
     configForm: {},
     configSaving: false,
+    // Skills tab
+    detailSkills: [],
+    detailAvailableSkills: [],
+    detailSkillsLoading: false,
+    detailSkillsSaving: false,
 
     // -- Templates state --
     tplTemplates: [],
@@ -205,6 +210,13 @@ function agentsPage() {
           self.activeChatAgent = realAgent || agent;
         }
       });
+      
+      window.addEventListener('open-agent-details', function(e) {
+        var agent = e.detail.agent;
+        if (agent) {
+          self.showDetail(agent);
+        }
+      });
     },
 
     async loadData() {
@@ -253,12 +265,15 @@ function agentsPage() {
       this.fileContent = '';
       this.configForm = {
         name: agent.name || '',
-        system_prompt: agent.system_prompt || '',
+        system_prompt: '',
         emoji: (agent.identity && agent.identity.emoji) || '',
         color: (agent.identity && agent.identity.color) || '#FF5C00',
         archetype: (agent.identity && agent.identity.archetype) || '',
         vibe: (agent.identity && agent.identity.vibe) || ''
       };
+      this.detailSkills = (agent.manifest && agent.manifest.skills) || [];
+      this.detailOriginalSkills = [...this.detailSkills];
+      this.detailAvailableSkills = [];
       this.showDetailModal = true;
     },
 
@@ -609,9 +624,21 @@ function agentsPage() {
       if (!this.detailAgent) return;
       this.configSaving = true;
       try {
-        await FangClawGoAPI.patch('/api/agents/' + this.detailAgent.id + '/config', this.configForm);
+        if (this.configForm.system_prompt) {
+          await FangClawGoAPI.patch('/api/agents/' + this.detailAgent.id + '/system-prompt/append', { system_prompt: this.configForm.system_prompt });
+        }
+        var patchData = {};
+        if (this.configForm.name) patchData.name = this.configForm.name;
+        if (this.configForm.emoji) patchData.emoji = this.configForm.emoji;
+        if (this.configForm.color) patchData.color = this.configForm.color;
+        if (this.configForm.archetype) patchData.archetype = this.configForm.archetype;
+        if (this.configForm.vibe) patchData.vibe = this.configForm.vibe;
+        if (Object.keys(patchData).length > 0) {
+          await FangClawGoAPI.patch('/api/agents/' + this.detailAgent.id + '/config', patchData);
+        }
         FangClawGoToast.success('Config updated');
         await Alpine.store('app').refreshAgents();
+        this.configForm.system_prompt = '';
       } catch(e) {
         FangClawGoToast.error('Failed to save config: ' + e.message);
       }
@@ -657,6 +684,49 @@ function agentsPage() {
       } catch(e) {
         FangClawGoToast.error('Failed to spawn from template: ' + e.message);
       }
+    },
+
+    // ── Detail modal: Skills tab ──
+    async loadDetailAvailableSkills() {
+      if (this.detailAvailableSkills.length > 0 || this.detailSkillsLoading) return;
+      this.detailSkillsLoading = true;
+      try {
+        var data = await FangClawGoAPI.get('/api/skills');
+        this.detailAvailableSkills = data.skills || [];
+      } catch(e) {
+        this.detailAvailableSkills = [];
+      }
+      this.detailSkillsLoading = false;
+    },
+
+    toggleDetailSkill(skillId) {
+      var idx = this.detailSkills.indexOf(skillId);
+      if (idx >= 0) {
+        this.detailSkills.splice(idx, 1);
+      } else {
+        this.detailSkills.push(skillId);
+      }
+    },
+
+    async saveDetailSkills() {
+      if (!this.detailAgent) return;
+      this.detailSkillsSaving = true;
+      try {
+        var originalSkillSet = new Set(this.detailOriginalSkills);
+        var newSkills = this.detailSkills.filter(function(skill) {
+          return !originalSkillSet.has(skill);
+        });
+        
+        if (newSkills.length > 0) {
+          await FangClawGoAPI.patch('/api/agents/' + this.detailAgent.id + '/skills/append', { skills: newSkills });
+        }
+        FangClawGoToast.success('Skills updated');
+        await Alpine.store('app').refreshAgents();
+        this.detailOriginalSkills = [...this.detailSkills];
+      } catch(e) {
+        FangClawGoToast.error('Failed to update skills: ' + e.message);
+      }
+      this.detailSkillsSaving = false;
     },
 
     async spawnBuiltin(t) {

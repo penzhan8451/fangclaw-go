@@ -76,7 +76,7 @@ var RolePermissions = map[Role][]Permission{
 		PermAgentCreate, PermAgentRead, PermAgentWrite,
 		PermChannelRead, PermChannelWrite,
 		PermSkillInstall,
-		PermHandActivate,
+		PermHandActivate, PermHandDeactivate,
 		PermMCPRead, PermBudgetRead,
 	},
 	RoleGuest: {
@@ -209,75 +209,6 @@ func (db *AuthDB) Migrate() error {
 			return fmt.Errorf("migration failed: %w", err)
 		}
 	}
-
-	// Add last_activity_at column if it doesn't exist
-	_, err := db.Exec("ALTER TABLE users ADD COLUMN last_activity_at TEXT")
-	if err != nil {
-		// Ignore error if column already exists
-		fmt.Printf("Note: last_activity_at column might already exist: %v\n", err)
-	}
-
-	// Remove UNIQUE constraint from email column - only run once
-	migrationID := "remove_email_unique_constraint"
-	var applied bool
-	err = db.QueryRow("SELECT 1 FROM schema_migrations WHERE id = ?", migrationID).Scan(&applied)
-	if err == nil {
-		// Migration already applied
-		return nil
-	}
-
-	// Migration not applied yet, execute it
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS users_new (
-			id TEXT PRIMARY KEY,
-			username TEXT UNIQUE NOT NULL,
-			email TEXT,
-			password_hash TEXT NOT NULL,
-			role TEXT NOT NULL DEFAULT 'user',
-			api_keys TEXT DEFAULT '[]',
-			channel_bindings TEXT DEFAULT '{}',
-			settings TEXT DEFAULT '{}',
-			created_at TEXT NOT NULL,
-			last_login TEXT,
-			last_activity_at TEXT,
-			disabled INTEGER DEFAULT 0,
-			is_vip INTEGER DEFAULT 0
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("could not create users_new table: %w", err)
-	}
-
-	_, err = db.Exec(`
-		INSERT OR IGNORE INTO users_new
-		SELECT id, username, email, password_hash, role, api_keys, channel_bindings, settings, created_at, last_login, last_activity_at, disabled, is_vip
-		FROM users
-	`)
-	if err != nil {
-		return fmt.Errorf("could not copy data to users_new table: %w", err)
-	}
-
-	_, err = db.Exec("DROP TABLE users")
-	if err != nil {
-		return fmt.Errorf("could not drop old users table: %w", err)
-	}
-
-	_, err = db.Exec("ALTER TABLE users_new RENAME TO users")
-	if err != nil {
-		return fmt.Errorf("could not rename users_new to users: %w", err)
-	}
-
-	// Mark migration as applied
-	_, err = db.Exec(
-		"INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)",
-		migrationID,
-		time.Now().Format(time.RFC3339),
-	)
-	if err != nil {
-		return fmt.Errorf("could not mark migration as applied: %w", err)
-	}
-
-	fmt.Println("Successfully removed UNIQUE constraint from email column")
 
 	return nil
 }

@@ -206,6 +206,25 @@ func (r *AgentRegistry) UpdateSystemPrompt(id types.AgentID, systemPrompt string
 	return nil
 }
 
+func (r *AgentRegistry) AppendSystemPrompt(id types.AgentID, additionalPrompt string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entry, exists := r.agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	if entry.Manifest.SystemPrompt != "" {
+		entry.Manifest.SystemPrompt += "\n" + additionalPrompt
+	} else {
+		entry.Manifest.SystemPrompt = additionalPrompt
+	}
+	entry.LastActive = time.Now()
+	r.saveToDisk()
+	return nil
+}
+
 func (r *AgentRegistry) UpdateIdentity(id types.AgentID, identity map[string]string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -223,6 +242,46 @@ func (r *AgentRegistry) UpdateIdentity(id types.AgentID, identity map[string]str
 			entry.Metadata[k] = v
 		}
 	}
+	entry.LastActive = time.Now()
+	r.saveToDisk()
+	return nil
+}
+
+func (r *AgentRegistry) UpdateSkills(id types.AgentID, skills []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entry, exists := r.agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	entry.Manifest.Skills = skills
+	entry.LastActive = time.Now()
+	r.saveToDisk()
+	return nil
+}
+
+func (r *AgentRegistry) AppendSkills(id types.AgentID, newSkills []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entry, exists := r.agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	skillMap := make(map[string]bool)
+	for _, skill := range entry.Manifest.Skills {
+		skillMap[skill] = true
+	}
+
+	for _, skill := range newSkills {
+		if !skillMap[skill] {
+			entry.Manifest.Skills = append(entry.Manifest.Skills, skill)
+		}
+	}
+
 	entry.LastActive = time.Now()
 	r.saveToDisk()
 	return nil

@@ -235,7 +235,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 	}
 
 	// Build system prompt with memories and skills
-	fmt.Printf("------------ Current Agent Skills: %s---------------\n", agentCtx.Skills)
+	fmt.Printf("\n------------ Current Agent [%s] Skills: %s---------------\n", agentCtx.Name, agentCtx.Skills)
 	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills, agentCtx.SkillPromptContext)
 
 	// Find user message from context
@@ -1153,6 +1153,24 @@ func (r *Runtime) ListAgents() []*AgentContext {
 		agents = append(agents, agent)
 	}
 	return agents
+}
+
+func (r *Runtime) UpdateAgentSkills(id string, skills []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if agentCtx, ok := r.agents[id]; ok {
+		agentCtx.Skills = skills
+		log.Printf("Updated agent %s skills: %v", id, skills)
+	}
+}
+
+func (r *Runtime) UpdateAgentSystemPrompt(id string, systemPrompt string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if agentCtx, ok := r.agents[id]; ok {
+		agentCtx.SystemPrompt = systemPrompt
+		log.Printf("Updated agent %s system prompt", id)
+	}
 }
 
 func (r *Runtime) DeleteAgent(id string) bool {

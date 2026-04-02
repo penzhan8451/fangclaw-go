@@ -590,6 +590,49 @@ func (l *Loader) InstallSkill(sourcePath, skillID string) (*types.Skill, error) 
 	return l.LoadSkill(skillID)
 }
 
+// CreateSkill creates a new prompt-only skill.
+func (l *Loader) CreateSkill(name, description, promptContext string) (*types.Skill, error) {
+	if name == "" {
+		return nil, fmt.Errorf("name cannot be empty")
+	}
+
+	for _, c := range name {
+		if !('a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' || c == '-' || c == '_') {
+			return nil, fmt.Errorf("skill name must contain only letters, numbers, hyphens, and underscores")
+		}
+	}
+
+	skillDir := filepath.Join(l.skillsPath, name)
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		return nil, fmt.Errorf("skill '%s' already exists", name)
+	}
+
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create skill directory: %w", err)
+	}
+
+	escapedDescription := strings.ReplaceAll(description, "\"", "\\\"")
+	skillMDContent := fmt.Sprintf(`---
+name: "%s"
+description: "%s"
+version: "1.0.0"
+author: ""
+tags: []
+runtime:
+  runtime_type: "prompt_only"
+---
+
+%s
+`, name, escapedDescription, promptContext)
+
+	skillMDPath := filepath.Join(skillDir, "SKILL.md")
+	if err := os.WriteFile(skillMDPath, []byte(skillMDContent), 0644); err != nil {
+		return nil, fmt.Errorf("failed to write SKILL.md: %w", err)
+	}
+
+	return l.LoadSkill(name)
+}
+
 // UninstallSkill uninstalls a skill.
 func (l *Loader) UninstallSkill(skillID string) error {
 	l.mu.Lock()

@@ -885,6 +885,14 @@ func (k *Kernel) AgentRegistry() *AgentRegistry {
 	return k.agentRegistry
 }
 
+func (k *Kernel) UpdateAgentRuntimeSkills(agentID string, skills []string) {
+	k.agentRuntime.UpdateAgentSkills(agentID, skills)
+}
+
+func (k *Kernel) UpdateAgentRuntimeSystemPrompt(agentID string, systemPrompt string) {
+	k.agentRuntime.UpdateAgentSystemPrompt(agentID, systemPrompt)
+}
+
 func (k *Kernel) HandRegistry() *hands.Registry {
 	return k.handRegistry
 }

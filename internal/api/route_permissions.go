@@ -16,8 +16,11 @@ type RoutePermission struct {
 var RoutePermissions = []RoutePermission{
 	{Path: "/api/agents", Method: http.MethodPost, Permission: auth.PermAgentCreate, RequireAuth: true},
 	{Path: "/api/agents", Method: http.MethodGet, Permission: auth.PermAgentRead, RequireAuth: true},
+	{Path: "/api/agents/*", Method: http.MethodPut, Permission: auth.PermAgentWrite, RequireAuth: true},
+	{Path: "/api/agents/*", Method: http.MethodPatch, Permission: auth.PermAgentWrite, RequireAuth: true},
 	{Path: "/api/v1/agents", Method: http.MethodPost, Permission: auth.PermAgentCreate, RequireAuth: true},
 	{Path: "/api/v1/agents", Method: http.MethodGet, Permission: auth.PermAgentRead, RequireAuth: true},
+	{Path: "/api/v1/agents/*", Method: http.MethodPut, Permission: auth.PermAgentWrite, RequireAuth: true},
 
 	{Path: "/api/sessions", Method: http.MethodGet, Permission: auth.PermAgentRead, RequireAuth: true},
 	{Path: "/api/sessions", Method: http.MethodPost, Permission: auth.PermAgentWrite, RequireAuth: true},
@@ -30,8 +33,10 @@ var RoutePermissions = []RoutePermission{
 	{Path: "/api/v1/memories", Method: http.MethodPost, Permission: auth.PermAgentWrite, RequireAuth: true},
 
 	{Path: "/api/skills", Method: http.MethodGet, Permission: auth.PermAgentRead, RequireAuth: true},
-	{Path: "/api/skills/install", Method: http.MethodPost, Permission: auth.PermSkillInstall, RequireAuth: true},
 	{Path: "/api/skills/uninstall", Method: http.MethodPost, Permission: auth.PermSkillUninstall, RequireAuth: true},
+	{Path: "/api/skills/create", Method: http.MethodPost, Permission: auth.PermSkillInstall, RequireAuth: true},
+	{Path: "/api/skills/install", Method: http.MethodPost, Permission: auth.PermSkillInstall, RequireAuth: true},
+	{Path: "/api/skills/*", Method: http.MethodDelete, Permission: auth.PermSkillUninstall, RequireAuth: true},
 
 	{Path: "/api/channels", Method: http.MethodGet, Permission: auth.PermChannelRead, RequireAuth: true},
 	{Path: "/api/channels", Method: http.MethodPost, Permission: auth.PermChannelWrite, RequireAuth: true},
@@ -40,8 +45,9 @@ var RoutePermissions = []RoutePermission{
 	{Path: "/api/config", Method: http.MethodPut, Permission: auth.PermConfigWrite, RequireAuth: true},
 
 	{Path: "/api/hands", Method: http.MethodGet, Permission: auth.PermAgentRead, RequireAuth: true},
-	{Path: "/api/hands/activate", Method: http.MethodPost, Permission: auth.PermHandActivate, RequireAuth: true},
-	{Path: "/api/hands/deactivate", Method: http.MethodPost, Permission: auth.PermHandDeactivate, RequireAuth: true},
+	{Path: "/api/hands/*", Method: http.MethodPost, Permission: auth.PermHandActivate, RequireAuth: true},
+	{Path: "/api/hands/instances/*", Method: http.MethodPost, Permission: auth.PermHandDeactivate, RequireAuth: true},
+	{Path: "/api/hands/instances/*", Method: http.MethodDelete, Permission: auth.PermHandDeactivate, RequireAuth: true},
 
 	{Path: "/api/mcp", Method: http.MethodGet, Permission: auth.PermMCPRead, RequireAuth: true},
 	{Path: "/api/mcp", Method: http.MethodPost, Permission: auth.PermMCPWrite, RequireAuth: true},

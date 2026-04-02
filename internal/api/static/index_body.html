@@ -624,7 +624,7 @@
 
     <!-- Page: Agents -->
     <template x-if="page === 'agents'">
-      <div x-data="agentsPage" @close-chat.window="closeChat()">
+      <div x-data="agentsPage" @close-chat.window="closeChat()" @open-agent-details.window="showDetail($event.detail.agent)">
 
         <!-- MODE 1: Inline Chat (agent selected) -->
         <template x-if="activeChatAgent">
@@ -650,6 +650,10 @@
                   Generating...
                 </span>
                 <span class="queue-badge" x-show="messageQueue.length > 0" x-text="'+' + messageQueue.length + ' queued'"></span>
+                <!-- Open details button -->
+                <button class="btn btn-ghost btn-sm" @click="openAgentDetails(currentAgent)" title="Agent Details" style="padding:4px 8px">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
                 <!-- Session switcher -->
                 <div style="position:relative">
                   <button class="btn btn-ghost btn-sm" @click="sessionsOpen = !sessionsOpen" title="Sessions" style="position:relative">
@@ -905,107 +909,148 @@
 
           <!-- Custom spawn modal still available -->
           </div>
+        </div><!-- /activeChatAgent picker wrapper -->
 
-          <!-- Agent detail modal with tabs (Info / Files / Config) -->
-          <template x-if="showDetailModal && detailAgent">
-            <div class="modal-overlay" @click.self="showDetailModal = false" @keydown.escape.window="showDetailModal = false">
-              <div class="modal" style="max-width:600px">
-                <div class="modal-header">
-                  <h3>
-                    <span x-show="detailAgent.identity && detailAgent.identity.emoji" x-text="detailAgent.identity && detailAgent.identity.emoji" style="margin-right:6px"></span>
-                    <span x-text="detailAgent.name"></span>
-                  </h3>
-                  <button class="modal-close" @click="showDetailModal = false">&times;</button>
-                </div>
-                <div class="tabs" style="margin-bottom:16px">
-                  <div class="tab" :class="{ active: detailTab === 'info' }" @click="detailTab = 'info'">Info</div>
-                  <div class="tab" :class="{ active: detailTab === 'files' }" @click="detailTab = 'files'; loadAgentFiles()">Files</div>
-                  <div class="tab" :class="{ active: detailTab === 'config' }" @click="detailTab = 'config'">Config</div>
-                </div>
+        <!-- Agent detail modal with tabs (Info / Files / Config) -->
+        <template x-if="showDetailModal && detailAgent">
+          <div class="modal-overlay" @click.self="showDetailModal = false" @keydown.escape.window="showDetailModal = false">
+            <div class="modal" style="max-width:600px">
+              <div class="modal-header">
+                <h3>
+                  <span x-show="detailAgent.identity && detailAgent.identity.emoji" x-text="detailAgent.identity && detailAgent.identity.emoji" style="margin-right:6px"></span>
+                  <span x-text="detailAgent.name"></span>
+                </h3>
+                <button class="modal-close" @click="showDetailModal = false">&times;</button>
+              </div>
+              <div class="tabs" style="margin-bottom:16px">
+                <div class="tab" :class="{ active: detailTab === 'info' }" @click="detailTab = 'info'">Info</div>
+                <div class="tab" :class="{ active: detailTab === 'files' }" @click="detailTab = 'files'; loadAgentFiles()">Files</div>
+                <div class="tab" :class="{ active: detailTab === 'skills' }" @click="detailTab = 'skills'; loadDetailAvailableSkills()">Skills</div>
+                <div class="tab" :class="{ active: detailTab === 'config' }" @click="detailTab = 'config'">Config</div>
+              </div>
 
-                <!-- Tab: Info -->
-                <div x-show="detailTab === 'info'">
-                  <div class="detail-grid">
-                    <div class="detail-row"><span class="detail-label">ID</span><span class="detail-value text-xs" x-text="detailAgent.id" style="word-break:break-all"></span></div>
-                    <div class="detail-row"><span class="detail-label">State</span><span class="badge" :class="'badge-' + detailAgent.state.toLowerCase()" x-text="detailAgent.state"></span></div>
-                    <div class="detail-row"><span class="detail-label">Mode</span>
-                      <select class="form-select" style="width:140px" :value="detailAgent.mode || 'full'" @change="setMode(detailAgent, $event.target.value)">
-                        <option value="observe">Observe</option><option value="assist">Assist</option><option value="full">Full</option>
-                      </select>
+              <!-- Tab: Info -->
+              <div x-show="detailTab === 'info'">
+                <div class="detail-grid">
+                  <div class="detail-row"><span class="detail-label">ID</span><span class="detail-value text-xs" x-text="detailAgent.id" style="word-break:break-all"></span></div>
+                  <div class="detail-row"><span class="detail-label">State</span><span class="badge" :class="'badge-' + detailAgent.state.toLowerCase()" x-text="detailAgent.state"></span></div>
+                  <div class="detail-row"><span class="detail-label">Mode</span>
+                    <select class="form-select" style="width:140px" :value="detailAgent.mode || 'full'" @change="setMode(detailAgent, $event.target.value)">
+                      <option value="observe">Observe</option><option value="assist">Assist</option><option value="full">Full</option>
+                    </select>
+                  </div>
+                  <div class="detail-row" x-show="detailAgent.profile"><span class="detail-label">Profile</span><span class="detail-value" style="text-transform:capitalize" x-text="detailAgent.profile || '-'"></span></div>
+                  <div class="detail-row"><span class="detail-label">Provider</span><span class="detail-value" x-text="detailAgent.model_provider"></span></div>
+                  <div class="detail-row"><span class="detail-label">Model</span><span class="detail-value" x-text="detailAgent.model_name"></span></div>
+                  <div class="detail-row"><span class="detail-label">Created</span><span class="detail-value" x-text="detailAgent.created_at ? new Date(detailAgent.created_at).toLocaleString() : '-'"></span></div>
+                </div>
+                <div class="flex gap-2 mt-4">
+                  <button class="btn btn-primary" @click="chatWithAgent(detailAgent); showDetailModal = false">Chat</button>
+                  <button class="btn btn-ghost" @click="cloneAgent(detailAgent)">Clone</button>
+                  <button class="btn btn-danger" @click="killAgent(detailAgent)">Stop</button>
+                </div>
+              </div>
+
+              <!-- Tab: Files -->
+              <div x-show="detailTab === 'files'">
+                <div x-show="filesLoading" class="text-center text-dim" style="padding:24px">Loading files...</div>
+                <div x-show="!filesLoading && !editingFile">
+                  <template x-for="file in agentFiles" :key="file.name">
+                    <div class="file-list-item" @click="openFile(file)">
+                      <span class="font-mono" style="font-size:13px" x-text="file.name"></span>
+                      <span class="text-xs text-dim" x-text="file.exists ? (file.size_bytes + ' bytes') : 'Not created'"></span>
                     </div>
-                    <div class="detail-row" x-show="detailAgent.profile"><span class="detail-label">Profile</span><span class="detail-value" style="text-transform:capitalize" x-text="detailAgent.profile || '-'"></span></div>
-                    <div class="detail-row"><span class="detail-label">Provider</span><span class="detail-value" x-text="detailAgent.model_provider"></span></div>
-                    <div class="detail-row"><span class="detail-label">Model</span><span class="detail-value" x-text="detailAgent.model_name"></span></div>
-                    <div class="detail-row"><span class="detail-label">Created</span><span class="detail-value" x-text="detailAgent.created_at ? new Date(detailAgent.created_at).toLocaleString() : '-'"></span></div>
+                  </template>
+                  <div x-show="!agentFiles.length && !filesLoading" class="text-center text-dim" style="padding:24px">No workspace files found</div>
+                </div>
+                <div x-show="editingFile">
+                  <div class="flex justify-between items-center mb-2">
+                    <span class="font-bold font-mono" x-text="editingFile"></span>
+                    <button class="btn btn-ghost btn-sm" @click="closeFileEditor()">&larr; Back</button>
                   </div>
-                  <div class="flex gap-2 mt-4">
-                    <button class="btn btn-primary" @click="chatWithAgent(detailAgent); showDetailModal = false">Chat</button>
-                    <button class="btn btn-ghost" @click="cloneAgent(detailAgent)">Clone</button>
-                    <button class="btn btn-danger" @click="killAgent(detailAgent)">Stop</button>
+                  <textarea class="file-editor" x-model="fileContent" style="width:100%;height:280px;resize:vertical"></textarea>
+                  <div class="flex gap-2 mt-2">
+                    <button class="btn btn-primary btn-sm" @click="saveFile()" :disabled="fileSaving"><span x-show="!fileSaving">Save</span><span x-show="fileSaving">Saving...</span></button>
+                    <button class="btn btn-ghost btn-sm" @click="closeFileEditor()">Cancel</button>
                   </div>
                 </div>
+              </div>
 
-                <!-- Tab: Files -->
-                <div x-show="detailTab === 'files'">
-                  <div x-show="filesLoading" class="text-center text-dim" style="padding:24px">Loading files...</div>
-                  <div x-show="!filesLoading && !editingFile">
-                    <template x-for="file in agentFiles" :key="file.name">
-                      <div class="file-list-item" @click="openFile(file)">
-                        <span class="font-mono" style="font-size:13px" x-text="file.name"></span>
-                        <span class="text-xs text-dim" x-text="file.exists ? (file.size_bytes + ' bytes') : 'Not created'"></span>
-                      </div>
-                    </template>
-                    <div x-show="!agentFiles.length && !filesLoading" class="text-center text-dim" style="padding:24px">No workspace files found</div>
-                  </div>
-                  <div x-show="editingFile">
-                    <div class="flex justify-between items-center mb-2">
-                      <span class="font-bold font-mono" x-text="editingFile"></span>
-                      <button class="btn btn-ghost btn-sm" @click="closeFileEditor()">&larr; Back</button>
-                    </div>
-                    <textarea class="file-editor" x-model="fileContent" style="width:100%;height:280px;resize:vertical"></textarea>
-                    <div class="flex gap-2 mt-2">
-                      <button class="btn btn-primary btn-sm" @click="saveFile()" :disabled="fileSaving"><span x-show="!fileSaving">Save</span><span x-show="fileSaving">Saving...</span></button>
-                      <button class="btn btn-ghost btn-sm" @click="closeFileEditor()">Cancel</button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Tab: Config (inline editable) -->
-                <div x-show="detailTab === 'config'">
-                  <div class="form-group"><label>Name</label><input class="form-input" x-model="configForm.name"></div>
-                  <div class="form-group"><label>System Prompt</label><textarea class="form-textarea" x-model="configForm.system_prompt" style="height:80px"></textarea></div>
-                  <div class="form-group"><label>Emoji</label>
-                    <div class="emoji-grid">
-                      <template x-for="em in emojiOptions" :key="em">
-                        <button class="emoji-grid-item" :class="{ active: configForm.emoji === em }" @click="configForm.emoji = em" x-text="em"></button>
+              <!-- Tab: Skills -->
+              <div x-show="detailTab === 'skills'">
+                <div style="margin-bottom:16px">
+                  <p style="font-size:12px;color:var(--text-dim)">提示：勾选新的 Skill 会追加到现有列表中</p>
+                  <div x-show="detailOriginalSkills.length>0" style="margin-top:8px">
+                    <span style="font-size:12px;color:var(--text-dim)">当前已启用的 Skills：</span>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+                      <template x-for="skill in detailOriginalSkills" :key="skill">
+                        <span style="font-size:12px;padding:4px 8px;background:var(--bg-ghost);border-radius:4px" x-text="skill"></span>
                       </template>
                     </div>
                   </div>
-                  <div class="form-group"><label>Color</label><input type="color" x-model="configForm.color" style="width:48px;height:32px;border:none;cursor:pointer;background:none"></div>
-                  <div class="form-group"><label>Archetype</label>
-                    <select class="form-select" x-model="configForm.archetype">
-                      <option value="">None</option>
-                      <template x-for="a in archetypeOptions" :key="a"><option :value="a.toLowerCase()" x-text="a"></option></template>
-                    </select>
-                  </div>
-                  <div class="form-group"><label>Vibe</label>
-                    <select class="form-select" x-model="configForm.vibe">
-                      <option value="">None</option>
-                      <option value="professional">Professional</option><option value="friendly">Friendly</option>
-                      <option value="technical">Technical</option><option value="creative">Creative</option>
-                      <option value="concise">Concise</option><option value="mentor">Mentor</option>
-                    </select>
-                  </div>
-                  <button class="btn btn-primary mt-4" @click="saveConfig()" :disabled="configSaving">
-                    <span x-show="!configSaving">Save Config</span><span x-show="configSaving">Saving...</span>
+                </div>
+                <div x-show="detailSkillsLoading" class="text-center text-dim" style="padding:24px">Loading skills...</div>
+                <div x-show="!detailSkillsLoading">
+                  <template x-for="skill in detailAvailableSkills" :key="skill.name">
+                    <div class="detail-row" style="padding:8px 0;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;gap:8px">
+                      <input type="checkbox" :checked="detailSkills.includes(skill.name)" @change="toggleDetailSkill(skill.name)">
+                      <div style="flex:1">
+                        <div style="font-weight:500" x-text="skill.name"></div>
+                        <div style="font-size:11px;color:var(--text-dim)" x-text="skill.description"></div>
+                        <div style="font-size:10px;color:var(--text-subtle);margin-top:2px">
+                          <span x-text="skill.tools_count + ' tools'"></span>
+                          <span x-show="skill.version" style="margin-left:8px" x-text="'v' + skill.version"></span>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                  <div x-show="!detailAvailableSkills.length && !detailSkillsLoading" class="text-center text-dim" style="padding:24px">No skills available</div>
+                  <button class="btn btn-primary mt-4" @click="saveDetailSkills()" :disabled="detailSkillsSaving">
+                    <span x-show="!detailSkillsSaving">Save Skills</span><span x-show="detailSkillsSaving">Saving...</span>
                   </button>
                 </div>
               </div>
-            </div>
-          </template>
 
-          <!-- Multi-step Spawn Wizard -->
-          <template x-if="showSpawnModal">
+              <!-- Tab: Config (inline editable) -->
+              <div x-show="detailTab === 'config'">
+                <div class="form-group"><label>Name</label><input class="form-input" x-model="configForm.name"></div>
+                <div class="form-group">
+                  <label>System Prompt</label>
+                  <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">提示：输入的内容会追加到现有 System Prompt 末尾</p>
+                  <textarea class="form-textarea" x-model="configForm.system_prompt" style="height:80px"></textarea>
+                </div>
+                <div class="form-group"><label>Emoji</label>
+                  <div class="emoji-grid">
+                    <template x-for="em in emojiOptions" :key="em">
+                      <button class="emoji-grid-item" :class="{ active: configForm.emoji === em }" @click="configForm.emoji = em" x-text="em"></button>
+                    </template>
+                  </div>
+                </div>
+                <div class="form-group"><label>Color</label><input type="color" x-model="configForm.color" style="width:48px;height:32px;border:none;cursor:pointer;background:none"></div>
+                <div class="form-group"><label>Archetype</label>
+                  <select class="form-select" x-model="configForm.archetype">
+                    <option value="">None</option>
+                    <template x-for="a in archetypeOptions" :key="a"><option :value="a.toLowerCase()" x-text="a"></option></template>
+                  </select>
+                </div>
+                <div class="form-group"><label>Vibe</label>
+                  <select class="form-select" x-model="configForm.vibe">
+                    <option value="">None</option>
+                    <option value="professional">Professional</option><option value="friendly">Friendly</option>
+                    <option value="technical">Technical</option><option value="creative">Creative</option>
+                    <option value="concise">Concise</option><option value="mentor">Mentor</option>
+                  </select>
+                </div>
+                <button class="btn btn-primary mt-4" @click="saveConfig()" :disabled="configSaving">
+                  <span x-show="!configSaving">Save Config</span><span x-show="configSaving">Saving...</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Multi-step Spawn Wizard -->
+        <template x-if="showSpawnModal">
             <div class="modal-overlay">
               <div class="modal" style="max-width:560px">
                 <div class="modal-header">
@@ -2857,7 +2902,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                     </template>
                   </div>
                   <div class="flex gap-2">
-                    <button class="btn btn-primary btn-block" @click="var hid = detailHand.id; detailHand = null; openSetupWizard(hid)" :disabled="setupLoading">Activate</button>
+                    <button class="btn btn-primary btn-block" @click="openSetupWizard(detailHand.id); detailHand = null" :disabled="setupLoading">Activate</button>
                   </div>
                 </div>
               </div>

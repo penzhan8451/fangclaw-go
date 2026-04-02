@@ -533,11 +533,13 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	// Skill endpoints
 	mux.HandleFunc("GET /api/v1/skills", r.handleListSkills)
 	mux.HandleFunc("POST /api/v1/skills", r.handleInstallSkill)
+	mux.HandleFunc("POST /api/v1/skills/create", r.handleCreateSkill)
 	mux.HandleFunc("DELETE /api/v1/skills/{id}", r.handleUninstallSkill)
 
 	// Skill endpoints (aliases)
 	mux.HandleFunc("GET /api/skills", r.handleListSkills)
 	mux.HandleFunc("POST /api/skills", r.handleInstallSkill)
+	mux.HandleFunc("POST /api/skills/create", r.handleCreateSkill)
 	mux.HandleFunc("DELETE /api/skills/{id}", r.handleUninstallSkill)
 	// ClawHub endpoints
 	mux.HandleFunc("GET /api/clawhub/search", r.handleClawhubSearch)
@@ -626,6 +628,10 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agents/{id}/message", r.handleAgentMessage)
 	mux.HandleFunc("POST /api/agents/{id}/stop", r.handleStopAgent)
 	mux.HandleFunc("PUT /api/agents/{id}/model", r.handleUpdateAgentModel)
+	mux.HandleFunc("PUT /api/agents/{id}/skills", r.handleUpdateAgentSkills)
+	mux.HandleFunc("PUT /api/v1/agents/{id}/skills", r.handleUpdateAgentSkills)
+	mux.HandleFunc("PATCH /api/agents/{id}/system-prompt/append", r.handleAppendAgentSystemPrompt)
+	mux.HandleFunc("PATCH /api/agents/{id}/skills/append", r.handleAppendAgentSkills)
 
 	// Agent WebSocket endpoint
 	mux.HandleFunc("/api/agents/{id}/ws", func(w http.ResponseWriter, req *http.Request) {
@@ -1049,6 +1055,93 @@ func (r *Router) handleUpdateAgent(w http.ResponseWriter, req *http.Request) {
 	respondJSON(w, http.StatusOK, agent)
 }
 
+func (r *Router) handleUpdateAgentSkills(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
+	idStr := req.PathValue("id")
+	id, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent id")
+		return
+	}
+
+	var reqBody struct {
+		Skills []string `json:"skills"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := k.AgentRegistry().UpdateSkills(id, reqBody.Skills); err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	agent := k.AgentRegistry().Get(id)
+	k.UpdateAgentRuntimeSkills(id.String(), agent.Manifest.Skills)
+	respondJSON(w, http.StatusOK, agent)
+}
+
+func (r *Router) handleAppendAgentSystemPrompt(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
+	idStr := req.PathValue("id")
+	id, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent id")
+		return
+	}
+
+	var reqBody struct {
+		SystemPrompt string `json:"system_prompt"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	const MAX_PROMPT_LEN = 65536
+	if len(reqBody.SystemPrompt) > MAX_PROMPT_LEN {
+		respondError(w, http.StatusRequestEntityTooLarge, "system prompt exceeds max length")
+		return
+	}
+
+	if err := k.AgentRegistry().AppendSystemPrompt(id, reqBody.SystemPrompt); err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	agent := k.AgentRegistry().Get(id)
+	k.UpdateAgentRuntimeSystemPrompt(id.String(), agent.Manifest.SystemPrompt)
+	respondJSON(w, http.StatusOK, agent)
+}
+
+func (r *Router) handleAppendAgentSkills(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
+	idStr := req.PathValue("id")
+	id, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent id")
+		return
+	}
+
+	var reqBody struct {
+		Skills []string `json:"skills"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := k.AgentRegistry().AppendSkills(id, reqBody.Skills); err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	agent := k.AgentRegistry().Get(id)
+	k.UpdateAgentRuntimeSkills(id.String(), agent.Manifest.Skills)
+	respondJSON(w, http.StatusOK, agent)
+}
+
 func (r *Router) handleDeleteAgent(w http.ResponseWriter, req *http.Request) {
 	k := r.getKernel(req)
 	idStr := req.PathValue("id")
@@ -1444,6 +1537,45 @@ func (r *Router) handleUninstallSkill(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	respondJSON(w, http.StatusNoContent, nil)
+}
+
+func (r *Router) handleCreateSkill(w http.ResponseWriter, req *http.Request) {
+	type CreateSkillRequest struct {
+		Name          string `json:"name"`
+		Description   string `json:"description"`
+		Runtime       string `json:"runtime"`
+		PromptContext string `json:"prompt_context"`
+	}
+
+	var reqBody CreateSkillRequest
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if reqBody.Runtime != "" && reqBody.Runtime != "prompt_only" {
+		respondError(w, http.StatusBadRequest, "Only prompt_only skills can be created from the web UI")
+		return
+	}
+
+	k := r.getKernel(req)
+	skill, err := k.SkillLoader().CreateSkill(reqBody.Name, reqBody.Description, reqBody.PromptContext)
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			respondError(w, http.StatusConflict, err.Error())
+		} else if strings.Contains(err.Error(), "must contain only letters") || strings.Contains(err.Error(), "cannot be empty") {
+			respondError(w, http.StatusBadRequest, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "created",
+		"name":   skill.ID,
+		"note":   "Restart the daemon to load the new skill, or it will be available on next boot.",
+	})
 }
 
 // Channel handlers
@@ -3357,6 +3489,8 @@ func (r *Router) handlePatchAgentConfig(w http.ResponseWriter, req *http.Request
 			respondError(w, http.StatusNotFound, "agent not found")
 			return
 		}
+		agent := r.getKernel(req).AgentRegistry().Get(agentID)
+		r.getKernel(req).UpdateAgentRuntimeSystemPrompt(agentID.String(), agent.Manifest.SystemPrompt)
 	}
 
 	identity := make(map[string]string)
@@ -3722,34 +3856,34 @@ func (r *Router) handleUsageDaily(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func loadHandsFromFile() []map[string]string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return getDefaultHands()
-	}
-	path := filepath.Join(homeDir, ".fangclaw-go", "hands.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return getDefaultHands()
-	}
-	var hands []map[string]string
-	if err := json.Unmarshal(data, &hands); err != nil {
-		return getDefaultHands()
-	}
-	return hands
-}
+// func loadHandsFromFile() []map[string]string {
+// homeDir, err := os.UserHomeDir()
+// if err != nil {
+// 	return getDefaultHands()
+// }
+// path := filepath.Join(homeDir, ".fangclaw-go", "hands.json")
+// data, err := os.ReadFile(path)
+// if err != nil {
+// 	return getDefaultHands()
+// }
+// var hands []map[string]string
+// if err := json.Unmarshal(data, &hands); err != nil {
+// 	return getDefaultHands()
+// }
+// return hands
+// }
 
-func getDefaultHands() []map[string]string {
-	return []map[string]string{
-		{"id": "researcher", "name": "Researcher", "status": "inactive"},
-		{"id": "lead", "name": "Lead", "status": "inactive"},
-		{"id": "collector", "name": "Collector", "status": "inactive"},
-		{"id": "predictor", "name": "Predictor", "status": "inactive"},
-		{"id": "clip", "name": "Clip", "status": "inactive"},
-		{"id": "twitter", "name": "Twitter", "status": "inactive"},
-		{"id": "browser", "name": "Browser", "status": "inactive"},
-	}
-}
+// func getDefaultHands() []map[string]string {
+// 	return []map[string]string{
+// 		{"id": "researcher", "name": "Researcher", "status": "inactive"},
+// 		{"id": "lead", "name": "Lead", "status": "inactive"},
+// 		{"id": "collector", "name": "Collector", "status": "inactive"},
+// 		{"id": "predictor", "name": "Predictor", "status": "inactive"},
+// 		{"id": "clip", "name": "Clip", "status": "inactive"},
+// 		{"id": "twitter", "name": "Twitter", "status": "inactive"},
+// 		{"id": "browser", "name": "Browser", "status": "inactive"},
+// 	}
+// }
 
 func (r *Router) handleListHands(w http.ResponseWriter, req *http.Request) {
 	k := r.getKernel(req)

@@ -906,6 +906,11 @@ function chatPage() {
       });
     },
 
+    openAgentDetails(agent) {
+      if (!agent) return;
+      window.dispatchEvent(new CustomEvent('open-agent-details', { detail: { agent: agent } }));
+    },
+
     scrollToBottom() {
       var self = this;
       var el = document.getElementById('messages');

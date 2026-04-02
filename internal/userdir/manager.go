@@ -341,7 +341,7 @@ func LoadUserSecrets(username string) (map[string]string, error) {
 	}
 
 	var secretsPath string
-	if username == "" {
+	if username == "" { // owner, global secrets
 		secretsPath = mgr.GlobalSecretsPath()
 	} else {
 		secretsPath = mgr.UserSecretsPath(username)
