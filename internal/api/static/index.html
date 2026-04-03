@@ -11355,6 +11355,9 @@ document.addEventListener('alpine:init', function() {
     approvalNotifications: [],
     lastKnownApprovals: [],
     approvalPollIntervalId: null,
+    approvalPollFailCount: 0,
+    maxPollFailures: 3,
+    mainPollFailCount: 0,
 
     toggleFocusMode() {
       this.focusMode = !this.focusMode;
@@ -11372,12 +11375,21 @@ document.addEventListener('alpine:init', function() {
     async checkStatus() {
       try {
         var s = await FangClawGoAPI.get('/api/status');
+        this.mainPollFailCount = 0;
         this.connected = true;
         this.booting = false;
         this.lastError = '';
         this.version = s.version || '0.1.0';
         this.agentCount = s.agent_count || 0;
       } catch(e) {
+        this.mainPollFailCount++;
+        if (this.mainPollFailCount >= this.maxPollFailures) {
+          console.log('[FangClaw-Go] Too many status check failures, stopping polling');
+          if (this.pollIntervalId) {
+            clearInterval(this.pollIntervalId);
+            this.pollIntervalId = null;
+          }
+        }
         this.connected = false;
         this.lastError = e.message || 'Unknown error';
         console.warn('[FangClaw-Go] Status check failed:', e.message);
@@ -11521,6 +11533,7 @@ document.addEventListener('alpine:init', function() {
     refreshPendingApprovalsCount() {
       var self = this;
       FangClawGoAPI.get('/api/approvals').then(function(response) {
+        self.approvalPollFailCount = 0;
         var approvals = response.approvals || [];
         var pending = approvals.filter(function(a) { return a.status === 'pending'; });
         var oldCount = self.pendingApprovalsCount;
@@ -11540,7 +11553,13 @@ document.addEventListener('alpine:init', function() {
         }
         
         self.lastKnownApprovals = pending;
-      }).catch(function() {});
+      }).catch(function() {
+        self.approvalPollFailCount++;
+        if (self.approvalPollFailCount >= self.maxPollFailures) {
+          console.log('[Approvals] Too many failures, stopping polling');
+          self.stopApprovalPolling();
+        }
+      });
     },
 
     startApprovalPolling() {
@@ -11548,6 +11567,7 @@ document.addEventListener('alpine:init', function() {
       if (this.approvalPollIntervalId) {
         clearInterval(this.approvalPollIntervalId);
       }
+      this.approvalPollFailCount = 0;
       this.refreshPendingApprovalsCount();
       this.approvalPollIntervalId = setInterval(function() {
         self.refreshPendingApprovalsCount();
@@ -11645,6 +11665,25 @@ function app() {
       // Connection state listener
       FangClawGoAPI.onConnectionChange(function(state) {
         Alpine.store('app').connectionState = state;
+      });
+
+      // Page visibility change listener - restart polling when page becomes visible
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+          var store = Alpine.store('app');
+          if (store.currentUser) {
+            console.log('[FangClaw-Go] Page visible, restarting polling...');
+            store.mainPollFailCount = 0;
+            store.approvalPollFailCount = 0;
+            // Restart main polling if not running
+            if (!store.pollIntervalId) {
+              store.pollIntervalId = setInterval(function() { self.pollStatus(); }, 10000);
+            }
+            self.pollStatus();
+            // Restart approval polling if not running
+            store.startApprovalPolling();
+          }
+        }
       });
 
       // Check for GitHub login success callback
@@ -18429,8 +18468,7 @@ function approvalsPage() {
       try {
         // Find the approval to get session_id
         var approval = this.approvals.find(function(a) { return a.id === id; });
-        console.log('[Approvals] Approve:', approval);
-        
+      
         await FangClawGoAPI.post('/api/approvals/' + id + '/approve', {});
         FangClawGoToast.success('Approved');
         
