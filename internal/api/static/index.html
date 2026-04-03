@@ -4824,7 +4824,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
           <!-- Running agents — click to chat -->
           <div x-show="agents.length" style="margin-bottom:28px">
-            <div class="text-sm font-bold mb-2" style="color:var(--text-dim);letter-spacing:0.5px;font-size:11px;text-transform:uppercase">Your Agents</div>
+            <div class="text-sm font-bold mb-2" style="color:var(--text-dim);letter-spacing:0.5px;font-size:11px;text-transform:uppercase">Your Agents (Tip：you can enhance the agent <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg> when you chat with the agent)</div>
             <div style="display:flex;flex-wrap:wrap;gap:10px">
               <template x-for="agent in agents" :key="agent.id">
                 <div class="agent-chip" @click="chatWithAgent(agent)" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);transition:all 0.2s var(--ease-spring, ease);min-width:200px;box-shadow:var(--shadow-xs)" @mouseenter="$el.style.borderColor='var(--accent)';$el.style.transform='translateY(-2px)';$el.style.boxShadow='var(--shadow-md)'" @mouseleave="$el.style.borderColor='var(--border)';$el.style.transform='';$el.style.boxShadow='var(--shadow-xs)'">
@@ -4930,9 +4930,9 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
               <!-- Tab: Skills -->
               <div x-show="detailTab === 'skills'">
                 <div style="margin-bottom:16px">
-                  <p style="font-size:12px;color:var(--text-dim)">提示：勾选新的 Skill 会追加到现有列表中</p>
+                  <p style="font-size:12px;color:var(--text-dim)">Note: New Skill will be added to the existing list</p>
                   <div x-show="detailOriginalSkills.length>0" style="margin-top:8px">
-                    <span style="font-size:12px;color:var(--text-dim)">当前已启用的 Skills：</span>
+                    <span style="font-size:12px;color:var(--text-dim)">Enabled Skills:</span>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
                       <template x-for="skill in detailOriginalSkills" :key="skill">
                         <span style="font-size:12px;padding:4px 8px;background:var(--bg-ghost);border-radius:4px" x-text="skill"></span>
