@@ -118,6 +118,10 @@ document.addEventListener('alpine:init', function() {
     pollIntervalId: null,
     setupComplete: false,
     showSetupGuide: false,
+    pendingApprovalsCount: 0,
+    approvalNotifications: [],
+    lastKnownApprovals: [],
+    approvalPollIntervalId: null,
 
     toggleFocusMode() {
       this.focusMode = !this.focusMode;
@@ -230,6 +234,7 @@ document.addEventListener('alpine:init', function() {
       this.showLogin = false;
       this.refreshAgents();
       this.checkSetupStatus();
+      this.startApprovalPolling();
       document.dispatchEvent(new CustomEvent('user-login', { detail: { user: user } }));
     },
 
@@ -242,6 +247,10 @@ document.addEventListener('alpine:init', function() {
         clearInterval(this.pollIntervalId);
         this.pollIntervalId = null;
       }
+      this.stopApprovalPolling();
+      this.pendingApprovalsCount = 0;
+      this.approvalNotifications = [];
+      this.lastKnownApprovals = [];
       document.dispatchEvent(new CustomEvent('user-logout'));
     },
 
@@ -256,6 +265,67 @@ document.addEventListener('alpine:init', function() {
     clearApiKey() {
       FangClawGoAPI.setAuthToken('');
       localStorage.removeItem('openfang-api-key');
+    },
+
+    addApprovalNotification(approval) {
+      this.approvalNotifications.push({
+        id: approval.id,
+        title: 'New Approval Request',
+        description: approval.description || 'A new approval request requires your attention.',
+        timestamp: Date.now(),
+        approval: approval
+      });
+    },
+
+    removeApprovalNotification(approvalId) {
+      this.approvalNotifications = this.approvalNotifications.filter(n => n.id !== approvalId);
+    },
+
+    setPendingApprovalsCount(count) {
+      this.pendingApprovalsCount = count;
+    },
+
+    refreshPendingApprovalsCount() {
+      var self = this;
+      FangClawGoAPI.get('/api/approvals').then(function(response) {
+        var approvals = response.approvals || [];
+        var pending = approvals.filter(function(a) { return a.status === 'pending'; });
+        var oldCount = self.pendingApprovalsCount;
+        self.setPendingApprovalsCount(pending.length);
+        
+        if (pending.length > oldCount) {
+          var newIds = pending.map(function(a) { return a.id; });
+          var oldIds = self.lastKnownApprovals.map(function(a) { return a.id; });
+          
+          for (var i = 0; i < pending.length; i++) {
+            var approval = pending[i];
+            if (oldIds.indexOf(approval.id) === -1) {
+              self.addApprovalNotification(approval);
+              FangClawGoToast.warn('New approval request requires your attention');
+            }
+          }
+        }
+        
+        self.lastKnownApprovals = pending;
+      }).catch(function() {});
+    },
+
+    startApprovalPolling() {
+      var self = this;
+      if (this.approvalPollIntervalId) {
+        clearInterval(this.approvalPollIntervalId);
+      }
+      this.refreshPendingApprovalsCount();
+      this.approvalPollIntervalId = setInterval(function() {
+        self.refreshPendingApprovalsCount();
+      }, 5000);
+    },
+
+    stopApprovalPolling() {
+      if (this.approvalPollIntervalId) {
+        clearInterval(this.approvalPollIntervalId);
+        this.approvalPollIntervalId = null;
+      }
     }
   });
 });
@@ -364,6 +434,7 @@ function app() {
             self.pollStatus();
             store.checkOnboarding();
             store.pollIntervalId = setInterval(function() { self.pollStatus(); }, 10000);
+            store.startApprovalPolling();
             FangClawGoToast.success('Welcome, ' + store.currentUser.username + '!');
           }
         });
@@ -376,6 +447,7 @@ function app() {
             self.pollStatus();
             store.checkOnboarding();
             store.pollIntervalId = setInterval(function() { self.pollStatus(); }, 10000);
+            store.startApprovalPolling();
           }
         });
       }

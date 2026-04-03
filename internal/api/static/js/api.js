@@ -224,6 +224,12 @@ var FangClawGoAPI = (function() {
   var _reconnectAttempts = 0;
   var MAX_RECONNECT = 5;
 
+  // Global WebSocket for app-wide notifications (approvals, etc.)
+  var _globalWs = null;
+  var _globalWsConnected = false;
+  var _globalWsCallbacks = {};
+  var _globalReconnectTimer = null;
+
   function wsConnect(agentId, callbacks) {
     wsDisconnect();
     _wsCallbacks = callbacks || {};
@@ -326,6 +332,56 @@ var FangClawGoAPI = (function() {
     });
   }
 
+  function globalWsConnect(callbacks) {
+    globalWsDisconnect();
+    _globalWsCallbacks = callbacks || {};
+    _doGlobalConnect();
+  }
+
+  function _doGlobalConnect() {
+    try {
+      var url = WS_BASE + '/api/ws';
+      if (_authToken) url += '?token=' + encodeURIComponent(_authToken);
+      _globalWs = new WebSocket(url);
+
+      _globalWs.onopen = function() {
+        _globalWsConnected = true;
+        if (_globalWsCallbacks.onOpen) _globalWsCallbacks.onOpen();
+      };
+
+      _globalWs.onmessage = function(e) {
+        try {
+          var data = JSON.parse(e.data);
+          if (_globalWsCallbacks.onMessage) _globalWsCallbacks.onMessage(data);
+        } catch(err) {
+          console.error('[API] Global WebSocket parse error:', err);
+        }
+      };
+
+      _globalWs.onclose = function() {
+        _globalWsConnected = false;
+        _globalWs = null;
+        if (_globalWsCallbacks.onClose) _globalWsCallbacks.onClose();
+        _globalReconnectTimer = setTimeout(function() { _doGlobalConnect(); }, 3000);
+      };
+
+      _globalWs.onerror = function() {
+        _globalWsConnected = false;
+        if (_globalWsCallbacks.onError) _globalWsCallbacks.onError();
+      };
+    } catch(e) {
+      _globalWsConnected = false;
+    }
+  }
+
+  function globalWsDisconnect() {
+    if (_globalReconnectTimer) { clearTimeout(_globalReconnectTimer); _globalReconnectTimer = null; }
+    if (_globalWs) { _globalWs.close(1000); _globalWs = null; }
+    _globalWsConnected = false;
+  }
+
+  function isGlobalWsConnected() { return _globalWsConnected; }
+
   return {
     setAuthToken: setAuthToken,
     getToken: getToken,
@@ -342,6 +398,9 @@ var FangClawGoAPI = (function() {
     wsSend: wsSend,
     isWsConnected: isWsConnected,
     getConnectionState: getConnectionState,
-    onConnectionChange: onConnectionChange
+    onConnectionChange: onConnectionChange,
+    globalWsConnect: globalWsConnect,
+    globalWsDisconnect: globalWsDisconnect,
+    isGlobalWsConnected: isGlobalWsConnected
   };
 })();

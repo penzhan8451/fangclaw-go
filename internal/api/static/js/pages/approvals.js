@@ -35,8 +35,7 @@ function approvalsPage() {
       try {
         // Find the approval to get session_id
         var approval = this.approvals.find(function(a) { return a.id === id; });
-        console.log('[Approvals] Approve:', approval);
-        
+      
         await FangClawGoAPI.post('/api/approvals/' + id + '/approve', {});
         FangClawGoToast.success('Approved');
         

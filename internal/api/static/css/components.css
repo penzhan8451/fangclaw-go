@@ -111,6 +111,8 @@
 .badge-muted { background: rgba(148,163,184,0.12); color: var(--text-dim); }
 .badge-info { background: rgba(59,130,246,0.12); color: var(--info); }
 .badge-dim { background: rgba(148,163,184,0.08); color: var(--text-dim); font-size: 0.65rem; }
+.badge-tag { background: rgba(148,163,184,0.08); color: var(--text-dim); font-size: 8px; padding: 1px 4px; text-transform: none; letter-spacing: 0; }
+.badge-state { font-size: 8px; padding: 2px 6px; }
 .text-danger { color: var(--error); }
 
 /* Tables */
@@ -3207,6 +3209,15 @@ mark.search-highlight {
 .login-btn:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+.social-login-btn:hover {
+  transform: scale(1.08);
+  opacity: 0.9;
+}
+
+.social-login-btn:active {
+  transform: scale(0.95);
 }
 
 .form-error {
