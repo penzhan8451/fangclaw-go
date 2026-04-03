@@ -55,7 +55,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 
 func runChatWithDaemon(agentID string) error {
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Get(daemonAddr + "/api/agents")
+	resp, err := cliHTTPGet(daemonAddr + "/api/agents")
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -87,13 +87,12 @@ func runChatWithDaemon(agentID string) error {
 		}
 		jsonData, _ := json.Marshal(messageReq)
 
-		client := &http.Client{}
 		req, _ := http.NewRequest("POST",
 			fmt.Sprintf("%s/api/agents/%s/message", daemonAddr, agentID),
 			strings.NewReader(string(jsonData)))
 		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := client.Do(req)
+		req.Header.Set("X-Client-Type", "cli")
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 		} else {
@@ -249,6 +248,7 @@ Current date: %s`, currentDate)
 		toolNames,
 		allSkillIDs,
 		skillPromptContext,
+		nil,
 	)
 
 	fmt.Println("Enter your message (Ctrl+C to exit):")
@@ -452,7 +452,7 @@ func runMessage(cmd *cobra.Command, args []string) error {
 	jsonData, _ := json.Marshal(messageReq)
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Post(
+	resp, err := cliHTTPPost(
 		fmt.Sprintf("%s/api/agents/%s/message", daemonAddr, agentID),
 		"application/json",
 		strings.NewReader(string(jsonData)),

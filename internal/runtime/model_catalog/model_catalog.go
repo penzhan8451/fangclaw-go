@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/penzhan8451/fangclaw-go/internal/types"
+	"github.com/rs/zerolog/log"
 )
 
 type ModelCatalog struct {
@@ -58,20 +59,19 @@ func (c *ModelCatalog) loadOrInitialize() {
 	if c.configPath != "" {
 		if _, err := os.Stat(c.configPath); err == nil {
 			if err := c.loadFromFileUnsafe(); err == nil {
-				fmt.Printf("Loaded model catalog from %s\n", c.configPath)
-				if err := c.saveToFileUnsafe(); err == nil {
-					fmt.Printf("Updated model catalog at %s\n", c.configPath)
-				}
+				log.Info().Str("path", c.configPath).Msg("Loaded model catalog")
 				return
 			}
-			fmt.Printf("Failed to load model catalog from %s, using defaults: %v\n", c.configPath, err)
+			log.Warn().Err(err).Str("path", c.configPath).Msg("Failed to load model catalog, using defaults")
 		}
 
+		c.loadDefaultsUnsafe()
 		if err := c.saveToFileUnsafe(); err == nil {
-			fmt.Printf("Created default model catalog at %s\n", c.configPath)
+			log.Info().Str("path", c.configPath).Msg("Created default model catalog")
 		} else {
-			fmt.Printf("Failed to save default model catalog: %v\n", err)
+			log.Warn().Err(err).Str("path", c.configPath).Msg("Failed to save default model catalog")
 		}
+		return
 	}
 
 	c.loadDefaultsUnsafe()
@@ -211,13 +211,10 @@ func (c *ModelCatalog) saveToFileUnsafe() error {
 		return err
 	}
 
-	models := types.BuiltinModels()
-	providers := types.BuiltinProviders()
-
 	file := types.ModelCatalogFile{
 		Version:   "1.0",
-		Providers: providers,
-		Models:    models,
+		Providers: c.providers,
+		Models:    c.models,
 	}
 
 	data, err := json.MarshalIndent(file, "", "  ")
@@ -248,7 +245,7 @@ func (c *ModelCatalog) Reload() error {
 	}
 
 	if info.ModTime().After(c.lastModified) {
-		fmt.Printf("Reloading model catalog from %s (file changed)\n", c.configPath)
+		log.Debug().Str("path", c.configPath).Msg("Reloading model catalog (file changed)")
 		return c.loadFromFileUnsafe()
 	}
 

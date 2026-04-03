@@ -47,7 +47,7 @@ func runAgentList(cmd *cobra.Command, args []string) error {
 	}
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Get(daemonAddr + "/api/agents")
+	resp, err := cliHTTPGet(daemonAddr + "/api/agents")
 	if err != nil {
 		return fmt.Errorf("failed to list agents: %w", err)
 	}
@@ -110,7 +110,7 @@ func runAgentSpawn(cmd *cobra.Command, args []string) error {
 	}
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Post(
+	resp, err := cliHTTPPost(
 		daemonAddr+"/api/agents",
 		"application/json",
 		nil,
@@ -144,9 +144,9 @@ func runAgentKill(cmd *cobra.Command, args []string) error {
 	}
 
 	daemonAddr := mustGetDaemonAddress()
-	client := &http.Client{}
 	req, _ := http.NewRequest("DELETE", fmt.Sprintf("%s/api/agents/%s", daemonAddr, agentID), nil)
-	resp, err := client.Do(req)
+	req.Header.Set("X-Client-Type", "cli")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to kill agent: %w", err)
 	}

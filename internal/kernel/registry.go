@@ -22,6 +22,7 @@ type AgentEntry struct {
 	CreatedAt  time.Time           `json:"created_at"`
 	LastActive time.Time           `json:"last_active"`
 	Children   []types.AgentID     `json:"children"`
+	Files      map[string]string   `json:"files,omitempty"`
 }
 
 // GetID returns the agent ID as a string.
@@ -285,6 +286,59 @@ func (r *AgentRegistry) AppendSkills(id types.AgentID, newSkills []string) error
 	entry.LastActive = time.Now()
 	r.saveToDisk()
 	return nil
+}
+
+func (r *AgentRegistry) GetFile(id types.AgentID, filename string) (string, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	entry, exists := r.agents[id]
+	if !exists {
+		return "", false
+	}
+
+	if entry.Files == nil {
+		return "", false
+	}
+
+	content, exists := entry.Files[filename]
+	return content, exists
+}
+
+func (r *AgentRegistry) SetFile(id types.AgentID, filename string, content string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entry, exists := r.agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	if entry.Files == nil {
+		entry.Files = make(map[string]string)
+	}
+
+	entry.Files[filename] = content
+	entry.LastActive = time.Now()
+	r.saveToDisk()
+	return nil
+}
+
+func (r *AgentRegistry) HasFile(id types.AgentID, filename string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	entry, exists := r.agents[id]
+	if !exists {
+		return false
+	}
+
+	if entry.Files == nil {
+		return false
+	}
+
+	_, exists = entry.Files[filename]
+	return exists
 }
 
 func (r *AgentRegistry) saveToDisk() {

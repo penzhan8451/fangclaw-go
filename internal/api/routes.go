@@ -3523,30 +3523,45 @@ func (r *Router) handlePatchAgentConfig(w http.ResponseWriter, req *http.Request
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
-var KNOWN_IDENTITY_FILES = []string{"SOUL.md", "SKILL.md", "README.md", "PROMPT.md"}
+var KNOWN_IDENTITY_FILES = []string{"SOUL.md", "AGENTS.md", "IDENTITY.md", "USER.md", "MEMORY.md", "HEARTBEAT.md", "BOOTSTRAP.md"}
 
 func (r *Router) handleListAgentFiles(w http.ResponseWriter, req *http.Request) {
 	idStr := req.PathValue("id")
-	_, err := types.ParseAgentID(idStr)
+	agentID, err := types.ParseAgentID(idStr)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid agent ID")
 		return
 	}
 
+	k := r.getKernel(req)
+	agent := k.AgentRegistry().Get(agentID)
+	if agent == nil {
+		respondError(w, http.StatusNotFound, "agent not found")
+		return
+	}
+
 	files := make([]map[string]interface{}, 0)
 	for _, name := range KNOWN_IDENTITY_FILES {
+		hasFile := k.AgentRegistry().HasFile(agentID, name)
+		sizeBytes := 0
+		if hasFile {
+			content, _ := k.AgentRegistry().GetFile(agentID, name)
+			sizeBytes = len(content)
+		}
 		files = append(files, map[string]interface{}{
 			"name":       name,
-			"exists":     false,
-			"size_bytes": 0,
+			"exists":     hasFile,
+			"size_bytes": sizeBytes,
 		})
 	}
-	respondJSON(w, http.StatusOK, map[string]interface{}{"files": files})
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"files": files,
+	})
 }
 
 func (r *Router) handleGetAgentFile(w http.ResponseWriter, req *http.Request) {
 	idStr := req.PathValue("id")
-	_, err := types.ParseAgentID(idStr)
+	agentID, err := types.ParseAgentID(idStr)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid agent ID")
 		return
@@ -3565,10 +3580,22 @@ func (r *Router) handleGetAgentFile(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	k := r.getKernel(req)
+	agent := k.AgentRegistry().Get(agentID)
+	if agent == nil {
+		respondError(w, http.StatusNotFound, "agent not found")
+		return
+	}
+
+	content, hasContent := k.AgentRegistry().GetFile(agentID, filename)
+	sizeBytes := 0
+	if hasContent {
+		sizeBytes = len(content)
+	}
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"name":       filename,
-		"content":    "",
-		"size_bytes": 0,
+		"content":    content,
+		"size_bytes": sizeBytes,
 	})
 }
 
@@ -3578,7 +3605,7 @@ type SetAgentFileRequest struct {
 
 func (r *Router) handleSetAgentFile(w http.ResponseWriter, req *http.Request) {
 	idStr := req.PathValue("id")
-	_, err := types.ParseAgentID(idStr)
+	agentID, err := types.ParseAgentID(idStr)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid agent ID")
 		return
@@ -3600,6 +3627,18 @@ func (r *Router) handleSetAgentFile(w http.ResponseWriter, req *http.Request) {
 	var reqBody SetAgentFileRequest
 	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	k := r.getKernel(req)
+	agent := k.AgentRegistry().Get(agentID)
+	if agent == nil {
+		respondError(w, http.StatusNotFound, "agent not found")
+		return
+	}
+
+	if err := k.AgentRegistry().SetFile(agentID, filename, reqBody.Content); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 

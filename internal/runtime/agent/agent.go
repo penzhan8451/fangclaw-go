@@ -187,10 +187,11 @@ type AgentContext struct {
 	Config             types.LoopConfig
 	SessionID          types.SessionID
 	AgentID            types.AgentID
+	Files              map[string]string
 	mu                 sync.Mutex
 }
 
-func NewAgentContext(id, name, provider, model, systemPrompt string, tools []string, skills []string, skillPromptContext string) *AgentContext {
+func NewAgentContext(id, name, provider, model, systemPrompt string, tools []string, skills []string, skillPromptContext string, files map[string]string) *AgentContext {
 	return &AgentContext{
 		ID:                 id,
 		Name:               name,
@@ -204,6 +205,7 @@ func NewAgentContext(id, name, provider, model, systemPrompt string, tools []str
 		Config:             types.LoopConfig{MaxIterations: 10, MaxTokens: 4096, Temperature: 0.7, TopP: 0.9},
 		SessionID:          types.NewSessionID(),
 		AgentID:            types.NewAgentID(),
+		Files:              files,
 	}
 }
 
@@ -236,7 +238,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 
 	// Build system prompt with memories and skills
 	fmt.Printf("\n------------ Current Agent [%s] Skills: %s---------------\n", agentCtx.Name, agentCtx.Skills)
-	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills, agentCtx.SkillPromptContext)
+	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills, agentCtx.SkillPromptContext, agentCtx.Files)
 
 	// Find user message from context
 	var userMessage string
@@ -689,8 +691,55 @@ func (r *Runtime) recallMemories(ctx context.Context, agentCtx *AgentContext) ([
 }
 
 // buildSystemPrompt builds the system prompt with memories and skills.
-func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFragment, skillIDs []string, skillPromptContext string) string {
+func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFragment, skillIDs []string, skillPromptContext string, files map[string]string) string {
 	prompt := basePrompt
+
+	// Add agent files following openfang's pattern
+	if files != nil {
+		var filesSection strings.Builder
+
+		// AGENTS.md - Agent Behavioral Guidelines
+		if content, ok := files["AGENTS.md"]; ok && content != "" {
+			filesSection.WriteString("\n\n## Agent Behavioral Guidelines\n")
+			filesSection.WriteString(content)
+		}
+
+		// Identity / Persona files
+		var personaParts []string
+		if content, ok := files["IDENTITY.md"]; ok && content != "" {
+			personaParts = append(personaParts, fmt.Sprintf("## Identity\n%s", content))
+		}
+		if content, ok := files["SOUL.md"]; ok && content != "" {
+			personaParts = append(personaParts, fmt.Sprintf("## Soul\n%s", content))
+		}
+		if content, ok := files["USER.md"]; ok && content != "" {
+			personaParts = append(personaParts, fmt.Sprintf("## User Profile\n%s", content))
+		}
+		if content, ok := files["MEMORY.md"]; ok && content != "" {
+			personaParts = append(personaParts, fmt.Sprintf("## Long-term Memory\n%s", content))
+		}
+
+		if len(personaParts) > 0 {
+			filesSection.WriteString("\n\n## Persona\n")
+			filesSection.WriteString(strings.Join(personaParts, "\n\n"))
+		}
+
+		// HEARTBEAT.md - Heartbeat Checklist (for autonomous agents)
+		if content, ok := files["HEARTBEAT.md"]; ok && content != "" {
+			filesSection.WriteString("\n\n## Heartbeat Checklist\n")
+			filesSection.WriteString(content)
+		}
+
+		// BOOTSTRAP.md - First-Run Protocol
+		if content, ok := files["BOOTSTRAP.md"]; ok && content != "" {
+			filesSection.WriteString("\n\n## First-Run Protocol\n")
+			filesSection.WriteString(content)
+		}
+
+		if filesSection.Len() > 0 {
+			prompt += filesSection.String()
+		}
+	}
 
 	// Add bundled hand skill prompt context
 	if skillPromptContext != "" {
@@ -1097,7 +1146,7 @@ func (r *AgentRunner) RunAgent(ctx context.Context, agentID, input string, onPha
 	return r.Runtime.RunAgentLoop(ctx, agentCtx, onPhase, streamCb)
 }
 
-func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, systemPrompt string, tools []string, skills []string, skillPromptContext string) (*AgentContext, error) {
+func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, systemPrompt string, tools []string, skills []string, skillPromptContext string, files map[string]string) (*AgentContext, error) {
 	_, err := r.GetDriver(provider)
 	if err != nil {
 		return nil, err
@@ -1105,7 +1154,7 @@ func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, 
 
 	agentCtx := NewAgentContext(
 		id,
-		name, provider, model, systemPrompt, tools, skills, skillPromptContext,
+		name, provider, model, systemPrompt, tools, skills, skillPromptContext, files,
 	)
 
 	r.mu.Lock()

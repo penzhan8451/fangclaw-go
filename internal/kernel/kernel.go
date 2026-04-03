@@ -403,6 +403,7 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 				agentEntry.Manifest.Tools,
 				agentEntry.Manifest.Skills,
 				agentEntry.Manifest.SkillPromptContext,
+				agentEntry.Files,
 			)
 			if err != nil {
 				log.Warn().Str("agent", agentEntry.Name).Err(err).Msg("Failed to register agent in runtime, skipping")
@@ -481,6 +482,7 @@ func (k *Kernel) Start(ctx context.Context) error {
 			manifest.Tools,
 			manifest.Skills,
 			manifest.SkillPromptContext,
+			entry.Files,
 		)
 		if err != nil {
 			fmt.Printf("[Kernel] Warning: Failed to register agent %s in runtime: %v\n", entry.Name, err)
@@ -1420,6 +1422,7 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 		agentTools,
 		[]string{},
 		agentSkillPromptContext,
+		nil,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register agent in runtime: %w", err)
@@ -1638,6 +1641,7 @@ func (k *Kernel) SpawnAgent(manifest types.AgentManifest) (string, string, error
 		agentTools,
 		agentSkills,
 		agentSkillPromptContext,
+		nil,
 	)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to register agent in runtime: %w", err)

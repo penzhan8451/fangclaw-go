@@ -71,7 +71,7 @@ func runCronList(cmd *cobra.Command, args []string) error {
 	}
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Get(daemonAddr + "/api/cron/jobs")
+	resp, err := cliHTTPGet(daemonAddr + "/api/cron/jobs")
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -140,7 +140,7 @@ func runCronCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Post(daemonAddr+"/api/cron/jobs", "application/json", bytes.NewReader(data))
+	resp, err := cliHTTPPost(daemonAddr+"/api/cron/jobs", "application/json", bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -185,6 +185,7 @@ func runCronDelete(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("X-Client-Type", "cli")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -229,6 +230,7 @@ func runCronEnable(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("X-Client-Type", "cli")
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -274,6 +276,7 @@ func runCronDisable(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("X-Client-Type", "cli")
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -309,7 +312,7 @@ func runCronStatus(cmd *cobra.Command, args []string) error {
 	id := args[0]
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Get(fmt.Sprintf("%s/api/cron/jobs/%s/status", daemonAddr, id))
+	resp, err := cliHTTPGet(fmt.Sprintf("%s/api/cron/jobs/%s/status", daemonAddr, id))
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}

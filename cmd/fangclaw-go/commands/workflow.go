@@ -88,7 +88,7 @@ func runWorkflowList(cmd *cobra.Command, args []string) error {
 	}
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Get(daemonAddr + "/api/workflows")
+	resp, err := cliHTTPGet(daemonAddr + "/api/workflows")
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -145,7 +145,7 @@ func runWorkflowCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Post(daemonAddr+"/api/workflows", "application/json", bytes.NewReader(data))
+	resp, err := cliHTTPPost(daemonAddr+"/api/workflows", "application/json", bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -188,6 +188,7 @@ func runWorkflowDelete(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("X-Client-Type", "cli")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -222,7 +223,7 @@ func runWorkflowGet(cmd *cobra.Command, args []string) error {
 	workflowID := args[0]
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Get(fmt.Sprintf("%s/api/workflows/%s", daemonAddr, workflowID))
+	resp, err := cliHTTPGet(fmt.Sprintf("%s/api/workflows/%s", daemonAddr, workflowID))
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -259,7 +260,7 @@ func runWorkflowRun(cmd *cobra.Command, args []string) error {
 	}
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Post(fmt.Sprintf("%s/api/workflows/%s/run", daemonAddr, workflowID), "application/json", bytes.NewReader(reqData))
+	resp, err := cliHTTPPost(fmt.Sprintf("%s/api/workflows/%s/run", daemonAddr, workflowID), "application/json", bytes.NewReader(reqData))
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -317,7 +318,7 @@ func runWorkflowCreateFromTemplate(cmd *cobra.Command, args []string) error {
 	}
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Post(daemonAddr+"/api/workflows/from-template", "application/json", bytes.NewReader(reqData))
+	resp, err := cliHTTPPost(daemonAddr+"/api/workflows/from-template", "application/json", bytes.NewReader(reqData))
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -355,7 +356,7 @@ func runWorkflowTemplatesList(cmd *cobra.Command, args []string) error {
 	}
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Get(daemonAddr + "/api/workflow-templates")
+	resp, err := cliHTTPGet(daemonAddr + "/api/workflow-templates")
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}
@@ -403,7 +404,7 @@ func runWorkflowTemplatesGet(cmd *cobra.Command, args []string) error {
 	templateID := args[0]
 
 	daemonAddr := mustGetDaemonAddress()
-	resp, err := http.Get(fmt.Sprintf("%s/api/workflow-templates/%s", daemonAddr, templateID))
+	resp, err := cliHTTPGet(fmt.Sprintf("%s/api/workflow-templates/%s", daemonAddr, templateID))
 	if err != nil {
 		return fmt.Errorf("failed to connect to daemon: %w", err)
 	}

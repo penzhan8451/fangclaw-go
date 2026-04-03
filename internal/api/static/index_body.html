@@ -982,7 +982,18 @@
                 <div x-show="!filesLoading && !editingFile">
                   <template x-for="file in agentFiles" :key="file.name">
                     <div class="file-list-item" @click="openFile(file)">
-                      <span class="font-mono" style="font-size:13px" x-text="file.name"></span>
+                      <div style="flex:1">
+                        <div class="font-mono" style="font-size:10px" x-text="file.name"></div>
+                        <div class="text-xs text-dim" style="margin-top:2px">
+                          <span x-show="file.name === 'SOUL.md'">Define the agent's persona, boundaries, and communication style</span>
+                          <span x-show="file.name === 'AGENTS.md'">Agent behavior guidance and operation instructions</span>
+                          <span x-show="file.name === 'IDENTITY.md'">Agent's visual identity and personality traits</span>
+                          <span x-show="file.name === 'USER.md'">User profiles and preferred designations</span>
+                          <span x-show="file.name === 'MEMORY.md'">Long-term memory storage</span>
+                          <span x-show="file.name === 'HEARTBEAT.md'">Autonomous Agent heartbeat checklist</span>
+                          <span x-show="file.name === 'BOOTSTRAP.md'">First operation ceremony</span>
+                        </div>
+                      </div>
                       <span class="text-xs text-dim" x-text="file.exists ? (file.size_bytes + ' bytes') : 'Not created'"></span>
                     </div>
                   </template>

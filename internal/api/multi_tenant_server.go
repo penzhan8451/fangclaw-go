@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -143,6 +144,13 @@ func (s *MultiTenantServer) createHandler(mux *http.ServeMux) http.HandlerFunc {
 
 		isWebSocket := strings.ToLower(r.Header.Get("Upgrade")) == "websocket"
 
+		isCLILocalRequest := s.isCLILocalRequest(r)
+		if isCLILocalRequest {
+			log.Debug().Str("path", r.URL.Path).Msg("CLI local request, passing through without auth")
+			mux.ServeHTTP(w, r)
+			return
+		}
+
 		token := extractTokenFromRequest(r)
 		if token != "" {
 			user, err := s.authManager.ValidateToken(token)
@@ -184,6 +192,19 @@ func (s *MultiTenantServer) createHandler(mux *http.ServeMux) http.HandlerFunc {
 			"error": "authentication required",
 		})
 	}
+}
+
+func (s *MultiTenantServer) isCLILocalRequest(r *http.Request) bool {
+	if r.Header.Get("X-Client-Type") != "cli" {
+		return false
+	}
+
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+
+	return host == "127.0.0.1" || host == "localhost" || host == "::1"
 }
 
 func (s *MultiTenantServer) setSecurityHeaders(w http.ResponseWriter) {

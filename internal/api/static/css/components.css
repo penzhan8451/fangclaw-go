@@ -3255,7 +3255,7 @@ mark.search-highlight {
 
 /* User menu in sidebar */
 .user-menu {
-  padding: 0.75rem 1rem;
+  padding: 0.25rem 1rem;
   border-top: 1px solid var(--border-subtle);
   margin-top: auto;
   position: relative;
