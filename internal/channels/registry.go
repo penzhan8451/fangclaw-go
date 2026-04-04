@@ -82,6 +82,7 @@ func (r *Registry) registerDefaultFactories() {
 	r.RegisterFactory(ChannelTypeQQ, NewQQAdapter)
 	r.RegisterFactory(ChannelTypeZalo, NewZaloAdapter)
 	r.RegisterFactory(ChannelTypeWebhook, NewWebhookAdapter)
+	r.RegisterFactory(ChannelTypeWeixin, NewWeixinAdapter)
 }
 
 // RegisterFactory registers a channel adapter factory.

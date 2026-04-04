@@ -138,6 +138,7 @@ const (
 	ChannelTypeQQ       ChannelType = "qq"
 	ChannelTypeZalo     ChannelType = "zalo"
 	ChannelTypeWebhook  ChannelType = "webhook"
+	ChannelTypeWeixin   ChannelType = "weixin"
 )
 
 // Channel represents a communication channel.
@@ -204,6 +205,18 @@ type QQChannelConfig struct {
 	AllowFrom          []string `json:"allow_from,omitempty"`
 }
 
+// WeixinChannelConfig represents the configuration for Weixin channel.
+type WeixinChannelConfig struct {
+	Token              string   `json:"token,omitempty"`
+	TokenEnv           string   `json:"token_env,omitempty"`
+	BaseURL            string   `json:"base_url,omitempty"`
+	CDNBaseURL         string   `json:"cdn_base_url,omitempty"`
+	Proxy              string   `json:"proxy,omitempty"`
+	ReasoningChannelID string   `json:"reasoning_channel_id,omitempty"`
+	AllowFrom          []string `json:"allow_from,omitempty"`
+	DefaultAgent       string   `json:"default_agent,omitempty"`
+}
+
 // GenericChannelConfig represents the generic configuration for channels.
 // It is used for channels that don't have a specific configuration.
 type GenericChannelConfig struct {
@@ -229,6 +242,7 @@ type ChannelAdapterConfig struct {
 	DingTalk *DingTalkChannelConfig `json:"dingtalk,omitempty"`
 	WhatsApp *WhatsAppChannelConfig `json:"whatsapp,omitempty"`
 	QQ       *QQChannelConfig       `json:"qq,omitempty"`
+	Weixin   *WeixinChannelConfig   `json:"weixin,omitempty"`
 	Generic  *GenericChannelConfig  `json:"generic,omitempty"`
 }
 
@@ -324,6 +338,7 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config, getSecret Se
 		{"qq", ChannelTypeQQ},
 		{"dingtalk", ChannelTypeDingTalk},
 		{"feishu", ChannelTypeFeishu},
+		{"weixin", ChannelTypeWeixin},
 	}
 
 	for _, ct := range channelTypes {
@@ -408,6 +423,14 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config, getSecret Se
 					appSecret = getSecret(cfg.Channels.Feishu.AppSecretEnv)
 				}
 				isConfigured = appSecret != ""
+			}
+		case "weixin":
+			if cfg.Channels.Weixin != nil {
+				token := cfg.Channels.Weixin.Token
+				if token == "" && cfg.Channels.Weixin.TokenEnv != "" {
+					token = getSecret(cfg.Channels.Weixin.TokenEnv)
+				}
+				isConfigured = token != ""
 			}
 		}
 
@@ -494,6 +517,19 @@ func LoadConfiguredChannels(registry *Registry, cfg *config.Config, getSecret Se
 				AppID:     cfg.Channels.Feishu.AppID,
 				AppSecret: appSecret,
 			}
+		case "weixin":
+			token := cfg.Channels.Weixin.Token
+			if token == "" && cfg.Channels.Weixin.TokenEnv != "" {
+				token = getSecret(cfg.Channels.Weixin.TokenEnv)
+			}
+			newChannel.Config.Weixin = &WeixinChannelConfig{
+				Token:              token,
+				BaseURL:            cfg.Channels.Weixin.BaseURL,
+				CDNBaseURL:         cfg.Channels.Weixin.CDNBaseURL,
+				Proxy:              cfg.Channels.Weixin.Proxy,
+				ReasoningChannelID: cfg.Channels.Weixin.ReasoningChannelID,
+				DefaultAgent:       cfg.Channels.Weixin.DefaultAgent,
+			}
 		}
 
 		if err := registry.RegisterChannel(newChannel); err == nil {
@@ -524,6 +560,7 @@ func LoadConfiguredChannelsWithOwner(registry *Registry, cfg *config.Config, get
 		{"qq", ChannelTypeQQ},
 		{"dingtalk", ChannelTypeDingTalk},
 		{"feishu", ChannelTypeFeishu},
+		{"weixin", ChannelTypeWeixin},
 	}
 
 	for _, ct := range channelTypes {
@@ -605,6 +642,14 @@ func LoadConfiguredChannelsWithOwner(registry *Registry, cfg *config.Config, get
 					appSecret = getSecret(cfg.Channels.Feishu.AppSecretEnv)
 				}
 				isConfigured = appSecret != ""
+			}
+		case "weixin":
+			if cfg.Channels.Weixin != nil {
+				token := cfg.Channels.Weixin.Token
+				if token == "" && cfg.Channels.Weixin.TokenEnv != "" {
+					token = getSecret(cfg.Channels.Weixin.TokenEnv)
+				}
+				isConfigured = token != ""
 			}
 		}
 
@@ -688,6 +733,19 @@ func LoadConfiguredChannelsWithOwner(registry *Registry, cfg *config.Config, get
 			newChannel.Config.Feishu = &FeishuChannelConfig{
 				AppID:     cfg.Channels.Feishu.AppID,
 				AppSecret: appSecret,
+			}
+		case "weixin":
+			token := cfg.Channels.Weixin.Token
+			if token == "" && cfg.Channels.Weixin.TokenEnv != "" {
+				token = getSecret(cfg.Channels.Weixin.TokenEnv)
+			}
+			newChannel.Config.Weixin = &WeixinChannelConfig{
+				Token:              token,
+				BaseURL:            cfg.Channels.Weixin.BaseURL,
+				CDNBaseURL:         cfg.Channels.Weixin.CDNBaseURL,
+				Proxy:              cfg.Channels.Weixin.Proxy,
+				ReasoningChannelID: cfg.Channels.Weixin.ReasoningChannelID,
+				DefaultAgent:       cfg.Channels.Weixin.DefaultAgent,
 			}
 		}
 

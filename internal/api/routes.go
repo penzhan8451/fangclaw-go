@@ -205,6 +205,25 @@ var CHANNEL_REGISTRY = []ChannelMeta{
 		SetupSteps:     []string{"Create an app at open.feishu.cn", "Copy App ID and Secret", "Paste them below"},
 		ConfigTemplate: "[channels.feishu]\napp_id = \"\"\napp_secret_env = \"FEISHU_APP_SECRET\"",
 	},
+	{
+		Name:        "weixin",
+		DisplayName: "WeChat Personal",
+		Icon:        "WX",
+		Description: "Connect your personal WeChat via QR scan",
+		Category:    "messaging",
+		Difficulty:  "Easy",
+		SetupTime:   "~1 min",
+		QuickSetup:  "Scan QR code with your WeChat — no developer account needed",
+		SetupType:   "qr",
+		Fields: []ChannelField{
+			{Key: "token_env", Label: "Token", FieldType: FieldTypeSecret, EnvVar: strPtr("WEIXIN_TOKEN"), Required: false, Placeholder: "", Advanced: true},
+			{Key: "base_url", Label: "Base URL", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "https://ilinkai.weixin.qq.com/", Advanced: true},
+			{Key: "proxy", Label: "Proxy", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "", Advanced: true},
+			{Key: "default_agent", Label: "Default Agent", FieldType: FieldTypeText, EnvVar: nil, Required: false, Placeholder: "assistant", Advanced: true},
+		},
+		SetupSteps:     []string{"Open WeChat on your phone", "Scan the QR code", "Confirm login on your WeChat app"},
+		ConfigTemplate: "[channels.weixin]\ntoken_env = \"WEIXIN_TOKEN\"",
+	},
 }
 
 func strPtr(s string) *string {
@@ -317,6 +336,16 @@ func updateHandStatusForKernel(k *kernel.Kernel, handID, status string) {
 func sharedMemoryAgentID() string {
 	return uuid.UUID{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}.String()
 }
+
+// WeixinQRSession represents an active Weixin QR login session
+type WeixinQRSession struct {
+	SessionID string
+	Qrcode    string
+	BaseURL   string
+	CreatedAt time.Time
+}
+
+var weixinQRSessions = make(map[string]*WeixinQRSession)
 
 // Router manages API routes.
 type Router struct {
@@ -553,6 +582,8 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/channels/{id}", r.handleDeleteChannel)
 	mux.HandleFunc("POST /api/v1/channels/{name}/configure", r.handleConfigureChannel)
 	mux.HandleFunc("POST /api/v1/channels/{name}/test", r.handleTestChannel)
+	mux.HandleFunc("POST /api/v1/channels/weixin/qr/start", r.handleWeixinQRStart)
+	mux.HandleFunc("GET /api/v1/channels/weixin/qr/status", r.handleWeixinQRStatus)
 
 	// Channel endpoints (aliases)
 	mux.HandleFunc("GET /api/channels", r.handleListChannels)
@@ -560,6 +591,8 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/channels/{id}", r.handleDeleteChannel)
 	mux.HandleFunc("POST /api/channels/{name}/configure", r.handleConfigureChannel)
 	mux.HandleFunc("POST /api/channels/{name}/test", r.handleTestChannel)
+	mux.HandleFunc("POST /api/channels/weixin/qr/start", r.handleWeixinQRStart)
+	mux.HandleFunc("GET /api/channels/weixin/qr/status", r.handleWeixinQRStatus)
 
 	// OpenAI-compatible endpoints
 	mux.HandleFunc("GET /v1/models", r.handleListModels)
@@ -1739,6 +1772,8 @@ func isChannelConfiguredWithCfg(channelName string, cfg *config.Config) bool {
 		return cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.AccessTokenEnv != "" && cfg.Channels.DingTalk.SecretEnv != ""
 	case "feishu":
 		return cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && (cfg.Channels.Feishu.AppSecretEnv != "" || cfg.Channels.Feishu.AppSecret != "")
+	case "weixin":
+		return cfg.Channels.Weixin != nil && cfg.Channels.Weixin.TokenEnv != ""
 	default:
 		return false
 	}
@@ -1832,6 +1867,11 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 			cfg.Channels.Feishu = &config.ChannelConfig{}
 		}
 		channelConfig = cfg.Channels.Feishu
+	case "weixin":
+		if cfg.Channels.Weixin == nil {
+			cfg.Channels.Weixin = &config.ChannelConfig{}
+		}
+		channelConfig = cfg.Channels.Weixin
 	default:
 		respondError(w, http.StatusBadRequest, "unsupported channel")
 		return
@@ -1893,6 +1933,8 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 				channelConfig.VerifyTokenEnv = secretKey
 			case "client_secret_env":
 				channelConfig.ClientSecretEnv = secretKey
+			case "token_env":
+				channelConfig.TokenEnv = secretKey
 			}
 		} else {
 			// Handle regular fields
@@ -1915,6 +1957,8 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 				channelConfig.VerifyTokenEnv = valueStr
 			case "client_secret_env":
 				channelConfig.ClientSecretEnv = valueStr
+			case "token_env":
+				channelConfig.TokenEnv = valueStr
 			case "allowed_users":
 				channelConfig.AllowedUsers = valueStr
 			case "allowed_guilds":
@@ -1925,6 +1969,10 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 				channelConfig.DefaultAgent = valueStr
 			case "phone_number_id":
 				channelConfig.PhoneNumberID = valueStr
+			case "base_url":
+				channelConfig.BaseURL = valueStr
+			case "proxy":
+				channelConfig.Proxy = valueStr
 			}
 		}
 	}
@@ -1987,6 +2035,8 @@ func nameToChannelType(name string) channels.ChannelType {
 		return channels.ChannelTypeDingTalk
 	case "feishu":
 		return channels.ChannelTypeFeishu
+	case "weixin":
+		return channels.ChannelTypeWeixin
 	default:
 		return channels.ChannelType(name)
 	}
@@ -2047,6 +2097,8 @@ func reloadChannelsFromDisk(k *kernel.Kernel, channelName string) ([]string, err
 			isConfigured = cfg.Channels.DingTalk != nil && cfg.Channels.DingTalk.ClientID != "" && cfg.Channels.DingTalk.ClientSecretEnv != ""
 		case "feishu":
 			isConfigured = cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && (cfg.Channels.Feishu.AppSecretEnv != "" || cfg.Channels.Feishu.AppSecret != "")
+		case "weixin":
+			isConfigured = cfg.Channels.Weixin != nil && cfg.Channels.Weixin.TokenEnv != ""
 		}
 
 		if isConfigured {
@@ -2128,6 +2180,18 @@ func reloadChannelsFromDisk(k *kernel.Kernel, channelName string) ([]string, err
 				newChannel.Config.Feishu = &channels.FeishuChannelConfig{
 					AppID:     cfg.Channels.Feishu.AppID,
 					AppSecret: appSecret,
+				}
+			case "weixin":
+				token := cfg.Channels.Weixin.Token
+				if token == "" && cfg.Channels.Weixin.TokenEnv != "" {
+					token = k.GetSecret(cfg.Channels.Weixin.TokenEnv)
+				}
+				newChannel.Config.Weixin = &channels.WeixinChannelConfig{
+					Token:              token,
+					BaseURL:            cfg.Channels.Weixin.BaseURL,
+					CDNBaseURL:         cfg.Channels.Weixin.CDNBaseURL,
+					Proxy:              cfg.Channels.Weixin.Proxy,
+					ReasoningChannelID: cfg.Channels.Weixin.ReasoningChannelID,
 				}
 			}
 
@@ -6213,4 +6277,87 @@ func (r *Router) handleGitHubCallback(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	respondError(w, http.StatusNotImplemented, "authentication not enabled")
+}
+
+func (r *Router) handleWeixinQRStart(w http.ResponseWriter, req *http.Request) {
+	sessionID := uuid.NewString()
+
+	apiClient, err := channels.NewApiClient("", "", "")
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create API client: %v", err))
+		return
+	}
+
+	qrResp, err := apiClient.GetQRCode(req.Context(), "3")
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get QR code: %v", err))
+		return
+	}
+
+	if qrResp.Ret != 0 && qrResp.Errcode != 0 {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get QR code: %s", qrResp.Errmsg))
+		return
+	}
+
+	weixinQRSessions[sessionID] = &WeixinQRSession{
+		SessionID: sessionID,
+		Qrcode:    qrResp.Qrcode,
+		BaseURL:   qrResp.Baseurl,
+		CreatedAt: time.Now(),
+	}
+
+	var qrcodeDataUrl string
+	if qrResp.QrcodeImgContent != "" {
+		pngBytes, err := qrcode.Encode(qrResp.QrcodeImgContent, qrcode.Medium, 256)
+		if err == nil {
+			encoded := base64.StdEncoding.EncodeToString(pngBytes)
+			qrcodeDataUrl = "data:image/png;base64," + encoded
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"session_id":  sessionID,
+		"qrcode":      qrResp.QrcodeImgContent,
+		"qr_data_url": qrcodeDataUrl,
+		"available":   qrcodeDataUrl != "",
+	})
+}
+
+func (r *Router) handleWeixinQRStatus(w http.ResponseWriter, req *http.Request) {
+	sessionID := req.URL.Query().Get("session_id")
+	if sessionID == "" {
+		respondError(w, http.StatusBadRequest, "session_id is required")
+		return
+	}
+
+	session, exists := weixinQRSessions[sessionID]
+	if !exists {
+		respondError(w, http.StatusNotFound, "session not found")
+		return
+	}
+
+	apiClient, err := channels.NewApiClient(session.BaseURL, "", "")
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create API client: %v", err))
+		return
+	}
+	statusResp, err := apiClient.GetQRCodeStatus(req.Context(), session.Qrcode)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to check QR code status: %v", err))
+		return
+	}
+
+	if statusResp.Ret != 0 && statusResp.Errcode != 0 {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to check QR code status: %s", statusResp.Errmsg))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status": statusResp.Status,
+		"token":  statusResp.BotToken,
+	})
+
+	if statusResp.Status == "success" {
+		delete(weixinQRSessions, sessionID)
+	}
 }

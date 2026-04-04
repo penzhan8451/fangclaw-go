@@ -46,32 +46,40 @@ type ChannelsConfig struct {
 	QQ       *ChannelConfig `toml:"qq,omitempty"`
 	DingTalk *ChannelConfig `toml:"dingtalk,omitempty"`
 	Feishu   *ChannelConfig `toml:"feishu,omitempty"`
+	Weixin   *ChannelConfig `toml:"weixin,omitempty"`
 }
 
 // ChannelConfig represents a single channel adapter's configuration.
 type ChannelConfig struct {
-	BotToken        string `toml:"bot_token,omitempty"`
-	BotTokenEnv     string `toml:"bot_token_env,omitempty"`
-	AppToken        string `toml:"app_token,omitempty"`
-	AppTokenEnv     string `toml:"app_token_env,omitempty"`
-	AllowedUsers    string `toml:"allowed_users,omitempty"`
-	AllowedGuilds   string `toml:"allowed_guilds,omitempty"`
-	AllowedChannels string `toml:"allowed_channels,omitempty"`
-	DefaultAgent    string `toml:"default_agent,omitempty"`
-	AccessToken     string `toml:"access_token,omitempty"`
-	AccessTokenEnv  string `toml:"access_token_env,omitempty"`
-	PhoneNumberID   string `toml:"phone_number_id,omitempty"`
-	VerifyToken     string `toml:"verify_token,omitempty"`
-	VerifyTokenEnv  string `toml:"verify_token_env,omitempty"`
-	AppID           string `toml:"app_id,omitempty"`
-	AppSecretEnv    string `toml:"app_secret_env,omitempty"`
-	AppSecret       string `toml:"app_secret,omitempty"`
-	Secret          string `toml:"secret,omitempty"`
-	SecretEnv       string `toml:"secret_env,omitempty"`
-	ClientID        string `toml:"client_id,omitempty"`
-	ClientIDEnv     string `toml:"client_id_env,omitempty"`
-	ClientSecret    string `toml:"client_secret,omitempty"`
-	ClientSecretEnv string `toml:"client_secret_env,omitempty"`
+	BotToken           string `toml:"bot_token,omitempty"`
+	BotTokenEnv        string `toml:"bot_token_env,omitempty"`
+	AppToken           string `toml:"app_token,omitempty"`
+	AppTokenEnv        string `toml:"app_token_env,omitempty"`
+	AllowedUsers       string `toml:"allowed_users,omitempty"`
+	AllowedGuilds      string `toml:"allowed_guilds,omitempty"`
+	AllowedChannels    string `toml:"allowed_channels,omitempty"`
+	DefaultAgent       string `toml:"default_agent,omitempty"`
+	AccessToken        string `toml:"access_token,omitempty"`
+	AccessTokenEnv     string `toml:"access_token_env,omitempty"`
+	PhoneNumberID      string `toml:"phone_number_id,omitempty"`
+	VerifyToken        string `toml:"verify_token,omitempty"`
+	VerifyTokenEnv     string `toml:"verify_token_env,omitempty"`
+	AppID              string `toml:"app_id,omitempty"`
+	AppSecretEnv       string `toml:"app_secret_env,omitempty"`
+	AppSecret          string `toml:"app_secret,omitempty"`
+	Secret             string `toml:"secret,omitempty"`
+	SecretEnv          string `toml:"secret_env,omitempty"`
+	ClientID           string `toml:"client_id,omitempty"`
+	ClientIDEnv        string `toml:"client_id_env,omitempty"`
+	ClientSecret       string `toml:"client_secret,omitempty"`
+	ClientSecretEnv    string `toml:"client_secret_env,omitempty"`
+	Token              string `toml:"token,omitempty"`
+	TokenEnv           string `toml:"token_env,omitempty"`
+	BaseURL            string `toml:"base_url,omitempty"`
+	CDNBaseURL         string `toml:"cdn_base_url,omitempty"`
+	Proxy              string `toml:"proxy,omitempty"`
+	ReasoningChannelID string `toml:"reasoning_channel_id,omitempty"`
+	GroupTrigger       string `toml:"group_trigger,omitempty"`
 }
 
 // ModelSettings defines the default model configuration.

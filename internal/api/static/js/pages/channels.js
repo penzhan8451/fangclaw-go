@@ -164,24 +164,39 @@ function channelsPage() {
     },
 
     async startQR() {
+      var chName = this.setupModal ? this.setupModal.name : 'whatsapp';
       this.qr.loading = true;
       this.qr.error = '';
       this.qr.connected = false;
       this.qr.expired = false;
       try {
-        var result = await FangClawGoAPI.post('/api/channels/whatsapp/qr/start', {});
-        this.qr.available = result.available || false;
-        this.qr.dataUrl = result.qr_data_url || '';
-        this.qr.sessionId = result.session_id || '';
-        this.qr.message = result.message || '';
-        this.qr.help = result.help || '';
-        this.qr.connected = result.connected || false;
-        if (this.qr.available && this.qr.dataUrl && !this.qr.connected) {
-          this.pollQR();
-        }
-        if (this.qr.connected) {
-          FangClawGoToast.success('WhatsApp connected!');
-          await this.refreshStatus();
+        var result;
+        if (chName === 'weixin') {
+          result = await FangClawGoAPI.post('/api/channels/weixin/qr/start', {});
+          this.qr.available = result.available || false;
+          this.qr.dataUrl = result.qr_data_url || '';
+          this.qr.sessionId = result.session_id || '';
+          this.qr.message = '';
+          this.qr.help = '';
+          this.qr.connected = false;
+          if (this.qr.available && this.qr.dataUrl && !this.qr.connected) {
+            this.pollQR();
+          }
+        } else {
+          result = await FangClawGoAPI.post('/api/channels/whatsapp/qr/start', {});
+          this.qr.available = result.available || false;
+          this.qr.dataUrl = result.qr_data_url || '';
+          this.qr.sessionId = result.session_id || '';
+          this.qr.message = result.message || '';
+          this.qr.help = result.help || '';
+          this.qr.connected = result.connected || false;
+          if (this.qr.available && this.qr.dataUrl && !this.qr.connected) {
+            this.pollQR();
+          }
+          if (this.qr.connected) {
+            FangClawGoToast.success('WhatsApp connected!');
+            await this.refreshStatus();
+          }
         }
       } catch(e) {
         this.qr.error = e.message || 'Could not start QR login';
@@ -191,24 +206,48 @@ function channelsPage() {
 
     pollQR() {
       var self = this;
+      var chName = this.setupModal ? this.setupModal.name : 'whatsapp';
       if (this.qrPollTimer) clearInterval(this.qrPollTimer);
       this.qrPollTimer = setInterval(async function() {
         try {
-          var result = await FangClawGoAPI.get('/api/channels/whatsapp/qr/status?session_id=' + encodeURIComponent(self.qr.sessionId));
-          if (result.connected) {
-            clearInterval(self.qrPollTimer);
-            self.qrPollTimer = null;
-            self.qr.connected = true;
-            self.qr.message = result.message || 'Connected!';
-            FangClawGoToast.success('WhatsApp linked successfully!');
-            await self.refreshStatus();
-          } else if (result.expired) {
-            clearInterval(self.qrPollTimer);
-            self.qrPollTimer = null;
-            self.qr.expired = true;
-            self.qr.message = 'QR code expired. Click to generate a new one.';
+          var result;
+          if (chName === 'weixin') {
+            result = await FangClawGoAPI.get('/api/channels/weixin/qr/status?session_id=' + encodeURIComponent(self.qr.sessionId));
+            if (result.status === 'confirmed' && result.token) {
+              clearInterval(self.qrPollTimer);
+              self.qrPollTimer = null;
+              self.qr.connected = true;
+              self.qr.message = 'Connected!';
+              self.formValues['token_env'] = result.token;
+              await self.saveChannel();
+              FangClawGoToast.success('WeChat linked successfully!');
+            } else if (result.status === 'expired') {
+              clearInterval(self.qrPollTimer);
+              self.qrPollTimer = null;
+              self.qr.expired = true;
+              self.qr.message = 'QR code expired. Click to generate a new one.';
+            } else if (result.status === 'scaned') {
+              self.qr.message = 'QR Code scanned! Please confirm login on your WeChat app...';
+            } else {
+              self.qr.message = result.status || 'Waiting for scan...';
+            }
           } else {
-            self.qr.message = result.message || 'Waiting for scan...';
+            result = await FangClawGoAPI.get('/api/channels/whatsapp/qr/status?session_id=' + encodeURIComponent(self.qr.sessionId));
+            if (result.connected) {
+              clearInterval(self.qrPollTimer);
+              self.qrPollTimer = null;
+              self.qr.connected = true;
+              self.qr.message = result.message || 'Connected!';
+              FangClawGoToast.success('WhatsApp linked successfully!');
+              await self.refreshStatus();
+            } else if (result.expired) {
+              clearInterval(self.qrPollTimer);
+              self.qrPollTimer = null;
+              self.qr.expired = true;
+              self.qr.message = 'QR code expired. Click to generate a new one.';
+            } else {
+              self.qr.message = result.message || 'Waiting for scan...';
+            }
           }
         } catch(e) { /* silent retry */ }
       }, 3000);

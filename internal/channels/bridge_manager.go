@@ -162,7 +162,7 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 
 	if cmd, args, isCmd := isCommand(msg.Content); isCmd {
 		fmt.Printf("Handling command: /%s\n", cmd)
-		response := m.handleCommand(adapter, msg, cmd, args)
+		response := m.handleCommand(adapter, msg, cmd, args, handle)
 		m.sendReplyWithHandle(adapter, msg, response, "", handle)
 		return
 	}
@@ -180,9 +180,61 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 
 	var agentID string
 	if len(agents) > 0 {
-		// 直接用用户 kernel 里的第一个 agent
-		agentID = agents[0].ID
-		fmt.Printf("Using first available agent from user kernel: %s (%s)\n", agentID, agents[0].Name)
+		// 优先检查用户是否通过 /agent 命令指定了特定的 agent
+		if userAgentID, ok := m.router.Route(channelType, msg.Sender); ok {
+			// 验证指定的 agent 是否在可用列表中
+			found := false
+			for _, a := range agents {
+				if a.ID == userAgentID {
+					found = true
+					agentID = userAgentID
+					fmt.Printf("Using user-selected agent: %s\n", agentID)
+					break
+				}
+			}
+			if !found {
+				fmt.Printf("User-selected agent %s not available, trying channel config...\n", userAgentID)
+			}
+		}
+
+		// 如果用户没有指定，或者指定的 agent 不存在，检查通道配置中的 DefaultAgent
+		if agentID == "" {
+			var channelDefaultAgent string
+			switch channelType {
+			case ChannelTypeWeixin:
+				if channel.Config.Weixin != nil {
+					channelDefaultAgent = channel.Config.Weixin.DefaultAgent
+				}
+			}
+
+			if channelDefaultAgent != "" {
+				// 按名称查找 agent
+				channelAgentID, found := handle.FindAgentByName(m.ctx, channelDefaultAgent)
+				if found {
+					// 验证找到的 agent 是否在可用列表中
+					available := false
+					for _, a := range agents {
+						if a.ID == channelAgentID {
+							available = true
+							agentID = channelAgentID
+							fmt.Printf("Using channel-configured agent: %s (%s)\n", agentID, channelDefaultAgent)
+							break
+						}
+					}
+					if !available {
+						fmt.Printf("Channel-configured agent %s (ID: %s) not in available list, using first agent\n", channelDefaultAgent, channelAgentID)
+					}
+				} else {
+					fmt.Printf("Channel-configured agent %s not found by name, using first agent\n", channelDefaultAgent)
+				}
+			}
+		}
+
+		// 如果以上都没有，使用第一个可用的 agent
+		if agentID == "" {
+			agentID = agents[0].ID
+			fmt.Printf("Using first available agent from user kernel: %s (%s)\n", agentID, agents[0].Name)
+		}
 	} else {
 		fmt.Printf("No agents available in user kernel!\n")
 		helpMsg := "No agent assigned. Use /agents to list available agents, then /agent <name> to select one."

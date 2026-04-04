@@ -6,15 +6,15 @@ import (
 )
 
 // handleCommand handles slash commands like /agents, /agent, /help, etc.
-func (m *BridgeManager) handleCommand(_ Adapter /*Reserved*/, msg *Message, cmd string, args []string) string {
+func (m *BridgeManager) handleCommand(_ Adapter /*Reserved*/, msg *Message, cmd string, args []string, handle ChannelBridgeHandle) string {
 	switch cmd {
 	case "start":
-		agents, err := m.handle.ListAgents(m.ctx)
+		agents, err := handle.ListAgents(m.ctx)
 		if err != nil {
 			return fmt.Sprintf("Error listing agents: %v", err)
 		}
 
-		msg := "Welcome to OpenFang! I connect you to AI agents.\n\nAvailable agents:\n"
+		msg := "Welcome to FangClaw-Go! I connect you to AI agents.\n\nAvailable agents:\n"
 		if len(agents) == 0 {
 			msg += "  (none running)\n"
 		} else {
@@ -36,7 +36,7 @@ func (m *BridgeManager) handleCommand(_ Adapter /*Reserved*/, msg *Message, cmd 
 			"/start - show welcome message"
 
 	case "agents":
-		agents, err := m.handle.ListAgents(m.ctx)
+		agents, err := handle.ListAgents(m.ctx)
 		if err != nil {
 			return fmt.Sprintf("Error listing agents: %v", err)
 		}
@@ -59,7 +59,7 @@ func (m *BridgeManager) handleCommand(_ Adapter /*Reserved*/, msg *Message, cmd 
 			return "Reset to default agent"
 		}
 		agentName := args[0]
-		agentID, found := m.handle.FindAgentByName(m.ctx, agentName)
+		agentID, found := handle.FindAgentByName(m.ctx, agentName)
 		if !found {
 			return fmt.Sprintf("Agent '%s' not found.", agentName)
 		}
