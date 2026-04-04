@@ -136,6 +136,7 @@ type GitHubOAuthConfigData struct {
 	ClientID     string
 	ClientSecret string
 	Enabled      bool
+	RedirectURL  string
 }
 
 func NewAuthDB(path string) (*AuthDB, error) {
@@ -227,13 +228,14 @@ func NewAuthManager(dbPath string) (*AuthManager, error) {
 	}, nil
 }
 
-func (am *AuthManager) SetGitHubOAuthConfig(clientID, clientSecret string, enabled bool) {
+func (am *AuthManager) SetGitHubOAuthConfig(clientID, clientSecret, redirectURL string, enabled bool) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 	am.githubOAuthConfig = &GitHubOAuthConfigData{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Enabled:      enabled,
+		RedirectURL:  redirectURL,
 	}
 }
 

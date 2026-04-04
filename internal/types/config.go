@@ -46,6 +46,7 @@ type GitHubOAuthConfig struct {
 	ClientID     string `toml:"client_id" json:"client_id"`
 	ClientSecret string `toml:"client_secret" json:"client_secret"`
 	Enabled      bool   `toml:"enabled" json:"enabled"`
+	RedirectURL  string `toml:"redirect_url" json:"redirect_url"`
 }
 
 // internal used by kernel.

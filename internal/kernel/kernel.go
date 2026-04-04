@@ -287,6 +287,7 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 	authManager.SetGitHubOAuthConfig(
 		kernelConfig.Auth.GitHub.ClientID,
 		kernelConfig.Auth.GitHub.ClientSecret,
+		kernelConfig.Auth.GitHub.RedirectURL,
 		kernelConfig.Auth.GitHub.Enabled,
 	)
 	k.authManager = authManager

@@ -455,7 +455,17 @@ func (h *AuthHandler) HandleGitHubLogin(w http.ResponseWriter, r *http.Request) 
 	pkceVerifier := auth.GeneratePKCEVerifier()
 	pkceChallenge := auth.GeneratePKCEChallenge(pkceVerifier)
 
-	redirectURL := "http://localhost:8080/api/auth/github/callback"
+	redirectURL := cfg.RedirectURL
+	if redirectURL == "" {
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		if forwardedProto := r.Header.Get("X-Forwarded-Proto"); forwardedProto != "" {
+			scheme = forwardedProto
+		}
+		redirectURL = scheme + "://" + r.Host + "/api/auth/github/callback"
+	}
 
 	h.authManager.StoreGitHubOAuthState(state, &auth.GitHubOAuthStateData{
 		State:        state,
