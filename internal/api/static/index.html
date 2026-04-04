@@ -65,7 +65,7 @@
   --user-bg: #FFF3E6;
 
   /* Layout */
-  --sidebar-width: 240px;
+  --sidebar-width: 220px;
   --sidebar-collapsed: 56px;
   --header-height: 48px;
 
@@ -77,14 +77,14 @@
   --radius-xl: 16px;
 
   /* Shadows — 6-level depth system */
-  --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.04);
-  --shadow-lg: 0 12px 28px rgba(0,0,0,0.08), 0 4px 10px rgba(0,0,0,0.05);
-  --shadow-xl: 0 20px 40px rgba(0,0,0,0.1), 0 8px 16px rgba(0,0,0,0.06);
-  --shadow-glow: 0 0 40px rgba(0,0,0,0.05);
-  --shadow-accent: 0 4px 16px rgba(255, 92, 0, 0.12);
-  --shadow-inset: inset 0 1px 0 rgba(255,255,255,0.5);
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.02);
+  --shadow-lg: 0 6px 16px rgba(0,0,0,0.05), 0 2px 6px rgba(0,0,0,0.03);
+  --shadow-xl: 0 10px 24px rgba(0,0,0,0.06), 0 4px 10px rgba(0,0,0,0.04);
+  --shadow-glow: 0 0 40px rgba(0,0,0,0.03);
+  --shadow-accent: 0 2px 8px rgba(255, 92, 0, 0.08);
+  --shadow-inset: inset 0 1px 0 rgba(255,255,255,0.3);
 
   /* Typography — dual font system */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -161,7 +161,7 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.5;
   letter-spacing: -0.01em;
 }
@@ -334,8 +334,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 .sidebar-logo img {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   opacity: 0.8;
   transition: opacity 0.2s, transform 0.2s;
 }
@@ -346,9 +346,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 .sidebar-header h1 {
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--text);
   letter-spacing: 3px;
   font-family: var(--font-mono);
 }
@@ -401,15 +401,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .sidebar-nav::-webkit-scrollbar { width: 0; }
 
 .nav-section {
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .nav-section-title {
-  font-size: 9px;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 1.5px;
+  letter-spacing: 1.8px;
   color: var(--text-muted);
-  padding: 12px 12px 4px;
+  padding: 16px 12px 6px;
   font-weight: 600;
 }
 
@@ -438,10 +438,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 .nav-item.active {
-  background: var(--accent);
-  color: var(--bg-primary);
+  background: var(--surface2);
+  color: var(--text);
   font-weight: 600;
-  box-shadow: var(--shadow-sm), 0 2px 8px rgba(255, 92, 0, 0.2);
+  border-left: 3px solid var(--border-strong);
 }
 
 .nav-icon {
@@ -646,15 +646,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 16px;
-  transition: border-color var(--transition-fast), transform 0.2s var(--ease-spring), box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), transform 0.2s var(--ease-spring), box-shadow var(--transition-fast), background var(--transition-fast);
   position: relative;
-  box-shadow: var(--shadow-xs), var(--shadow-inset);
+  box-shadow: var(--shadow-xs);
 }
 
 .card:hover {
-  border-color: var(--border-strong);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md), var(--shadow-inset);
+  border-color: var(--border-light);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+  background: var(--bg-elevated);
 }
 .card:focus-within {
   border-color: var(--accent);
@@ -1674,13 +1675,14 @@ mark.search-highlight {
   min-width: 140px;
   flex: 1;
   box-shadow: var(--shadow-xs);
-  transition: transform 0.2s var(--ease-spring), box-shadow var(--transition-fast), border-color var(--transition-fast);
+  transition: transform 0.2s var(--ease-spring), box-shadow var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
   border-color: var(--border-light);
+  background: var(--bg-elevated);
 }
 
 .stat-value {
@@ -2001,8 +2003,8 @@ mark.search-highlight {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.3s var(--ease-spring), box-shadow var(--transition-fast);
+  box-shadow: var(--shadow-xs);
+  transition: transform 0.3s var(--ease-spring), box-shadow var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
   position: relative;
   overflow: hidden;
 }
@@ -2015,7 +2017,7 @@ mark.search-highlight {
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
-.stat-card-lg:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+.stat-card-lg:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); background: var(--bg-elevated); border-color: var(--border-light); }
 .stat-card-lg:hover::after { opacity: 1; }
 .stat-card-lg .stat-value { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
 .stat-card-lg .stat-label { font-size: 11px; margin-top: 2px; font-weight: 500; }
@@ -3855,7 +3857,7 @@ mark.search-highlight {
 
 /* User menu in sidebar */
 .user-menu {
-  padding: 0.75rem 1rem;
+  padding: 0.25rem 1rem;
   border-top: 1px solid var(--border-subtle);
   margin-top: auto;
   position: relative;
@@ -4083,9 +4085,9 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
     <div class="sidebar-header">
       <div class="sidebar-header-text">
         <div class="sidebar-logo">
-          <img src="/logo.png" alt="FangClaw-go" width="28" height="28">
+          <img src="/logo.png" alt="FangClaw-go" width="36" height="36">
           <div>
-            <h1>FANGCLAW-GO</h1>
+            <h1>FANGGO</h1>
             <div class="version" x-text="'v' + version"></div>
           </div>
         </div>

@@ -46,15 +46,16 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 16px;
-  transition: border-color var(--transition-fast), transform 0.2s var(--ease-spring), box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), transform 0.2s var(--ease-spring), box-shadow var(--transition-fast), background var(--transition-fast);
   position: relative;
-  box-shadow: var(--shadow-xs), var(--shadow-inset);
+  box-shadow: var(--shadow-xs);
 }
 
 .card:hover {
-  border-color: var(--border-strong);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md), var(--shadow-inset);
+  border-color: var(--border-light);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+  background: var(--bg-elevated);
 }
 .card:focus-within {
   border-color: var(--accent);
@@ -1074,13 +1075,14 @@ mark.search-highlight {
   min-width: 140px;
   flex: 1;
   box-shadow: var(--shadow-xs);
-  transition: transform 0.2s var(--ease-spring), box-shadow var(--transition-fast), border-color var(--transition-fast);
+  transition: transform 0.2s var(--ease-spring), box-shadow var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
   border-color: var(--border-light);
+  background: var(--bg-elevated);
 }
 
 .stat-value {
@@ -1401,8 +1403,8 @@ mark.search-highlight {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.3s var(--ease-spring), box-shadow var(--transition-fast);
+  box-shadow: var(--shadow-xs);
+  transition: transform 0.3s var(--ease-spring), box-shadow var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
   position: relative;
   overflow: hidden;
 }
@@ -1415,7 +1417,7 @@ mark.search-highlight {
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
-.stat-card-lg:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+.stat-card-lg:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); background: var(--bg-elevated); border-color: var(--border-light); }
 .stat-card-lg:hover::after { opacity: 1; }
 .stat-card-lg .stat-value { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
 .stat-card-lg .stat-label { font-size: 11px; margin-top: 2px; font-weight: 500; }
