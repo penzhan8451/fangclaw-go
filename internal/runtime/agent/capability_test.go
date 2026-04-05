@@ -12,7 +12,7 @@ import (
 )
 
 func TestCapabilityCheck(t *testing.T) {
-	r := NewRuntime(nil, nil, nil, nil, &skills.Loader{}, nil, nil, nil, nil)
+	r := NewRuntime(nil, nil, nil, nil, &skills.Loader{}, nil, nil, nil, nil, nil)
 
 	tools.RegisterAllTools(r)
 

@@ -38,6 +38,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent_templates"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
+	"github.com/penzhan8451/fangclaw-go/internal/scheduler"
 	"github.com/penzhan8451/fangclaw-go/internal/security"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
@@ -52,6 +53,7 @@ type Kernel struct {
 	eventBus        *eventbus.EventBus
 	scheduler       *Scheduler
 	cronScheduler   *cron.CronScheduler
+	agentScheduler  *scheduler.AgentScheduler
 	modelCatalog    *model_catalog.ModelCatalog
 	agentTemplates  *agent_templates.AgentTemplates
 	db              *memory.DB
@@ -205,6 +207,8 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 
 	cronPersistDir := dataDir
 	cronScheduler := cron.NewCronScheduler(cronPersistDir, 100)
+	// qouta trace and check
+	agentScheduler := scheduler.NewAgentScheduler()
 
 	modelCatalogPath := filepath.Join(dataDir, "model_catalog.json")
 	var modelCatalog *model_catalog.ModelCatalog
@@ -243,6 +247,7 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 		eventBus:        eventbus.NewEventBus(),
 		scheduler:       NewScheduler(),
 		cronScheduler:   cronScheduler,
+		agentScheduler:  agentScheduler,
 		modelCatalog:    modelCatalog,
 		agentTemplates:  agentTemplates,
 		db:              db,
@@ -313,7 +318,7 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 		CallMcpTool: k.CallMcpTool,
 	}
 
-	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, mcpCallbacks, approvalMgr)
+	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, mcpCallbacks, approvalMgr, agentScheduler)
 
 	kernelConfig.DataDir = dataDir
 	k.config = kernelConfig
@@ -415,6 +420,20 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 					fmt.Printf("***manifestToCapailities Resource %s to grant to agent:%s\n", cap.Resource, agentEntry.ID.String())
 				}
 				k.capabilityMgr.Grant(agentEntry.ID.String(), caps)
+
+				// Register agent quota
+				agentIDStr := agentEntry.ID.String()
+				quota := k.config.Quotas.Default
+				if agentQuota, ok := k.config.Quotas.Agents[agentIDStr]; ok {
+					quota = agentQuota
+				}
+				schedulerQuota := scheduler.ResourceQuota{
+					MaxTokensPerHour:    quota.MaxTokensPerHour,
+					MaxToolCallsPerHour: quota.MaxToolCallsPerHour,
+					MaxCostPerHourUSD:   quota.MaxCostPerHourUSD,
+				}
+				k.agentScheduler.Register(agentIDStr, schedulerQuota)
+
 				log.Debug().Str("agent", agentEntry.Name).Str("id", agentEntry.ID.String()).Msg("Registered agent from disk")
 			}
 		} //_for loop for agent in _agentRegistry
@@ -493,6 +512,19 @@ func (k *Kernel) Start(ctx context.Context) error {
 			// Grant capabilities
 			caps := manifestToCapabilities(manifest)
 			k.capabilityMgr.Grant(entry.ID.String(), caps)
+
+			// Register agent quota
+			agentIDStr := entry.ID.String()
+			quota := k.config.Quotas.Default
+			if agentQuota, ok := k.config.Quotas.Agents[agentIDStr]; ok {
+				quota = agentQuota
+			}
+			schedulerQuota := scheduler.ResourceQuota{
+				MaxTokensPerHour:    quota.MaxTokensPerHour,
+				MaxToolCallsPerHour: quota.MaxToolCallsPerHour,
+				MaxCostPerHourUSD:   quota.MaxCostPerHourUSD,
+			}
+			k.agentScheduler.Register(agentIDStr, schedulerQuota)
 		}
 	}
 
@@ -818,6 +850,10 @@ func (k *Kernel) EventBus() *eventbus.EventBus {
 
 func (k *Kernel) Scheduler() *Scheduler {
 	return k.scheduler
+}
+// agent quota
+func (k *Kernel) AgentScheduler() *scheduler.AgentScheduler {
+	return k.agentScheduler
 }
 
 func (k *Kernel) DB() *memory.DB {

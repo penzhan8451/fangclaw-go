@@ -31,6 +31,7 @@ type KernelConfig struct {
 	Browser           BrowserConfig           `toml:"browser" json:"browser"`
 	Include           []string                `toml:"include,omitempty" json:"include,omitempty"`
 	Auth              AuthConfig              `toml:"auth" json:"auth"`
+	Quotas            QuotasConfig            `toml:"quotas" json:"quotas"`
 	UserID            string                  `toml:"-" json:"user_id,omitempty"`
 	Username          string                  `toml:"-" json:"username,omitempty"`
 }
@@ -142,6 +143,19 @@ type AutonomousConfig struct {
 	HeartbeatChannel  *string       `toml:"heartbeat_channel,omitempty" json:"heartbeat_channel,omitempty"`
 }
 
+// QuotasConfig represents resource quotas configuration.
+type QuotasConfig struct {
+	Default ResourceQuota            `toml:"default" json:"default"`
+	Agents  map[string]ResourceQuota `toml:"agents" json:"agents"`
+}
+
+// ResourceQuota defines spending limits for an agent.
+type ResourceQuota struct {
+	MaxTokensPerHour    int     `toml:"max_tokens_per_hour" json:"max_tokens_per_hour"`
+	MaxToolCallsPerHour int     `toml:"max_tool_calls_per_hour" json:"max_tool_calls_per_hour"`
+	MaxCostPerHourUSD   float64 `toml:"max_cost_per_hour_usd" json:"max_cost_per_hour_usd"`
+}
+
 // DefaultConfig returns the default kernel configuration.
 func DefaultConfig() KernelConfig {
 	return KernelConfig{
@@ -238,5 +252,13 @@ func DefaultConfig() KernelConfig {
 			},
 		},
 		McpServers: []McpServerConfig{},
+		Quotas: QuotasConfig{
+			Default: ResourceQuota{
+				MaxTokensPerHour:    100000,
+				MaxToolCallsPerHour: 100,
+				MaxCostPerHourUSD:   10.0,
+			},
+			Agents: map[string]ResourceQuota{},
+		},
 	}
 }

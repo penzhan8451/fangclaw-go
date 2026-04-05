@@ -16,6 +16,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
+	"github.com/penzhan8451/fangclaw-go/internal/scheduler"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 	"github.com/pkoukk/tiktoken-go"
@@ -117,6 +118,7 @@ type Runtime struct {
 	approvalMgr     *approvals.ApprovalManager
 	checkCapability func(agentID string, capType string, resource string) bool
 	browserMgr      tools.BrowserManager
+	agentScheduler  *scheduler.AgentScheduler
 }
 
 type McpCallbacks struct {
@@ -124,7 +126,7 @@ type McpCallbacks struct {
 	CallMcpTool func(ctx context.Context, toolName string, args map[string]interface{}) (string, error)
 }
 
-func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader, embeddingDriver *embedding.EmbeddingDriver, modelCatalog *model_catalog.ModelCatalog, mcpCallbacks *McpCallbacks, approvalMgr *approvals.ApprovalManager) *Runtime {
+func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader, embeddingDriver *embedding.EmbeddingDriver, modelCatalog *model_catalog.ModelCatalog, mcpCallbacks *McpCallbacks, approvalMgr *approvals.ApprovalManager, agentScheduler *scheduler.AgentScheduler) *Runtime {
 	r := &Runtime{
 		drivers:         make(map[string]llm.Driver),
 		tools:           NewToolRegistry(),
@@ -137,6 +139,7 @@ func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, k
 		embeddingDriver: embeddingDriver,
 		modelCatalog:    modelCatalog,
 		approvalMgr:     approvalMgr,
+		agentScheduler:  agentScheduler,
 	}
 	if mcpCallbacks != nil {
 		r.getMcpTools = mcpCallbacks.GetMcpTools
@@ -224,6 +227,24 @@ func (c *AgentContext) GetMessages() []types.Message {
 // RunAgentLoop runs the agent execution loop.
 // It handles the complete agent workflow: memory recall, LLM calls, tool execution, and session management.
 func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPhase PhaseCallback, streamCb StreamCallback) (*AgentLoopResult, error) {
+	// Check quota before executing
+	agentID := agentCtx.AgentID.String()
+	if r.agentScheduler != nil {
+		if err := r.agentScheduler.CheckQuota(agentID); err != nil {
+			// Quota exceeded, send approval message
+			if r.approvalMgr != nil {
+				approvalMsg := fmt.Sprintf("⚠️ Quota exceeded for agent '%s': %v", agentCtx.Name, err)
+				req := approvals.NewApprovalRequest(agentID, "quota_check", approvalMsg, "Quota Exceeded", "deny", approvalMsg, approvals.RiskLevelMedium)
+				req.AgentName = agentCtx.Name
+				req.SessionID = agentCtx.SessionID.String()
+				req.ModelProvider = agentCtx.Provider
+				req.ModelName = agentCtx.Model
+				_, _ = r.approvalMgr.RequestApproval(req)
+			}
+			return nil, fmt.Errorf("quota exceeded: %w", err)
+		}
+	}
+
 	// Get LLM driver for the agent's provider
 	driver, err := r.GetDriver(agentCtx.Provider)
 	if err != nil {
@@ -422,6 +443,16 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			// Record usage
 			recordUsage(totalUsage, uint32(iteration+1))
 
+			// Record usage in scheduler
+			if r.agentScheduler != nil {
+				r.agentScheduler.RecordUsage(agentID, totalUsage)
+				if totalUsage.ToolCalls > 0 {
+					for i := 0; i < totalUsage.ToolCalls; i++ {
+						r.agentScheduler.RecordToolCall(agentID)
+					}
+				}
+			}
+
 			return &AgentLoopResult{
 				Response:   finalResponse,
 				TotalUsage: totalUsage,
@@ -495,6 +526,16 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 
 			// Record usage
 			recordUsage(totalUsage, uint32(iteration+1))
+
+			// Record usage in scheduler
+			if r.agentScheduler != nil {
+				r.agentScheduler.RecordUsage(agentID, totalUsage)
+				if totalUsage.ToolCalls > 0 {
+					for i := 0; i < totalUsage.ToolCalls; i++ {
+						r.agentScheduler.RecordToolCall(agentID)
+					}
+				}
+			}
 
 			return &AgentLoopResult{
 				Response:   finalResponse,

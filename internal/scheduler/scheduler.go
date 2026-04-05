@@ -1,18 +1,19 @@
-// Package scheduler provides agent scheduling and resource management.
+// Package scheduler provides agent resource quota management.
 package scheduler
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
 // UsageTracker tracks resource usage for an agent with a rolling hourly window.
 type UsageTracker struct {
 	TotalTokens int       `json:"total_tokens"`
 	ToolCalls   int       `json:"tool_calls"`
-	WindowStart time.Time `json:"window_start_start"`
+	WindowStart time.Time `json:"window_start"`
 }
 
 // NewUsageTracker creates a new usage tracker.
@@ -31,12 +32,11 @@ func (u *UsageTracker) ResetIfExpired() {
 	}
 }
 
-// AgentScheduler manages agent execution ordering and resource quotas.
+// AgentScheduler manages agent resource quotas.
 type AgentScheduler struct {
 	mu     sync.RWMutex
 	quotas map[string]ResourceQuota
 	usage  map[string]*UsageTracker
-	tasks  map[string]interface{} // JoinHandle placeholder
 }
 
 // NewAgentScheduler creates a new scheduler.
@@ -44,27 +44,22 @@ func NewAgentScheduler() *AgentScheduler {
 	return &AgentScheduler{
 		quotas: make(map[string]ResourceQuota),
 		usage:  make(map[string]*UsageTracker),
-		tasks:  make(map[string]interface{}),
 	}
 }
 
 // ResourceQuota defines spending limits for an agent.
 type ResourceQuota struct {
-	MaxCostPerHourUSD   float64 `json:"max_cost_per_hour_usd"`
-	MaxCostPerDayUSD    float64 `json:"max_cost_per_day_usd"`
-	MaxCostPerMonthUSD  float64 `json:"max_cost_per_month_usd"`
-	MaxTokensPerHour    int     `json:"max_tokens_per_hour"`
-	MaxToolCallsPerHour int     `json:"max_tool_calls_per_hour"`
+	MaxTokensPerHour    int     `json:"max_tokens_per_hour" toml:"max_tokens_per_hour"`
+	MaxToolCallsPerHour int     `json:"max_tool_calls_per_hour" toml:"max_tool_calls_per_hour"`
+	MaxCostPerHourUSD   float64 `json:"max_cost_per_hour_usd" toml:"max_cost_per_hour_usd"`
 }
 
 // DefaultQuota returns default resource quotas.
 func DefaultQuota() ResourceQuota {
 	return ResourceQuota{
-		MaxCostPerHourUSD:   10.0,
-		MaxCostPerDayUSD:    100.0,
-		MaxCostPerMonthUSD:  1000.0,
 		MaxTokensPerHour:    100000,
 		MaxToolCallsPerHour: 100,
+		MaxCostPerHourUSD:   10.0,
 	}
 }
 
@@ -85,13 +80,13 @@ func (s *AgentScheduler) Unregister(agentID string) {
 }
 
 // RecordUsage records token usage for an agent.
-func (s *AgentScheduler) RecordUsage(agentID string, tokens int) {
+func (s *AgentScheduler) RecordUsage(agentID string, usage types.TokenUsage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if tracker, ok := s.usage[agentID]; ok {
 		tracker.ResetIfExpired()
-		tracker.TotalTokens += tokens
+		tracker.TotalTokens += usage.TotalTokens
 	}
 }
 
@@ -107,18 +102,28 @@ func (s *AgentScheduler) RecordToolCall(agentID string) {
 }
 
 // GetUsage returns current usage for an agent.
-func (s *AgentScheduler) GetUsage(agentID string) *UsageTracker {
+func (s *AgentScheduler) GetUsage(agentID string) (*UsageTracker, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if tracker, ok := s.usage[agentID]; ok {
-		return &UsageTracker{
-			TotalTokens: tracker.TotalTokens,
-			ToolCalls:   tracker.ToolCalls,
-			WindowStart: tracker.WindowStart,
-		}
+	tracker, ok := s.usage[agentID]
+	if !ok {
+		return nil, false
 	}
-	return &UsageTracker{WindowStart: time.Now()}
+	return &UsageTracker{
+		TotalTokens: tracker.TotalTokens,
+		ToolCalls:   tracker.ToolCalls,
+		WindowStart: tracker.WindowStart,
+	}, true
+}
+
+// GetQuota returns the quota for an agent.
+func (s *AgentScheduler) GetQuota(agentID string) (ResourceQuota, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	quota, ok := s.quotas[agentID]
+	return quota, ok
 }
 
 // CheckQuota checks if an agent has exceeded its quota.
@@ -139,121 +144,66 @@ func (s *AgentScheduler) CheckQuota(agentID string) error {
 	tracker.ResetIfExpired()
 
 	if quota.MaxTokensPerHour > 0 && tracker.TotalTokens >= quota.MaxTokensPerHour {
-		return &QuotaExceededError{Resource: "tokens", Limit: quota.MaxTokensPerHour}
+		return &QuotaExceededError{
+			Resource: "tokens",
+			Limit:    quota.MaxTokensPerHour,
+			Used:     tracker.TotalTokens,
+		}
 	}
 
 	if quota.MaxToolCallsPerHour > 0 && tracker.ToolCalls >= quota.MaxToolCallsPerHour {
-		return &QuotaExceededError{Resource: "tool_calls", Limit: quota.MaxToolCallsPerHour}
+		return &QuotaExceededError{
+			Resource: "tool_calls",
+			Limit:    quota.MaxToolCallsPerHour,
+			Used:     tracker.ToolCalls,
+		}
 	}
 
 	return nil
+}
+
+// TokenHeadroom returns remaining token headroom before quota is hit.
+// Returns 0 if no token quota is configured (unlimited).
+func (s *AgentScheduler) TokenHeadroom(agentID string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	quota, ok := s.quotas[agentID]
+	if !ok || quota.MaxTokensPerHour == 0 {
+		return 0
+	}
+
+	tracker, ok := s.usage[agentID]
+	if !ok {
+		return quota.MaxTokensPerHour
+	}
+
+	tracker.ResetIfExpired()
+	if tracker.TotalTokens >= quota.MaxTokensPerHour {
+		return 0
+	}
+	return quota.MaxTokensPerHour - tracker.TotalTokens
+}
+
+// ResetUsage resets usage tracking for an agent.
+func (s *AgentScheduler) ResetUsage(agentID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if tracker, ok := s.usage[agentID]; ok {
+		tracker.TotalTokens = 0
+		tracker.ToolCalls = 0
+		tracker.WindowStart = time.Now()
+	}
 }
 
 // QuotaExceededError represents a quota exceeded error.
 type QuotaExceededError struct {
 	Resource string
 	Limit    int
+	Used     int
 }
 
 func (e *QuotaExceededError) Error() string {
-	return "quota exceeded: " + e.Resource
-}
-
-// ScheduleInfo represents scheduling information for an agent.
-type ScheduleInfo struct {
-	AgentID     string        `json:"agent_id"`
-	ScheduledAt time.Time     `json:"scheduled_at"`
-	Interval    time.Duration `json:"interval"`
-	Enabled     bool          `json:"enabled"`
-	LastRun     time.Time     `json:"last_run,omitempty"`
-	NextRun     time.Time     `json:"next_run,omitempty"`
-}
-
-// ScheduleManager manages scheduled agent runs.
-type ScheduleManager struct {
-	mu        sync.RWMutex
-	schedules map[string]*ScheduleInfo
-}
-
-// NewScheduleManager creates a new schedule manager.
-func NewScheduleManager() *ScheduleManager {
-	return &ScheduleManager{
-		schedules: make(map[string]*ScheduleInfo),
-	}
-}
-
-// AddSchedule adds a new schedule.
-func (m *ScheduleManager) AddSchedule(agentID string, interval time.Duration) *ScheduleInfo {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	info := &ScheduleInfo{
-		AgentID:     agentID,
-		Interval:    interval,
-		Enabled:     true,
-		ScheduledAt: time.Now(),
-		NextRun:     time.Now().Add(interval),
-	}
-	m.schedules[agentID] = info
-	return info
-}
-
-// RemoveSchedule removes a schedule.
-func (m *ScheduleManager) RemoveSchedule(agentID string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.schedules, agentID)
-}
-
-// GetSchedules returns all schedules.
-func (m *ScheduleManager) GetSchedules() []*ScheduleInfo {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	schedules := make([]*ScheduleInfo, 0, len(m.schedules))
-	for _, s := range m.schedules {
-		schedules = append(schedules, s)
-	}
-	return schedules
-}
-
-// GetDueSchedules returns schedules that are due to run.
-func (m *ScheduleManager) GetDueSchedules() []*ScheduleInfo {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	now := time.Now()
-	var due []*ScheduleInfo
-	for _, s := range m.schedules {
-		if s.Enabled && now.After(s.NextRun) {
-			due = append(due, s)
-		}
-	}
-	return due
-}
-
-// MarkRun marks a schedule as run and calculates next run time.
-func (m *ScheduleManager) MarkRun(agentID string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if s, ok := m.schedules[agentID]; ok {
-		s.LastRun = time.Now()
-		s.NextRun = time.Now().Add(s.Interval)
-	}
-}
-
-// ToggleSchedule enables or disables a schedule.
-func (m *ScheduleManager) ToggleSchedule(agentID string, enabled bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if s, ok := m.schedules[agentID]; ok {
-		s.Enabled = enabled
-	}
-}
-
-// GenerateScheduleID generates a unique schedule ID.
-func GenerateScheduleID() string {
-	return uuid.New().String()
+	return fmt.Sprintf("quota exceeded: %s (used: %d, limit: %d)", e.Resource, e.Used, e.Limit)
 }

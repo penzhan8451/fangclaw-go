@@ -22,6 +22,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
+	"github.com/penzhan8451/fangclaw-go/internal/scheduler"
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 	"github.com/penzhan8451/fangclaw-go/internal/vector"
@@ -182,7 +183,8 @@ func runChatLocal(agentID string) error {
 	approvalMgr := approvals.NewApprovalManager(approvalPolicy)
 
 	// 3. Create Agent Runtime
-	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, nil, approvalMgr)
+	agentScheduler := scheduler.NewAgentScheduler()
+	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, nil, approvalMgr, agentScheduler)
 
 	// 4. Get LLM driver
 	driver, err := getLLMDriver()
