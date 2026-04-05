@@ -150,6 +150,10 @@ func (m *UserKernelManager) GetOrCreateKernel(userID, username string, role auth
 	}
 
 	kernel.SetSecrets(userSecrets)
+	// install embedded skills for user kernel
+	if err := kernel.SkillLoader().InstallAllEmbeddedSkills(); err != nil {
+		log.Warn().Err(err).Str("user", username).Msg("Failed to install embedded skills for user")
+	}
 
 	// set shared channel registry
 	kernel.SetSharedRegistry(m.globalKernel.Registry())

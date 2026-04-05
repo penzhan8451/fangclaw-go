@@ -651,6 +651,36 @@ func (l *Loader) UninstallSkill(skillID string) error {
 	return nil
 }
 
+// InstallEmbeddedSkill installs an embedded skill
+func (l *Loader) InstallEmbeddedSkill(skillID string) (*types.Skill, error) {
+	destPath := filepath.Join(l.skillsPath, skillID)
+	if _, err := os.Stat(destPath); !os.IsNotExist(err) {
+		return l.LoadSkill(skillID)
+	}
+
+	if err := types.ExtractEmbeddedSkill(skillID, destPath); err != nil {
+		return nil, fmt.Errorf("failed to extract embedded skill: %w", err)
+	}
+
+	return l.LoadSkill(skillID)
+}
+
+// InstallAllEmbeddedSkills installs all embedded skills that are not already installed
+func (l *Loader) InstallAllEmbeddedSkills() error {
+	skills, err := types.ListEmbeddedSkills()
+	if err != nil {
+		return err
+	}
+
+	for _, skill := range skills {
+		if _, err := l.InstallEmbeddedSkill(skill.ID); err != nil {
+			return fmt.Errorf("failed to install embedded skill %s: %w", skill.ID, err)
+		}
+	}
+
+	return nil
+}
+
 // copyDir copies a directory recursively.
 func copyDir(src, dst string) error {
 	entries, err := os.ReadDir(src)

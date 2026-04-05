@@ -1314,6 +1314,10 @@ func Boot(dataDir string) (*Kernel, error) {
 	if err := k.ReloadSecrets(); err != nil {
 		log.Warn().Err(err).Msg("Failed to load global secrets")
 	}
+	// install embedded skills for owner (global kernel)
+	if err := k.SkillLoader().InstallAllEmbeddedSkills(); err != nil {
+		log.Warn().Err(err).Msg("Failed to install embedded skills for owner")
+	}
 
 	return k, nil
 }
