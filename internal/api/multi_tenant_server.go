@@ -261,6 +261,7 @@ func (s *MultiTenantServer) isStaticRoute(path string) bool {
 		"/vendor/",
 		"/fonts/",
 		"/static/",
+		"/locales/",
 	}
 	for _, prefix := range staticPrefixes {
 		if len(path) >= len(prefix) && path[:len(prefix)] == prefix {
@@ -281,6 +282,7 @@ func (s *MultiTenantServer) isStaticRoute(path string) bool {
 		".woff2",
 		".ttf",
 		".eot",
+		".json",
 	}
 	for _, ext := range staticExtensions {
 		if len(path) >= len(ext) && path[len(path)-len(ext):] == ext {

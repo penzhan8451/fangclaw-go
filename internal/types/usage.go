@@ -49,6 +49,16 @@ type ModelUsage struct {
 	CallCount         int     `json:"call_count"`
 }
 
+// AgentUsage represents usage grouped by agent.
+type AgentUsage struct {
+	AgentID           string  `json:"agent_id"`
+	AgentName         string  `json:"agent_name"`
+	TotalCostUSD      float64 `json:"total_cost_usd"`
+	TotalInputTokens  int     `json:"total_input_tokens"`
+	TotalOutputTokens int     `json:"total_output_tokens"`
+	CallCount         int     `json:"call_count"`
+}
+
 // DailyBreakdown represents daily usage breakdown.
 type DailyBreakdown struct {
 	Date     string  `json:"date"`

@@ -3420,13 +3420,43 @@ func (r *Router) handleTools(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleUsage(w http.ResponseWriter, req *http.Request) {
+	agents, err := r.getKernel(req).UsageStore().GetUsageByAgent()
+	if err != nil || agents == nil || len(agents) == 0 {
+		agents = []*types.AgentUsage{}
+	}
+
+	// 转换为前端期望的格式
+	var formattedAgents []map[string]interface{}
+	for _, agent := range agents {
+		formattedAgents = append(formattedAgents, map[string]interface{}{
+			"agent_id":     agent.AgentID,
+			"name":         agent.AgentName,
+			"total_tokens": agent.TotalInputTokens + agent.TotalOutputTokens,
+			"tool_calls":   agent.CallCount,
+		})
+	}
+
+	summary, _ := r.getKernel(req).UsageStore().QuerySummary()
+	totalTokens := 0
+	totalCost := 0.0
+	if summary != nil {
+		totalTokens = summary.TotalInputTokens + summary.TotalOutputTokens
+		totalCost = summary.TotalCostUSD
+	}
+
+	firstEventDate, _ := r.getKernel(req).UsageStore().GetFirstEventDate()
+	periodStart := "2024-01-01"
+	if firstEventDate != nil {
+		periodStart = *firstEventDate
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"total_tokens":     0,
-		"total_cost_usd":   0.0,
-		"period_start":     "2024-01-01",
-		"period_end":       "2024-12-31",
-		"agents":           []interface{}{},
-		"first_event_date": nil,
+		"total_tokens":     totalTokens,
+		"total_cost_usd":   totalCost,
+		"period_start":     periodStart,
+		"period_end":       time.Now().Format("2006-01-02"),
+		"agents":           formattedAgents,
+		"first_event_date": firstEventDate,
 	})
 }
 
@@ -4948,29 +4978,8 @@ func (r *Router) handleClawhubInstall(w http.ResponseWriter, req *http.Request) 
 }
 
 func (r *Router) handleListApprovals(w http.ResponseWriter, req *http.Request) {
-	pending := r.getKernel(req).ApprovalManager().ListPending()
-	total := len(pending)
-
-	var approvals []map[string]interface{}
-	for _, a := range pending {
-		approvals = append(approvals, map[string]interface{}{
-			"id":             a.ID,
-			"agent_id":       a.AgentID,
-			"agent_name":     a.AgentName,
-			"model_provider": a.ModelProvider,
-			"model_name":     a.ModelName,
-			"session_id":     a.SessionID,
-			"tool_name":      a.ToolName,
-			"description":    a.Description,
-			"action_summary": a.ActionSummary,
-			"action":         a.ActionSummary,
-			"risk_level":     a.RiskLevel,
-			"requested_at":   a.RequestedAt,
-			"created_at":     a.CreatedAt,
-			"timeout_secs":   a.TimeoutSecs,
-			"status":         "pending",
-		})
-	}
+	approvals := r.getKernel(req).ApprovalManager().GetAllApprovals()
+	total := len(approvals)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"approvals": approvals,

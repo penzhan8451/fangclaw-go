@@ -307,6 +307,93 @@ func (s *UsageStore) GetUsageByModel() ([]*types.ModelUsage, error) {
 	return results, nil
 }
 
+// GetUsageByAgent gets usage grouped by agent.
+func (s *UsageStore) GetUsageByAgent() ([]*types.AgentUsage, error) {
+	// 首先获取所有 usage 记录
+	usageRecords, err := s.ListUsage(nil, nil, nil, 0)
+	if err != nil {
+		return []*types.AgentUsage{}, fmt.Errorf("failed to list usage: %w", err)
+	}
+
+	// 创建一个 map 来聚合 agent 使用情况
+	agentUsageMap := make(map[string]*types.AgentUsage)
+	agentNameMap := make(map[string]string)
+
+	// 首先尝试从 agents 表获取所有 agent 的名字
+	rows, err := s.db.Query(`SELECT id, name FROM agents`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, name string
+			if err := rows.Scan(&id, &name); err == nil {
+				agentNameMap[id] = name
+			}
+		}
+	}
+
+	// 然后尝试从 sessions 表获取 agent 名字（用于处理已删除的 agent）
+	rows, err = s.db.Query(`SELECT DISTINCT agent_id, agent_name FROM sessions WHERE agent_name != ''`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id, name string
+			if err := rows.Scan(&id, &name); err == nil {
+				if _, exists := agentNameMap[id]; !exists {
+					agentNameMap[id] = name
+				}
+			}
+		}
+	}
+
+	// 聚合使用情况
+	for _, record := range usageRecords {
+		agentID := record.AgentID.String()
+		if agentID == "" {
+			continue
+		}
+		if _, exists := agentUsageMap[agentID]; !exists {
+			agentName := agentID
+			if name, ok := agentNameMap[agentID]; ok && name != "" {
+				agentName = name
+			}
+			agentUsageMap[agentID] = &types.AgentUsage{
+				AgentID:           agentID,
+				AgentName:         agentName,
+				TotalCostUSD:      0,
+				TotalInputTokens:  0,
+				TotalOutputTokens: 0,
+				CallCount:         0,
+			}
+		}
+		agentUsage := agentUsageMap[agentID]
+		agentUsage.TotalCostUSD += record.CostUSD
+		agentUsage.TotalInputTokens += record.Usage.PromptTokens
+		agentUsage.TotalOutputTokens += record.Usage.CompletionTokens
+		agentUsage.CallCount++
+	}
+
+	// 转换为 slice
+	var results []*types.AgentUsage
+	for _, au := range agentUsageMap {
+		results = append(results, au)
+	}
+
+	// 按总消费排序
+	for i := range results {
+		for j := i + 1; j < len(results); j++ {
+			if results[i].TotalCostUSD < results[j].TotalCostUSD {
+				results[i], results[j] = results[j], results[i]
+			}
+		}
+	}
+
+	if results == nil {
+		results = []*types.AgentUsage{}
+	}
+
+	return results, nil
+}
+
 // GetDailyBreakdown gets daily usage breakdown for the last N days.
 func (s *UsageStore) GetDailyBreakdown(days int) ([]*types.DailyBreakdown, error) {
 	since := time.Now().AddDate(0, 0, -days)

@@ -118,7 +118,7 @@ var FangClawGoToast = (function() {
 // ── Friendly Error Messages ──
 function friendlyError(status, serverMsg) {
   if (status === 0 || !status) return 'Cannot reach daemon — is fangclaw-go running?';
-  if (status === 401) return 'Not authorized — check your API key';
+  if (status === 401) return 'Not authorized — check your name/password or API key';
   if (status === 403) return 'Permission denied';
   if (status === 404) return serverMsg || 'Resource not found';
   if (status === 429) return 'Rate limited — slow down and try again';

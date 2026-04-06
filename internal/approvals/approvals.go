@@ -186,6 +186,7 @@ type ApprovalResponse struct {
 	Decision   ApprovalDecision `json:"decision"`
 	Reason     string           `json:"reason,omitempty"`
 	ResolvedAt time.Time        `json:"resolved_at"`
+	Request    *ApprovalRequest `json:"request,omitempty"` // Store original request
 }
 
 // PendingRequest represents a pending approval request.
@@ -203,15 +204,17 @@ type ApprovalManager struct {
 	maxPending   int
 	onNewRequest func(req *ApprovalRequest)
 	onResolve    func(req *ApprovalRequest, decision ApprovalDecision, reason string)
+	requestsMap  map[string]*ApprovalRequest // Map to store all requests by ID
 }
 
 // NewApprovalManager creates a new approval manager.
 func NewApprovalManager(policy ApprovalPolicy) *ApprovalManager {
 	return &ApprovalManager{
-		pending:    make(map[string]*PendingRequest),
-		policy:     policy,
-		history:    make([]ApprovalResponse, 0),
-		maxPending: 5,
+		pending:     make(map[string]*PendingRequest),
+		policy:      policy,
+		history:     make([]ApprovalResponse, 0),
+		maxPending:  5,
+		requestsMap: make(map[string]*ApprovalRequest),
 	}
 }
 
@@ -275,6 +278,10 @@ func (m *ApprovalManager) GetRiskLevel(toolName string) RiskLevel {
 // RequestApproval submits an approval request.
 func (m *ApprovalManager) RequestApproval(req *ApprovalRequest) (<-chan ApprovalDecision, error) {
 	m.mu.Lock()
+
+	// Store request in requestsMap
+	reqCopy := *req
+	m.requestsMap[req.ID] = &reqCopy
 
 	// Check if this tool requires approval
 	if !m.RequiresApproval(req.ToolName) {
@@ -356,6 +363,7 @@ func (m *ApprovalManager) RequestApproval(req *ApprovalRequest) (<-chan Approval
 					Decision:   ApprovalDecisionTimedOut,
 					Reason:     "timeout",
 					ResolvedAt: time.Now(),
+					Request:    m.requestsMap[requestID],
 				})
 				// Remove from pending
 				delete(m.pending, requestID)
@@ -393,6 +401,7 @@ func (m *ApprovalManager) Resolve(requestID string, decision ApprovalDecision, r
 		Decision:   decision,
 		Reason:     reason,
 		ResolvedAt: time.Now(),
+		Request:    m.requestsMap[requestID],
 	})
 
 	// Remove from pending
@@ -440,6 +449,71 @@ func (m *ApprovalManager) GetHistory() []ApprovalResponse {
 	history := make([]ApprovalResponse, len(m.history))
 	copy(history, m.history)
 	return history
+}
+
+// GetAllApprovals returns all approvals (pending and history).
+func (m *ApprovalManager) GetAllApprovals() []map[string]interface{} {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var result []map[string]interface{}
+
+	// Add pending requests first
+	for _, p := range m.pending {
+		req := p.Request
+		result = append(result, map[string]interface{}{
+			"id":             req.ID,
+			"agent_id":       req.AgentID,
+			"agent_name":     req.AgentName,
+			"model_provider": req.ModelProvider,
+			"model_name":     req.ModelName,
+			"session_id":     req.SessionID,
+			"tool_name":      req.ToolName,
+			"description":    req.Description,
+			"action_summary": req.ActionSummary,
+			"action":         req.ActionSummary,
+			"risk_level":     req.RiskLevel,
+			"requested_at":   req.RequestedAt,
+			"created_at":     req.CreatedAt,
+			"timeout_secs":   req.TimeoutSecs,
+			"status":         "pending",
+		})
+	}
+
+	// Add history records
+	for _, resp := range m.history {
+		if resp.Request != nil {
+			req := resp.Request
+			status := string(resp.Decision)
+			// Map decision to status (denied -> rejected for UI compatibility)
+			if status == "denied" {
+				status = "rejected"
+			}
+			if status == "timed_out" {
+				status = "expired"
+			}
+			result = append(result, map[string]interface{}{
+				"id":             req.ID,
+				"agent_id":       req.AgentID,
+				"agent_name":     req.AgentName,
+				"model_provider": req.ModelProvider,
+				"model_name":     req.ModelName,
+				"session_id":     req.SessionID,
+				"tool_name":      req.ToolName,
+				"description":    req.Description,
+				"action_summary": req.ActionSummary,
+				"action":         req.ActionSummary,
+				"risk_level":     req.RiskLevel,
+				"requested_at":   req.RequestedAt,
+				"created_at":     req.CreatedAt,
+				"timeout_secs":   req.TimeoutSecs,
+				"status":         status,
+				"resolved_at":    resp.ResolvedAt,
+			})
+		}
+	}
+
+	return result
 }
 
 // GetPolicy returns the current approval policy.

@@ -1647,6 +1647,117 @@ mark.search-highlight {
   margin-bottom: 16px;
 }
 
+/* Header Controls Layout */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Language Switcher Styles */
+.language-switcher {
+  position: relative;
+  display: inline-block;
+}
+
+.language-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 80px;
+  justify-content: center;
+}
+
+.language-btn:hover {
+  background: var(--surface3);
+  border-color: var(--border-light);
+}
+
+.language-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  min-width: 120px;
+}
+
+.language-option {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.language-option:hover {
+  background: var(--surface2);
+}
+
+.language-option.active {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+/* Floating Language Button Styles */
+.floating-language-btn {
+  position: fixed;
+  top: 55px;
+  right: 10px;
+  z-index: 1000;
+}
+
+.floating-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-md);
+}
+
+.floating-btn:hover {
+  background: var(--surface2);
+  transform: scale(1.1);
+  box-shadow: var(--shadow-lg);
+}
+
+.floating-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-lg);
+  z-index: 1001;
+  min-width: 120px;
+}
+
 .tab {
   padding: 8px 16px;
   font-size: 12px;
@@ -3968,32 +4079,50 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 <div x-show="$store.app.showLogin" x-data="loginPage()" x-transition style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:var(--bg)">
   <div class="login-container">
     <div class="login-card">
+      <!-- Language Switcher for Login Page -->
+      <div style="position:absolute;top:16px;right:16px;">
+        <div x-data="{ open: false }" class="language-switcher">
+          <button @click="open = !open" class="language-btn" :title="$store.i18n.t('language.switchLanguage')">
+            <span x-text="$store.i18n.getCurrentLanguageName()"></span>
+            <span style="margin-left:4px;">▼</span>
+          </button>
+          <div x-show="open" @click.outside="open = false" class="language-dropdown">
+            <button @click="$store.i18n.switchLanguage('en'); open = false" class="language-option" :class="{ active: $store.i18n.currentLang === 'en' }">
+              English
+            </button>
+            <button @click="$store.i18n.switchLanguage('zh-CN'); open = false" class="language-option" :class="{ active: $store.i18n.currentLang === 'zh-CN' }">
+              中文
+            </button>
+          </div>
+        </div>
+      </div>
+      
       <div class="login-header">
         <img src="/logo.png" alt="FangClaw-go" width="48" height="48">
-        <h1>FANGCLAW-GO</h1>
-        <p x-show="loginMode === 'login'">Sign in to your account</p>
-        <p x-show="loginMode === 'register'">Create a new account</p>
+        <h1 x-i18n="common.appName">FANGCLAW-GO</h1>
+        <p x-show="loginMode === 'login'" x-i18n="common.signIn">Sign in to your account</p>
+        <p x-show="loginMode === 'register'" x-i18n="common.createAccount">Create a new account</p>
       </div>
       
       <form @submit.prevent="handleLogin" x-show="loginMode === 'login'">
         <div class="form-group">
-          <label>Username</label>
-          <input type="text" x-model="username" placeholder="Enter username" required autocomplete="username">
+          <label x-i18n="common.username">Username</label>
+          <input type="text" x-model="username" :placeholder="$store.i18n.t('common.enterUsername')" required autocomplete="username">
         </div>
         <div class="form-group">
-          <label>Password</label>
-          <input type="password" x-model="password" placeholder="Enter password" required autocomplete="current-password">
+          <label x-i18n="common.password">Password</label>
+          <input type="password" x-model="password" :placeholder="$store.i18n.t('common.enterPassword')" required autocomplete="current-password">
         </div>
         <div class="form-error" x-show="error" x-text="error"></div>
         <button type="submit" class="login-btn" :disabled="loading">
-          <span x-show="!loading">Sign In</span>
-          <span x-show="loading">Signing in...</span>
+          <span x-show="!loading" x-i18n="common.signInBtn">Sign In</span>
+          <span x-show="loading" x-i18n="common.signingIn">Signing in...</span>
         </button>
       </form>
 
       <div x-show="loginMode === 'login'" style="margin: 16px 0; display: flex; align-items: center; gap: 12px;">
         <div style="flex: 1; height: 1px; background: var(--border);"></div>
-        <span style="color: var(--text-subtle); font-size: 12px;">or</span>
+        <span style="color: var(--text-subtle); font-size: 12px;" x-i18n="common.or">or</span>
         <div style="flex: 1; height: 1px; background: var(--border);"></div>
       </div>
 
@@ -4007,27 +4136,36 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
       <form @submit.prevent="handleRegister" x-show="loginMode === 'register'">
         <div class="form-group">
-          <label>Username</label>
-          <input type="text" x-model="username" placeholder="Enter username" required autocomplete="username">
+          <label x-i18n="common.username">Username</label>
+          <input type="text" x-model="username" :placeholder="$store.i18n.t('common.enterUsername')" required autocomplete="username">
         </div>
         <div class="form-group">
-          <label>Email (optional)</label>
-          <input type="email" x-model="email" placeholder="Enter email" autocomplete="email">
+          <label>
+            <span x-i18n="common.email">Email</span>
+            <span style="color: var(--text-dim); font-size: 12px;" x-i18n="common.optional">(optional)</span>
+          </label>
+          <input type="email" x-model="email" :placeholder="$store.i18n.t('common.enterEmail')" autocomplete="email">
         </div>
         <div class="form-group">
-          <label>Password</label>
-          <input type="password" x-model="password" placeholder="Enter password (min 6 characters)" required autocomplete="new-password">
+          <label x-i18n="common.password">Password</label>
+          <input type="password" x-model="password" :placeholder="$store.i18n.t('common.minPassword')" required autocomplete="new-password">
         </div>
         <div class="form-error" x-show="error" x-text="error"></div>
         <button type="submit" class="login-btn" :disabled="loading">
-          <span x-show="!loading">Create Account</span>
-          <span x-show="loading">Creating...</span>
+          <span x-show="!loading" x-i18n="common.createAccountBtn">Create Account</span>
+          <span x-show="loading" x-i18n="common.creating">Creating...</span>
         </button>
       </form>
       
       <div class="login-footer">
-        <p x-show="loginMode === 'login'">Don't have an account? <a href="#" @click.prevent="loginMode = 'register'; error = ''">Register</a></p>
-        <p x-show="loginMode === 'register'">Already have an account? <a href="#" @click.prevent="loginMode = 'login'; error = ''">Sign In</a></p>
+        <p x-show="loginMode === 'login'">
+          <span x-i18n="common.dontHaveAccount">Don't have an account?</span>
+          <a href="#" @click.prevent="loginMode = 'register'; error = ''" x-i18n="common.register">Register</a>
+        </p>
+        <p x-show="loginMode === 'register'">
+          <span x-i18n="common.alreadyHaveAccount">Already have an account?</span>
+          <a href="#" @click.prevent="loginMode = 'login'; error = ''" x-i18n="common.login">Sign In</a>
+        </p>
       </div>
     </div>
   </div>
@@ -4039,19 +4177,19 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
     <div class="login-card">
       <div class="login-header">
         <img src="/logo.png" alt="FangClaw-go" width="48" height="48">
-        <h1>SETUP REQUIRED</h1>
-        <p>Please configure your API key first</p>
+        <h1 x-i18n="setup.setupRequired">SETUP REQUIRED</h1>
+        <p x-i18n="setup.configureApiKey">Please configure your API key first</p>
       </div>
       
       <div style="text-align:center;padding:20px 0;">
         <svg viewBox="0 0 24 24" width="64" height="64" style="fill:var(--text-subtle);">
           <path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97 0-.33-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.31-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.34-.07.67-.07 1 0 .33.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.06.74 1.69.99l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.26 1.17-.59 1.69-.99l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66z"/>
         </svg>
-        <p style="margin-top:20px;color:var(--text);">To get started, you need to configure your provider and API key in Settings.</p>
+        <p style="margin-top:20px;color:var(--text);" x-i18n="setup.getStarted">To get started, you need to configure your provider and API key in Settings.</p>
       </div>
       
       <button type="button" class="login-btn" @click="$store.app.goToSettings()">
-        Go to Settings
+        <span x-i18n="setup.goToSettings">Go to Settings</span>
       </button>
     </div>
   </div>
@@ -4101,9 +4239,9 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
     <div class="sidebar-status" :class="{ offline: !connected && !$store.app.booting }">
       <span class="status-dot"></span>
-      <span class="sidebar-label" x-show="connected" x-text="agentCount + ' agent(s) running'"></span>
-      <span class="sidebar-label" x-show="$store.app.booting && !connected" class="conn-reconnecting">Connecting...</span>
-      <span class="sidebar-label" x-show="!connected && !$store.app.booting && $store.app.connectionState === 'reconnecting'" class="conn-reconnecting">Reconnecting...</span>
+      <span class="sidebar-label" x-show="connected" x-text="agentCount + ' ' + $store.i18n.t('status.agentRunning')"></span>
+      <span class="sidebar-label" x-show="$store.app.booting && !connected" class="conn-reconnecting" x-i18n="status.connecting">Connecting...</span>
+        <span class="sidebar-label" x-show="!connected && !$store.app.booting && $store.app.connectionState === 'reconnecting'" class="conn-reconnecting" x-i18n="status.reconnecting">Reconnecting...</span>
       <span class="sidebar-label" x-show="!connected && !$store.app.booting && $store.app.connectionState !== 'reconnecting'" x-text="'disconnected' + ($store.app.lastError ? ' — ' + $store.app.lastError : '')">disconnected</span>
       <span class="conn-badge sidebar-label" :class="wsConnected ? 'ws' : 'http'" x-text="wsConnected ? 'WS' : 'HTTP'" x-show="connected"></span>
     </div>
@@ -4112,14 +4250,14 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
       <!-- Chat — primary action -->
       <div class="nav-section" x-data="{ collapsed: false }" aria-label="Chat">
         <div class="nav-section-title" @click="collapsed = !collapsed">
-          <span class="nav-label">Chat</span>
+          <span class="nav-label" x-i18n="navigation.chat">Chat</span>
           <span class="nav-section-chevron" :style="collapsed ? '' : 'transform:rotate(90deg)'">&rsaquo;</span>
         </div>
         <template x-if="!collapsed">
           <div x-transition>
             <a class="nav-item" :class="{ active: page === 'agents' }" @click="navigate('agents')" :aria-current="page === 'agents' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-              <span class="nav-label">Chat</span>
+              <span class="nav-label" x-i18n="navigation.chat">Chat</span>
             </a>
           </div>
         </template>
@@ -4128,26 +4266,26 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
       <!-- Monitor -->
       <div class="nav-section" x-data="{ collapsed: false }" aria-label="Monitor">
         <div class="nav-section-title" @click="collapsed = !collapsed">
-          <span class="nav-label">Monitor</span>
+          <span class="nav-label" x-i18n="navigation.monitor">Monitor</span>
           <span class="nav-section-chevron" :style="collapsed ? '' : 'transform:rotate(90deg)'">&rsaquo;</span>
         </div>
         <template x-if="!collapsed">
           <div x-transition>
             <a class="nav-item" :class="{ active: page === 'overview' }" @click="navigate('overview')" :aria-current="page === 'overview' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>
-              <span class="nav-label">Overview</span>
+              <span class="nav-label" x-i18n="navigation.overview">Overview</span>
             </a>
             <a class="nav-item" :class="{ active: page === 'analytics' }" @click="navigate('analytics')" :aria-current="page === 'analytics' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg></span>
-              <span class="nav-label">Analytics</span>
+              <span class="nav-label" x-i18n="navigation.analytics">Analytics</span>
             </a>
             <a class="nav-item" :class="{ active: page === 'logs' }" @click="navigate('logs')" :aria-current="page === 'logs' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span>
-              <span class="nav-label">Logs</span>
+              <span class="nav-label" x-i18n="navigation.logs">Logs</span>
             </a>
             <a class="nav-item" :class="{ active: page === 'delivery' }" @click="navigate('delivery')" :aria-current="page === 'delivery' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>
-              <span class="nav-label">Delivery</span>
+              <span class="nav-label" x-i18n="navigation.delivery">Delivery</span>
             </a>
           </div>
         </template>
@@ -4156,23 +4294,23 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
       <!-- Agents -->
       <div class="nav-section" x-data="{ collapsed: false }" aria-label="Agents">
         <div class="nav-section-title" @click="collapsed = !collapsed">
-          <span class="nav-label">Agents</span>
+          <span class="nav-label" x-i18n="navigation.agents">Agents</span>
           <span class="nav-section-chevron" :style="collapsed ? '' : 'transform:rotate(90deg)'">&rsaquo;</span>
         </div>
         <template x-if="!collapsed">
           <div x-transition>
             <a class="nav-item" :class="{ active: page === 'sessions' }" @click="navigate('sessions')" :aria-current="page === 'sessions' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="m12 2-10 5 10 5 10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
-              <span class="nav-label">Sessions</span>
+              <span class="nav-label" x-i18n="navigation.sessions">Sessions</span>
             </a>
             <a class="nav-item" :class="{ active: page === 'approvals' }" @click="navigate('approvals')" :aria-current="page === 'approvals' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
-              <span class="nav-label">Approvals</span>
+              <span class="nav-label" x-i18n="navigation.approvals">Approvals</span>
               <span x-show="$store.app.pendingApprovalsCount > 0" class="badge badge-warning" style="margin-left:auto;min-width:20px;text-align:center" x-text="$store.app.pendingApprovalsCount"></span>
             </a>
             <a class="nav-item" :class="{ active: page === 'a2a' }" @click="navigate('a2a')" :aria-current="page === 'a2a' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></svg></span>
-              <span class="nav-label">A2A</span>
+              <span class="nav-label" x-i18n="navigation.a2a">A2A</span>
             </a>
           </div>
         </template>
@@ -4181,18 +4319,18 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
       <!-- Automation -->
       <div class="nav-section" x-data="{ collapsed: false }" aria-label="Automation">
         <div class="nav-section-title" @click="collapsed = !collapsed">
-          <span class="nav-label">Automation</span>
+          <span class="nav-label" x-i18n="navigation.automation">Automation</span>
           <span class="nav-section-chevron" :style="collapsed ? '' : 'transform:rotate(90deg)'">&rsaquo;</span>
         </div>
         <template x-if="!collapsed">
           <div x-transition>
             <a class="nav-item" :class="{ active: page === 'workflows' }" @click="navigate('workflows')" :aria-current="page === 'workflows' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M6 3v12M18 9a9 9 0 0 1-9 9"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/></svg></span>
-              <span class="nav-label">Workflows</span>
+              <span class="nav-label" x-i18n="navigation.workflows">Workflows</span>
             </a>
             <a class="nav-item" :class="{ active: page === 'scheduler' }" @click="navigate('scheduler')" :aria-current="page === 'scheduler' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span>
-              <span class="nav-label">Scheduler</span>
+              <span class="nav-label" x-i18n="navigation.scheduler">Scheduler</span>
             </a>
           </div>
         </template>
@@ -4201,22 +4339,22 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
       <!-- Extensions -->
       <div class="nav-section" x-data="{ collapsed: false }" aria-label="Extensions">
         <div class="nav-section-title" @click="collapsed = !collapsed">
-          <span class="nav-label">Extensions</span>
+          <span class="nav-label" x-i18n="navigation.extensions">Extensions</span>
           <span class="nav-section-chevron" :style="collapsed ? '' : 'transform:rotate(90deg)'">&rsaquo;</span>
         </div>
         <template x-if="!collapsed">
           <div x-transition>
             <a class="nav-item" :class="{ active: page === 'channels' }" @click="navigate('channels')" :aria-current="page === 'channels' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M10 3l-2 18M16 3l-2 18"/></svg></span>
-              <span class="nav-label">Channels</span>
+              <span class="nav-label" x-i18n="navigation.channels">Channels</span>
             </a>
             <a class="nav-item" :class="{ active: page === 'skills' }" @click="navigate('skills')" :aria-current="page === 'skills' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg></span>
-              <span class="nav-label">Skills</span>
+              <span class="nav-label" x-i18n="navigation.skills">Skills</span>
             </a>
             <a class="nav-item" :class="{ active: page === 'hands' }" @click="navigate('hands')" :aria-current="page === 'hands' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v6"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-5.7-2.4L3.4 16a2 2 0 0 1 3.2-2.4L8 15"/></svg></span>
-              <span class="nav-label">Hands</span>
+              <span class="nav-label" x-i18n="navigation.hands">Hands</span>
             </a>
           </div>
         </template>
@@ -4225,18 +4363,18 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
       <!-- System -->
       <div class="nav-section" x-data="{ collapsed: false }" aria-label="System">
         <div class="nav-section-title" @click="collapsed = !collapsed">
-          <span class="nav-label">System</span>
+          <span class="nav-label" x-i18n="navigation.system">System</span>
           <span class="nav-section-chevron" :style="collapsed ? '' : 'transform:rotate(90deg)'">&rsaquo;</span>
         </div>
         <template x-if="!collapsed">
           <div x-transition>
             <a class="nav-item" :class="{ active: page === 'settings' }" @click="navigate('settings')" :aria-current="page === 'settings' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg></span>
-              <span class="nav-label">Settings</span>
+              <span class="nav-label" x-i18n="navigation.settings">Settings</span>
             </a>
             <a class="nav-item" :class="{ active: page === 'pairing' }" @click="navigate('pairing')" :aria-current="page === 'pairing' ? 'page' : false">
               <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linecap="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg></span>
-              <span class="nav-label">Pairing</span>
+              <span class="nav-label" x-i18n="navigation.pairing">Pairing</span>
             </a>
           </div>
         </template>
@@ -4278,7 +4416,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
     <template x-if="page === 'overview'">
       <div x-data="overviewPage" x-init="init()">
         <div class="page-header">
-          <h2>Overview</h2>
+          <h2 x-i18n="overview.title">Overview</h2>
           <div class="flex items-center gap-2">
             <span class="health-indicator" :class="health.status === 'ok' ? 'health-ok' : 'health-down'" x-text="health.status === 'ok' ? 'Healthy' : 'Unreachable'"></span>
             <button class="btn btn-ghost btn-sm" @click="silentRefresh()" title="Refresh" style="padding:4px 8px">
@@ -4303,21 +4441,21 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
             <div class="empty-state-icon">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--error)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
             </div>
-            <h3 style="color:var(--error)">Connection Error</h3>
+            <h3 style="color:var(--error)" x-i18n="overview.connectionError">Connection Error</h3>
             <p class="text-xs text-dim" x-text="loadError"></p>
-            <button class="btn btn-primary btn-sm" @click="loadData()" style="margin-top:8px">Retry</button>
+            <button class="btn btn-primary btn-sm" @click="loadData()" style="margin-top:8px" x-i18n="common.retry">Retry</button>
           </div>
           <!-- Setup Checklist -->
           <div class="setup-checklist" x-show="!loading && !loadError && setupProgress < 100 && !checklistDismissed" style="animation:slideUp 0.3s var(--ease-spring)">
             <div class="card" style="border-left:4px solid var(--accent)">
               <div class="flex justify-between items-center mb-2">
                 <div>
-                  <div class="card-header" style="margin:0">Getting Started</div>
+                  <div class="card-header" style="margin:0" x-i18n="setup.gettingStarted">Getting Started</div>
                   <div class="text-xs text-dim" x-text="setupDoneCount + ' of 5 steps completed'"></div>
                 </div>
                 <div class="flex gap-2">
-                  <button class="btn btn-primary btn-sm" @click="location.hash='wizard'">Setup Wizard</button>
-                  <button class="btn btn-ghost btn-sm" @click="dismissChecklist()">Dismiss</button>
+                  <button class="btn btn-primary btn-sm" @click="location.hash='wizard'" x-i18n="setup.setupWizard">Setup Wizard</button>
+                  <button class="btn btn-ghost btn-sm" @click="dismissChecklist()" x-i18n="setup.dismiss">Dismiss</button>
                 </div>
               </div>
               <div class="progress-bar mb-2" style="margin-top:8px">
@@ -4337,12 +4475,12 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
           </div>
           <!-- Onboarding banner -->
           <div class="onboarding-banner" x-show="!loading && !loadError && $store.app.showOnboarding && checklistDismissed">
-            <h3>Welcome to FangClaw-go</h3>
-            <p style="font-size:12px;color:var(--text-dim)">Get started quickly with the guided Setup Wizard, or configure manually:</p>
+            <h3 x-i18n="setup.welcome">Welcome to FangClaw-go</h3>
+            <p style="font-size:12px;color:var(--text-dim)" x-i18n="setup.welcomeDesc">Get started quickly with the guided Setup Wizard, or configure manually:</p>
             <div class="flex gap-2">
-              <button class="btn btn-primary" @click="location.hash='wizard'">Launch Setup Wizard</button>
-              <button class="btn btn-ghost" @click="location.hash='settings'">Configure Manually</button>
-              <button class="btn btn-ghost" @click="$store.app.dismissOnboarding()">Dismiss</button>
+              <button class="btn btn-primary" @click="location.hash='wizard'" x-i18n="setup.launchSetupWizard">Launch Setup Wizard</button>
+              <button class="btn btn-ghost" @click="location.hash='settings'" x-i18n="setup.configureManually">Configure Manually</button>
+              <button class="btn btn-ghost" @click="$store.app.dismissOnboarding()" x-i18n="setup.dismiss">Dismiss</button>
             </div>
           </div>
           <div x-show="!loading && !loadError" style="animation:fadeIn 0.3s">
@@ -4356,7 +4494,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                 </div>
                 <div>
                   <div class="stat-value" :class="(status.agent_count || 0) > 0 ? 'stat-value-success' : ''" x-text="status.agent_count || 0"></div>
-                  <div class="stat-label">Agents Running</div>
+                  <div class="stat-label" x-i18n="overview.agentsRunning">Agents Running</div>
                 </div>
               </div>
             </div>
@@ -4367,7 +4505,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                 </div>
                 <div>
                   <div class="stat-value" x-text="formatNumber(usageSummary.total_tokens)"></div>
-                  <div class="stat-label">Tokens Used</div>
+                  <div class="stat-label" x-i18n="overview.tokensUsed">Tokens Used</div>
                 </div>
               </div>
             </div>
@@ -4378,7 +4516,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                 </div>
                 <div>
                   <div class="stat-value stat-value-accent" x-text="formatCost(usageSummary.total_cost)"></div>
-                  <div class="stat-label">Total Cost</div>
+                  <div class="stat-label" x-i18n="overview.totalCost">Total Cost</div>
                 </div>
               </div>
             </div>
@@ -4389,7 +4527,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                 </div>
                 <div>
                   <div class="stat-value" x-text="formatUptime(status.uptime_seconds)"></div>
-                  <div class="stat-label">Uptime</div>
+                  <div class="stat-label" x-i18n="overview.uptime">Uptime</div>
                 </div>
               </div>
             </div>
@@ -4399,23 +4537,23 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
           <div class="stats-row animate-entry stagger-5" style="margin-bottom:16px">
             <div class="stat-card" @click="location.hash='channels'" style="cursor:pointer">
               <div class="stat-value" style="font-size:18px" x-text="channels.length"></div>
-              <div class="stat-label">Channels</div>
+              <div class="stat-label" x-i18n="overview.channels">Channels</div>
             </div>
             <div class="stat-card" @click="location.hash='skills'" style="cursor:pointer">
               <div class="stat-value" style="font-size:18px" x-text="skillCount"></div>
-              <div class="stat-label">Skills</div>
+              <div class="stat-label" x-i18n="overview.skills">Skills</div>
             </div>
             <div class="stat-card">
               <div class="stat-value" style="font-size:18px" x-text="connectedMcp.length"></div>
-              <div class="stat-label">MCP Servers</div>
+              <div class="stat-label" x-i18n="overview.mcpServers">MCP Servers</div>
             </div>
             <div class="stat-card">
               <div class="stat-value" style="font-size:18px" x-text="formatNumber(usageSummary.total_tools)"></div>
-              <div class="stat-label">Tool Calls</div>
+              <div class="stat-label" x-i18n="overview.toolCalls">Tool Calls</div>
             </div>
             <div class="stat-card">
               <div class="stat-value" :class="configuredProviders.length > 0 ? 'stat-value-success' : ''" style="font-size:18px" x-text="configuredProviders.length"></div>
-              <div class="stat-label">Providers</div>
+              <div class="stat-label" x-i18n="overview.providers">Providers</div>
             </div>
           </div>
 
@@ -4446,10 +4584,10 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                 System Health
               </div>
               <div class="detail-grid" style="margin-top:8px">
-                <div class="detail-row"><span class="detail-label">Status</span><span class="badge" :class="health.status === 'ok' ? 'badge-running' : 'badge-crashed'" x-text="health.status || 'unknown'"></span></div>
-                <div class="detail-row"><span class="detail-label">Version</span><span class="detail-value font-mono" x-text="status.version || '-'"></span></div>
-                <div class="detail-row"><span class="detail-label">Provider</span><span class="detail-value" x-text="status.default_provider || '-'"></span></div>
-                <div class="detail-row"><span class="detail-label">Model</span><span class="detail-value font-mono" style="font-size:11px" x-text="status.default_model || '-'"></span></div>
+                <div class="detail-row"><span class="detail-label" x-i18n="common.status">Status</span><span class="badge" :class="health.status === 'ok' ? 'badge-running' : 'badge-crashed'" x-text="health.status || 'unknown'"></span></div>
+                <div class="detail-row"><span class="detail-label" x-i18n="common.version">Version</span><span class="detail-value font-mono" x-text="status.version || '-'"></span></div>
+                <div class="detail-row"><span class="detail-label" x-i18n="common.provider">Provider</span><span class="detail-value" x-text="status.default_provider || '-'"></span></div>
+                <div class="detail-row"><span class="detail-label" x-i18n="common.model">Model</span><span class="detail-value font-mono" style="font-size:11px" x-text="status.default_model || '-'"></span></div>
               </div>
             </div>
 
@@ -4460,15 +4598,15 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                 Security Systems
               </div>
               <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">
-                <span class="badge badge-success" style="font-size:9px;padding:2px 8px">Merkle Audit</span>
-                <span class="badge badge-success" style="font-size:9px;padding:2px 8px">Taint Tracking</span>
-                <span class="badge badge-success" style="font-size:9px;padding:2px 8px">WASM Sandbox</span>
-                <span class="badge badge-success" style="font-size:9px;padding:2px 8px">GCRA Rate Limit</span>
+                <span class="badge badge-success" style="font-size:9px;padding:2px 8px" x-i18n="overview.merkleAudit">Merkle Audit</span>
+                <span class="badge badge-success" style="font-size:9px;padding:2px 8px" x-i18n="overview.taintTracking">Taint Tracking</span>
+                <span class="badge badge-success" style="font-size:9px;padding:2px 8px" x-i18n="overview.wasmSandbox">WASM Sandbox</span>
+                <span class="badge badge-success" style="font-size:9px;padding:2px 8px" x-i18n="overview.gcraRateLimit">GCRA Rate Limit</span>
                 <span class="badge badge-success" style="font-size:9px;padding:2px 8px">Ed25519 Signing</span>
-                <span class="badge badge-success" style="font-size:9px;padding:2px 8px">SSRF Protection</span>
-                <span class="badge badge-success" style="font-size:9px;padding:2px 8px">Secret Zeroize</span>
-                <span class="badge badge-success" style="font-size:9px;padding:2px 8px">Loop Guard</span>
-                <span class="badge badge-success" style="font-size:9px;padding:2px 8px">Session Repair</span>
+                <span class="badge badge-success" style="font-size:9px;padding:2px 8px" x-i18n="overview.ssrfProtection">SSRF Protection</span>
+                <span class="badge badge-success" style="font-size:9px;padding:2px 8px" x-i18n="overview.secretZeroize">Secret Zeroize</span>
+                <span class="badge badge-success" style="font-size:9px;padding:2px 8px" x-i18n="overview.loopGuard">Loop Guard</span>
+                <span class="badge badge-success" style="font-size:9px;padding:2px 8px" x-i18n="overview.sessionRepair">Session Repair</span>
               </div>
               <div class="text-xs text-dim" style="margin-top:8px">9 defense-in-depth systems active</div>
             </div>
@@ -4507,27 +4645,27 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
           <!-- Quick Actions -->
           <div class="card mt-4" style="background:var(--bg-elevated)">
-            <div class="card-header" style="margin-bottom:8px">Quick Actions</div>
+            <div class="card-header" style="margin-bottom:8px" x-i18n="overview.quickActions">Quick Actions</div>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
               <button class="btn btn-ghost btn-sm" @click="location.hash='agents'" style="display:flex;align-items:center;gap:4px">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
-                New Agent
+                <span x-i18n="overview.newAgent">New Agent</span>
               </button>
               <button class="btn btn-ghost btn-sm" @click="location.hash='skills'" style="display:flex;align-items:center;gap:4px">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg>
-                Browse Skills
+                <span x-i18n="overview.browseSkills">Browse Skills</span>
               </button>
               <button class="btn btn-ghost btn-sm" @click="location.hash='channels'" style="display:flex;align-items:center;gap:4px">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16M4 15h16M10 3l-2 18M16 3l-2 18"/></svg>
-                Add Channel
+                <span x-i18n="overview.addChannel">Add Channel</span>
               </button>
               <button class="btn btn-ghost btn-sm" @click="location.hash='workflows'" style="display:flex;align-items:center;gap:4px">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v12M18 9a9 9 0 0 1-9 9"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/></svg>
-                Create Workflow
+                <span x-i18n="overview.createWorkflow">Create Workflow</span>
               </button>
               <button class="btn btn-ghost btn-sm" @click="location.hash='settings'" style="display:flex;align-items:center;gap:4px">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>
-                Settings
+                <span x-i18n="navigation.settings">Settings</span>
               </button>
             </div>
           </div>
@@ -4537,9 +4675,9 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
             <div class="flex justify-between items-center">
               <div class="card-header" style="margin:0">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;margin-right:4px;vertical-align:-2px"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                Recent Activity
+                <span x-i18n="overview.recentActivity">Recent Activity</span>
               </div>
-              <a class="btn btn-ghost btn-sm" @click="location.hash='logs'" style="font-size:10px;padding:2px 8px">View All</a>
+              <a class="btn btn-ghost btn-sm" @click="location.hash='logs'" style="font-size:10px;padding:2px 8px" x-i18n="common.viewAll">View All</a>
             </div>
             <div style="margin-top:12px;display:flex;flex-direction:column;gap:1px">
               <template x-for="(e, idx) in recentAudit" :key="e.seq">
@@ -4566,9 +4704,9 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
               <div class="empty-state-icon" style="margin:0 auto 8px">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
               </div>
-              <h3 style="color:var(--text-secondary);margin-bottom:4px">No Recent Activity</h3>
-              <p class="text-xs text-dim">Activity will appear here once agents start processing.</p>
-              <button class="btn btn-primary btn-sm" @click="location.hash='agents'" style="margin-top:12px">Chat with an Agent</button>
+              <h3 style="color:var(--text-secondary);margin-bottom:4px" x-i18n="overview.noRecentActivity">No Recent Activity</h3>
+              <p class="text-xs text-dim" x-i18n="overview.activityWillAppear">Activity will appear here once agents start processing.</p>
+              <button class="btn btn-primary btn-sm" @click="location.hash='agents'" style="margin-top:12px" x-i18n="overview.chatWithAgent">Chat with an Agent</button>
             </div>
           </div>
 
@@ -4579,8 +4717,8 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
               </div>
               <div>
-                <div class="quick-action-label">Create Agent</div>
-                <div class="quick-action-desc">Spawn a new agent</div>
+                <div class="quick-action-label" x-i18n="overview.createAgent">Create Agent</div>
+                <div class="quick-action-desc" x-i18n="overview.spawnAgent">Spawn a new agent</div>
               </div>
             </div>
             <div class="quick-action-card" @click="location.hash='settings'">
@@ -4588,8 +4726,8 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
               </div>
               <div>
-                <div class="quick-action-label">Configure Provider</div>
-                <div class="quick-action-desc">Set up an LLM provider</div>
+                <div class="quick-action-label" x-i18n="overview.configureProvider">Configure Provider</div>
+                <div class="quick-action-desc" x-i18n="overview.setupLLMProvider">Set up an LLM provider</div>
               </div>
             </div>
             <div class="quick-action-card" @click="location.hash='skills'">
@@ -4597,8 +4735,8 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--info)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg>
               </div>
               <div>
-                <div class="quick-action-label">Browse Skills</div>
-                <div class="quick-action-desc">Explore available skills</div>
+                <div class="quick-action-label" x-i18n="overview.browseSkills">Browse Skills</div>
+                <div class="quick-action-desc" x-i18n="overview.exploreSkills">Explore available skills</div>
               </div>
             </div>
           </div>
@@ -4618,7 +4756,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
             <!-- Chat header with back button -->
             <div class="page-header" x-show="currentAgent">
               <div class="flex items-center gap-2" style="min-width:0">
-                <button class="btn btn-ghost btn-sm" @click="$dispatch('close-chat')" title="Back to Agents" style="padding:4px 8px;margin-right:4px">
+                <button class="btn btn-ghost btn-sm" @click="$dispatch('close-chat')" :title="$store.i18n.t('agent.backToAgents')" style="padding:4px 8px;margin-right:4px">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
                 </button>
                 <span x-show="currentAgent && currentAgent.identity && currentAgent.identity.emoji" x-text="currentAgent && currentAgent.identity && currentAgent.identity.emoji" style="font-size:20px;line-height:1"></span>
@@ -4629,54 +4767,54 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
               </div>
               <div class="flex gap-2 items-center">
                 <span class="badge badge-running" x-show="currentAgent && !sending" style="animation:fadeIn 0.2s">
-                  <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--success);margin-right:2px"></span> Ready
+                  <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--success);margin-right:2px"></span> <span x-i18n="agent.ready">Ready</span>
                 </span>
                 <span class="badge badge-suspended" x-show="sending" style="animation:fadeIn 0.2s">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                  Generating...
+                  <span x-i18n="agent.generating">Generating...</span>
                 </span>
-                <span class="queue-badge" x-show="messageQueue.length > 0" x-text="'+' + messageQueue.length + ' queued'"></span>
+                <span class="queue-badge" x-show="messageQueue.length > 0" x-text="'+' + messageQueue.length + ' ' + $store.i18n.t('agent.queued')"></span>
                 <!-- Open details button -->
-                <button class="btn btn-ghost btn-sm" @click="openAgentDetails(currentAgent)" title="Agent Details" style="padding:4px 8px">
+                <button class="btn btn-ghost btn-sm" @click="openAgentDetails(currentAgent)" :title="$store.i18n.t('agent.agentDetails')" style="padding:4px 8px">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                 </button>
                 <!-- Session switcher -->
                 <div style="position:relative">
-                  <button class="btn btn-ghost btn-sm" @click="sessionsOpen = !sessionsOpen" title="Sessions" style="position:relative">
+                  <button class="btn btn-ghost btn-sm" @click="sessionsOpen = !sessionsOpen" :title="$store.i18n.t('agent.sessions')" style="position:relative">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
                     <span class="session-count-badge" x-show="sessions.length > 1" x-text="sessions.length"></span>
                   </button>
                   <div class="session-dropdown" x-show="sessionsOpen" @click.outside="sessionsOpen = false" x-transition>
                     <div class="session-dropdown-header">
-                      <span class="text-xs font-bold">Sessions</span>
-                      <button class="btn btn-ghost btn-sm" @click="createSession()" style="padding:2px 6px;font-size:11px">+ New</button>
+                      <span class="text-xs font-bold" x-i18n="agent.sessions">Sessions</span>
+                      <button class="btn btn-ghost btn-sm" @click="createSession()" style="padding:2px 6px;font-size:11px" x-i18n="agent.newSession">+ New</button>
                     </div>
                     <template x-for="s in sessions" :key="s.session_id">
                       <div class="session-item" :class="{ active: s.active }" @click="if (!s.active) { switchSession(s.session_id); sessionsOpen = false; }">
                         <span class="session-dot" :class="s.active ? 'active' : ''"></span>
                         <div style="flex:1;min-width:0">
                           <div class="text-xs font-bold truncate" x-text="s.label || 'Session ' + s.session_id.substring(0, 8)"></div>
-                          <div class="text-xs text-dim" x-text="s.message_count + ' messages'"></div>
+                          <div class="text-xs text-dim" x-text="s.message_count + ' ' + $store.i18n.t('agent.messages')"></div>
                         </div>
                       </div>
                     </template>
-                    <div class="text-xs text-dim" style="padding:8px 12px;text-align:center" x-show="!sessions.length">No sessions</div>
+                    <div class="text-xs text-dim" style="padding:8px 12px;text-align:center" x-show="!sessions.length" x-i18n="agent.noSessions">No sessions</div>
                   </div>
                 </div>
-                <button class="btn btn-ghost btn-sm" @click="toggleSearch()" title="Search messages (Ctrl+F)">
+                <button class="btn btn-ghost btn-sm" @click="toggleSearch()" :title="$store.i18n.t('agent.searchMessages') + ' (Ctrl+F)'">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
                 </button>
                 <button class="btn btn-ghost btn-sm" @click="$store.app.toggleFocusMode()" title="Ctrl+Shift+F">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><template x-if="!$store.app.focusMode"><g><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></g></template><template x-if="$store.app.focusMode"><g><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></g></template></svg>
                 </button>
-                <button class="btn btn-danger btn-sm" @click="killAgent()">Stop</button>
+                <button class="btn btn-danger btn-sm" @click="killAgent()" x-i18n="agent.stop">Stop</button>
               </div>
             </div>
 
             <!-- Search bar -->
             <div class="chat-search-bar" x-show="searchOpen" x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 transform -translate-y-2" x-transition:enter-end="opacity-100 transform translate-y-0">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <input type="text" id="chat-search-input" x-model="searchQuery" x-ref="searchInput" placeholder="Search messages..." class="chat-search-input" @keydown.escape="toggleSearch()">
+              <input type="text" id="chat-search-input" x-model="searchQuery" x-ref="searchInput" :placeholder="$store.i18n.t('agent.searchMessages')" class="chat-search-input" @keydown.escape="toggleSearch()">
               <span class="text-xs text-dim" x-show="searchQuery.trim()" x-text="filteredMessages.length + ' of ' + messages.length"></span>
               <button class="btn btn-ghost btn-sm" @click="toggleSearch()" style="padding:2px 6px">&times;</button>
             </div>
@@ -4694,7 +4832,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                       <div class="message-body">
                         <!-- Copy button on hover -->
                         <div class="message-actions" x-show="msg.text && msg.text.trim() && !msg.thinking && !msg.streaming">
-                          <button class="message-action-btn" :class="{ copied: msg._copied }" @click="copyMessage(msg)" :title="msg._copied ? 'Copied!' : 'Copy message'">
+                          <button class="message-action-btn" :class="{ copied: msg._copied }" @click="copyMessage(msg)" :title="msg._copied ? $store.i18n.t('agent.copied') : $store.i18n.t('agent.copyMessage')">
                             <svg x-show="!msg._copied" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
                             <svg x-show="msg._copied" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
                           </button>
@@ -4723,7 +4861,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                               <template x-if="!tool.running && tool.is_error"><span class="tool-icon-err">&#10007;</span></template>
                               <span class="tool-card-icon" x-html="toolIcon(tool.name)"></span>
                               <span class="tool-card-name" x-text="tool.name"></span>
-                              <span class="text-xs text-dim" x-text="tool.running ? 'running...' : (tool.is_error ? 'error' : (tool.result ? (tool.result.length > 500 ? Math.round(tool.result.length/1024) + 'KB' : 'done') : 'done'))" style="margin-left:auto"></span>
+                              <span class="text-xs text-dim" x-text="tool.running ? $store.i18n.t('agent.running') : (tool.is_error ? $store.i18n.t('agent.error') : (tool.result ? (tool.result.length > 500 ? Math.round(tool.result.length/1024) + $store.i18n.t('agent.kb') : $store.i18n.t('agent.done')) : $store.i18n.t('agent.done')))" style="margin-left:auto"></span>
                               <span class="tool-expand-chevron" :style="tool.expanded ? 'transform:rotate(90deg)' : ''" style="transition:transform 0.15s">&#9654;</span>
                             </div>
                             <!-- Render generated images above the raw result -->
@@ -4744,11 +4882,11 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                             </div>
                             <div class="tool-card-body" x-show="tool.expanded" x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100">
                               <div x-show="tool.input" style="margin-bottom:6px">
-                                <div class="tool-section-label">Input</div>
+                                <div class="tool-section-label" x-i18n="agent.input">Input</div>
                                 <pre class="tool-pre" x-text="formatToolJson(tool.input)"></pre>
                               </div>
                               <div x-show="tool.result">
-                                <div class="tool-section-label">Result <span class="text-xs text-muted" x-show="tool.result && tool.result.length > 200" x-text="'(' + tool.result.length + ' chars)'"></span></div>
+                                <div class="tool-section-label"><span x-i18n="agent.result">Result</span> <span class="text-xs text-muted" x-show="tool.result && tool.result.length > 200" x-text="'(' + tool.result.length + ' ' + $store.i18n.t('agent.chars') + ')'"></span></div>
                                 <pre class="tool-pre" :class="{ 'tool-pre-error': tool.is_error, 'tool-pre-short': !tool.is_error && tool.result && tool.result.length < 100, 'tool-pre-medium': !tool.is_error && tool.result && tool.result.length >= 100 && tool.result.length < 500 }" x-text="formatToolJson(tool.result)"></pre>
                               </div>
                             </div>
@@ -4767,7 +4905,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
               <!-- Drop zone overlay -->
               <div x-show="dragOver" style="position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:var(--surface);opacity:0.92;border:2px dashed var(--accent);border-radius:8px;pointer-events:none">
-                <span style="font-size:16px;color:var(--accent);font-weight:600">Drop files here</span>
+                <span style="font-size:16px;color:var(--accent);font-weight:600" x-i18n="agent.dropFiles">Drop files here</span>
               </div>
             </div>
 
@@ -4796,12 +4934,12 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
               </div>
               <!-- Input row -->
               <div class="input-row">
-                <button class="btn btn-ghost btn-sm" @click="$refs.fileInput.click()" title="Attach file" style="padding:6px 8px;flex-shrink:0">
+                <button class="btn btn-ghost btn-sm" @click="$refs.fileInput.click()" :title="$store.i18n.t('agent.attachFile')" style="padding:6px 8px;flex-shrink:0">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                 </button>
                 <input type="file" x-ref="fileInput" multiple accept="image/*,.txt,.pdf,.md,.json,.csv,.mp3,.wav,.ogg,.webm,.m4a,.flac" @change="addFiles($event.target.files); $event.target.value = ''" style="display:none">
                 <!-- Mic button -->
-                <button class="btn btn-ghost btn-sm" :class="{ 'btn-recording': recording }" @mousedown="startRecording()" @mouseup="stopRecording()" @mouseleave="if(recording) stopRecording()" title="Hold to record voice" style="padding:6px 8px;flex-shrink:0">
+                <button class="btn btn-ghost btn-sm" :class="{ 'btn-recording': recording }" @mousedown="startRecording()" @mouseup="stopRecording()" @mouseleave="if(recording) stopRecording()" :title="$store.i18n.t('agent.holdToRecord')" style="padding:6px 8px;flex-shrink:0">
                   <svg x-show="!recording" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
                   <span x-show="recording" class="recording-dot"></span>
                 </button>
@@ -4811,7 +4949,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   <span class="text-xs" style="color:var(--danger)" x-text="formatRecordingTime()"></span>
                 </div>
                 <!-- @keydown.enter.prevent="if(!$event.shiftKey){if(showSlashMenu && filteredSlashCommands.length){executeSlashCommand(filteredSlashCommands[slashIdx].cmd)}else{sendMessage()}}" -->
-                <textarea id="msg-input" rows="1" :placeholder="recording ? 'Recording... release to send' : 'Message FangClaw-go... (/ for commands)'"
+                <textarea id="msg-input" rows="1" :placeholder="recording ? $store.i18n.t('agent.recordingRelease') : $store.i18n.t('agent.messagePlaceholder')"
                           @keydown.enter.prevent="if(!$event.shiftKey){if(showSlashMenu && filteredSlashCommands.length){executeSlashCommand(filteredSlashCommands[slashIdx].cmd)}else{sendMessage()}}"
                           @keydown.escape="showSlashMenu = false"
                           @keydown.arrow-up.prevent="if(showSlashMenu){slashIdx = Math.max(0, slashIdx - 1)}"
@@ -4849,17 +4987,17 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
         <!-- MODE 2: Agent picker + Templates (no agent chatting) -->
         <div x-show="!activeChatAgent" class="chat-wrapper">
         <div class="page-header">
-          <h2>Chat</h2>
+          <h2 x-i18n="navigation.chat">Chat</h2>
           <div class="flex gap-2">
-            <button class="btn btn-ghost btn-sm" x-show="agents.length" @click="openSpawnWizard()">+ New Agent</button>
-            <button class="btn btn-danger btn-sm" x-show="agents.length > 1" @click="killAllAgents()">Stop All</button>
+            <button class="btn btn-ghost btn-sm" x-show="agents.length" @click="openSpawnWizard()">+ <span x-i18n="agent.newAgent">New Agent</span></button>
+            <button class="btn btn-danger btn-sm" x-show="agents.length > 1" @click="killAllAgents()" x-i18n="common.stopAll">Stop All</button>
           </div>
         </div>
         <div class="page-body" style="overflow-y:auto;padding:24px">
 
           <!-- Running agents — click to chat -->
           <div x-show="agents.length" style="margin-bottom:28px">
-            <div class="text-sm font-bold mb-2" style="color:var(--text-dim);letter-spacing:0.5px;font-size:9px;text-transform:uppercase">Your Agents (Tip：you can enhance the agent by clicking <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg> when you chat with the agent)</div>
+            <div class="text-sm font-bold mb-2" style="color:var(--text-dim);letter-spacing:0.5px;font-size:9px;text-transform:uppercase;display:flex;align-items:center;gap:4px"><span x-i18n="agent.yourAgents">Your Agents</span><span style="font-weight:normal">(Click</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg><span style="font-weight:normal">to enhance agent)</span></div>
             <div style="display:flex;flex-wrap:wrap;gap:10px">
               <template x-for="agent in agents" :key="agent.id">
                 <div class="agent-chip" @click="chatWithAgent(agent)" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);transition:all 0.2s var(--ease-spring, ease);min-width:200px;box-shadow:var(--shadow-xs)" @mouseenter="$el.style.borderColor='var(--accent)';$el.style.transform='translateY(-2px)';$el.style.boxShadow='var(--shadow-md)'" @mouseleave="$el.style.borderColor='var(--border)';$el.style.transform='';$el.style.boxShadow='var(--shadow-xs)'">
@@ -5004,9 +5142,9 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                       </div>
                     </div>
                   </template>
-                  <div x-show="!detailAvailableSkills.length && !detailSkillsLoading" class="text-center text-dim" style="padding:24px">No skills available</div>
+                  <div x-show="!detailAvailableSkills.length && !detailSkillsLoading" class="text-center text-dim" style="padding:24px" x-i18n="agent.noSkillsAvailable">No skills available</div>
                   <button class="btn btn-primary mt-4" @click="saveDetailSkills()" :disabled="detailSkillsSaving">
-                    <span x-show="!detailSkillsSaving">Save Skills</span><span x-show="detailSkillsSaving">Saving...</span>
+                    <span x-show="!detailSkillsSaving" x-i18n="agent.saveSkills">Save Skills</span><span x-show="detailSkillsSaving" x-i18n="common.saving">Saving...</span>
                   </button>
                 </div>
               </div>
@@ -5026,23 +5164,23 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                     </template>
                   </div>
                 </div>
-                <div class="form-group"><label>Color</label><input type="color" x-model="configForm.color" style="width:48px;height:32px;border:none;cursor:pointer;background:none"></div>
-                <div class="form-group"><label>Archetype</label>
+                <div class="form-group"><label x-i18n="agent.color">Color</label><input type="color" x-model="configForm.color" style="width:48px;height:32px;border:none;cursor:pointer;background:none"></div>
+                <div class="form-group"><label x-i18n="agent.archetype">Archetype</label>
                   <select class="form-select" x-model="configForm.archetype">
-                    <option value="">None</option>
+                    <option value="" x-i18n="common.none">None</option>
                     <template x-for="a in archetypeOptions" :key="a"><option :value="a.toLowerCase()" x-text="a"></option></template>
                   </select>
                 </div>
-                <div class="form-group"><label>Vibe</label>
+                <div class="form-group"><label x-i18n="agent.vibe">Vibe</label>
                   <select class="form-select" x-model="configForm.vibe">
-                    <option value="">None</option>
-                    <option value="professional">Professional</option><option value="friendly">Friendly</option>
-                    <option value="technical">Technical</option><option value="creative">Creative</option>
-                    <option value="concise">Concise</option><option value="mentor">Mentor</option>
+                    <option value="" x-i18n="common.none">None</option>
+                    <option value="professional" x-i18n="agent.professional">Professional</option><option value="friendly" x-i18n="agent.friendly">Friendly</option>
+                    <option value="technical" x-i18n="agent.technical">Technical</option><option value="creative" x-i18n="agent.creative">Creative</option>
+                    <option value="concise" x-i18n="agent.concise">Concise</option><option value="mentor" x-i18n="agent.mentor">Mentor</option>
                   </select>
                 </div>
                 <button class="btn btn-primary mt-4" @click="saveConfig()" :disabled="configSaving">
-                  <span x-show="!configSaving">Save Config</span><span x-show="configSaving">Saving...</span>
+                  <span x-show="!configSaving" x-i18n="agent.saveConfig">Save Config</span><span x-show="configSaving" x-i18n="common.saving">Saving...</span>
                 </button>
               </div>
             </div>
@@ -5054,25 +5192,25 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
             <div class="modal-overlay">
               <div class="modal" style="max-width:560px">
                 <div class="modal-header">
-                  <h3>Create Agent</h3>
+                  <h3 x-i18n="agent.createAgent">Create Agent</h3>
                   <button class="modal-close" @click="showSpawnModal = false">&times;</button>
                 </div>
 
                 <!-- Wizard / TOML toggle -->
                 <div class="tabs" style="margin-bottom:12px">
-                  <div class="tab" :class="{ active: spawnMode === 'smart' }" @click="spawnMode = 'smart'">Smart</div>
-                  <div class="tab" :class="{ active: spawnMode === 'wizard' }" @click="spawnMode = 'wizard'">Wizard</div>
-                  <!-- comment on Raw Toml tab --><!--div class="tab" :class="{ active: spawnMode === 'toml' }" @click="spawnMode = 'toml'">Raw TOML</div-->  
+                  <div class="tab" :class="{ active: spawnMode === 'smart' }" @click="spawnMode = 'smart'" x-i18n="agent.smart">Smart</div>
+                  <div class="tab" :class="{ active: spawnMode === 'wizard' }" @click="spawnMode = 'wizard'" x-i18n="agent.wizard">Wizard</div>
+                  <!-- comment on Raw Toml tab --><!--div class="tab" :class="{ active: spawnMode === 'toml' }" @click="spawnMode = 'toml'" x-i18n="agent.rawToml">Raw TOML</div-->  
                 </div>
 
                 <!-- Smart mode: AI-powered agent creation -->
                 <div x-show="spawnMode === 'smart'">
                   <div class="form-group">
-                    <label>Describe your agent</label>
+                    <label x-i18n="agent.describeAgent">Describe your agent</label>
                     <textarea class="form-textarea" style="height:100px" x-model="smartIntent" placeholder="e.g. Create a web research assistant that can search the web and summarize findings"></textarea>
                   </div>
                   <div class="form-group" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                    <label style="font-size:12px;color:var(--text-dim)">Quick capabilities:</label>
+                    <label style="font-size:12px;color:var(--text-dim)" x-i18n="agent.quickCapabilities">Quick capabilities:</label>
                     <template x-for="cap in ['web', 'file', 'browser', 'memory', 'code', 'agent', 'schedule', 'mcp']" :key="cap">
                       <button 
                         class="btn btn-xs" 
@@ -5083,8 +5221,8 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                     </template>
                   </div>
                   <div class="form-group" x-show="availableSkills.length > 0 || skillsLoading">
-                    <label style="font-size:12px;color:var(--text-dim)">Available skills:</label>
-                    <div x-show="skillsLoading" style="font-size:12px;color:var(--text-dim);padding:8px">Loading skills...</div>
+                    <label style="font-size:12px;color:var(--text-dim)" x-i18n="agent.availableSkills">Available skills:</label>
+                    <div x-show="skillsLoading" style="font-size:12px;color:var(--text-dim);padding:8px" x-i18n="agent.loadingSkills">Loading skills...</div>
                     <div x-show="!skillsLoading && availableSkills.length > 0" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
                       <template x-for="skill in availableSkills" :key="skill.name">
                         <button 
@@ -5093,35 +5231,35 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                           @click="toggleSmartSkill(skill.name)"
                           :title="skill.description">
                           <span x-text="skill.name"></span>
-                          <span x-show="skill.tools_count > 0" style="opacity:0.6;margin-left:4px" x-text="'(' + skill.tools_count + ' tools)'"></span>
+                          <span x-show="skill.tools_count > 0" style="opacity:0.6;margin-left:4px" x-text="'(' + skill.tools_count + ' ' + $store.i18n.t('agent.tools') + ')'"></span>
                         </button>
                       </template>
                     </div>
                   </div>
                   <div class="form-group">
-                    <label>Model Tier</label>
+                    <label x-i18n="agent.modelTier">Model Tier</label>
                     <select class="form-select" x-model="smartTier">
-                      <option value="simple">Simple (fast, cheap)</option>
-                      <option value="medium">Medium (balanced)</option>
-                      <option value="complex">Complex (powerful)</option>
+                      <option value="simple" x-i18n="agent.simpleFast">Simple (fast, cheap)</option>
+                      <option value="medium" x-i18n="agent.mediumBalanced">Medium (balanced)</option>
+                      <option value="complex" x-i18n="agent.complexPowerful">Complex (powerful)</option>
                     </select>
                   </div>
                   <button class="btn btn-primary btn-block mt-4" @click="generateSmartAgent()" :disabled="smartGenerating || !smartIntent.trim()">
-                    <span x-show="!smartGenerating">Generate Agent</span>
-                    <span x-show="smartGenerating">Generating...</span>
+                    <span x-show="!smartGenerating" x-i18n="agent.generateAgent">Generate Agent</span>
+                    <span x-show="smartGenerating" x-i18n="agent.generating">Generating...</span>
                   </button>
                   <div x-show="smartPreview" class="mt-4" style="background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:12px">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                       <span style="font-weight:600" x-text="smartPreviewName"></span>
                       <button class="btn btn-ghost btn-xs" @click="showSmartManifest = !showSmartManifest">
-                        <span x-text="showSmartManifest ? 'Hide' : 'Show'"> Show</span> JSON
+                        <span x-text="showSmartManifest ? $store.i18n.t('agent.hideJson') : $store.i18n.t('agent.showJson')"></span>
                       </button>
                     </div>
                     <p style="font-size:13px;color:var(--text-dim);white-space:pre-wrap" x-text="smartPreviewSummary"></p>
                     <pre x-show="showSmartManifest" style="margin-top:8px;font-size:11px;max-height:200px;overflow:auto;background:rgba(0,0,0,0.2);padding:8px;border-radius:4px" x-text="smartPreview"></pre>
                     <button class="btn btn-success btn-block mt-3" @click="spawnSmartAgent()" :disabled="spawning">
-                      <span x-show="!spawning">Create Agent</span>
-                      <span x-show="spawning">Creating...</span>
+                      <span x-show="!spawning" x-i18n="agent.createAgent">Create Agent</span>
+                      <span x-show="spawning" x-i18n="agent.creating">Creating...</span>
                     </button>
                   </div>
                 </div>
@@ -5151,11 +5289,11 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   <!-- Step 1: Name + Identity -->
                   <div x-show="spawnStep === 1">
                     <div class="form-group">
-                      <label>Agent Name</label>
+                      <label x-i18n="agent.agentName">Agent Name</label>
                       <input class="form-input" x-model="spawnForm.name" placeholder="my-agent" @keydown.enter="nextStep()">
                     </div>
                     <div class="form-group">
-                      <label>Emoji</label>
+                      <label x-i18n="agent.emoji">Emoji</label>
                       <div class="emoji-grid">
                         <template x-for="em in emojiOptions" :key="em">
                           <button class="emoji-grid-item" :class="{ active: spawnIdentity.emoji === em }" @click="spawnIdentity.emoji = em" x-text="em"></button>
@@ -5163,13 +5301,13 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                       </div>
                     </div>
                     <div class="form-group">
-                      <label>Color</label>
+                      <label x-i18n="agent.color">Color</label>
                       <input type="color" x-model="spawnIdentity.color" style="width:48px;height:32px;border:none;cursor:pointer;background:none">
                     </div>
                     <div class="form-group">
-                      <label>Archetype</label>
+                      <label x-i18n="agent.archetype">Archetype</label>
                       <select class="form-select" x-model="spawnIdentity.archetype">
-                        <option value="">Choose...</option>
+                        <option value="" x-i18n="agent.choose">Choose...</option>
                         <template x-for="a in archetypeOptions" :key="a"><option :value="a.toLowerCase()" x-text="a"></option></template>
                       </select>
                     </div>
@@ -5178,7 +5316,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   <!-- Step 2: Model Selection -->
                   <div x-show="spawnStep === 2">
                     <div class="form-group">
-                      <label>Provider</label>
+                      <label x-i18n="agent.provider">Provider</label>
                       <select class="form-select" x-model="spawnForm.provider">
                         <template x-for="p in spawnProviders" :key="p.id">
                           <option :value="p.id" x-text="p.display_name || p.id"></option>
@@ -5186,44 +5324,44 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                       </select>
                     </div>
                     <div class="form-group">
-                      <label>Model</label>
+                      <label x-i18n="agent.model">Model</label>
                       <input class="form-input" x-model="spawnForm.model" placeholder="e.g. llama-3.3-70b-versatile">
                     </div>
                     <div class="form-group">
-                      <label>System Prompt</label>
+                      <label x-i18n="agent.systemPrompt">System Prompt</label>
                       <textarea class="form-textarea" x-model="spawnForm.systemPrompt" placeholder="You are a helpful assistant."></textarea>
                     </div>
                   </div>
 
                   <!-- Step 3: Personality Presets -->
                   <div x-show="spawnStep === 3">
-                    <label class="mb-2" style="display:block;font-size:13px;font-weight:600">Personality</label>
+                    <label class="mb-2" style="display:block;font-size:13px;font-weight:600" x-i18n="agent.personality">Personality</label>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
                       <template x-for="preset in personalityPresets" :key="preset.id">
                         <button class="personality-pill" :class="{ active: selectedPreset === preset.id }" @click="selectPreset(preset)" x-text="preset.label"></button>
                       </template>
                     </div>
                     <div class="form-group">
-                      <label>Soul / Persona <span class="text-xs text-dim">(editable)</span></label>
-                      <textarea class="form-textarea" x-model="soulContent" style="height:100px" placeholder="Describe this agent's personality and communication style..."></textarea>
+                      <label><span x-i18n="agent.soulPersona">Soul / Persona</span> <span class="text-xs text-dim">(<span x-i18n="agent.editable">editable</span>)</span></label>
+                      <textarea class="form-textarea" x-model="soulContent" style="height:100px" :placeholder="$store.i18n.t('agent.describePersonality')"></textarea>
                     </div>
                   </div>
 
                   <!-- Step 4: Tools & Capabilities -->
                   <div x-show="spawnStep === 4">
                     <div class="form-group">
-                      <label>Tool Profile</label>
+                      <label x-i18n="agent.toolProfile">Tool Profile</label>
                       <select class="form-select" x-model="spawnForm.profile" @focus="loadSpawnProfiles()">
-                        <option value="minimal">Minimal &mdash; Read-only file access</option>
-                        <option value="coding">Coding &mdash; Files + shell + web fetch</option>
-                        <option value="research">Research &mdash; Web search + file read/write</option>
-                        <option value="messaging">Messaging &mdash; Agents + memory access</option>
-                        <option value="automation">Automation &mdash; All tools except custom</option>
-                        <option value="full" selected>Full &mdash; All 35+ tools</option>
-                        <option value="custom">Custom (manual capabilities)</option>
+                        <option value="minimal" x-i18n="agent.minimalReadonly">Minimal — Read-only file access</option>
+                        <option value="coding" x-i18n="agent.codingFilesShell">Coding — Files + shell + web fetch</option>
+                        <option value="research" x-i18n="agent.researchWebSearch">Research — Web search + file read/write</option>
+                        <option value="messaging" x-i18n="agent.messagingAgentsMemory">Messaging — Agents + memory access</option>
+                        <option value="automation" x-i18n="agent.automationAllTools">Automation — All tools except custom</option>
+                        <option value="full" selected x-i18n="agent.fullAllTools">Full — All 35+ tools</option>
+                        <option value="custom" x-i18n="agent.customManual">Custom (manual capabilities)</option>
                       </select>
                       <div class="capability-preview" x-show="selectedProfileTools.length > 0" style="margin-top:8px">
-                        <div class="capability-preview-title">Tools included</div>
+                        <div class="capability-preview-title" x-i18n="agent.toolsIncluded">Tools included</div>
                         <div style="display:flex;flex-wrap:wrap;gap:2px">
                           <template x-for="tool in selectedProfileTools" :key="tool"><span class="tool-badge" x-text="tool"></span></template>
                           <span class="tool-badge" x-show="selectedProfileTools.length >= 15" style="opacity:0.6">...</span>
@@ -5231,13 +5369,13 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                       </div>
                     </div>
                     <div class="form-group" x-show="spawnForm.profile === 'custom'">
-                      <label>Capabilities</label>
+                      <label x-i18n="agent.capabilities">Capabilities</label>
                       <div class="flex gap-3" style="flex-wrap:wrap">
-                        <label class="form-checkbox"><input type="checkbox" x-model="spawnForm.caps.memory_read"> Memory Read</label>
-                        <label class="form-checkbox"><input type="checkbox" x-model="spawnForm.caps.memory_write"> Memory Write</label>
-                        <label class="form-checkbox"><input type="checkbox" x-model="spawnForm.caps.network"> Network</label>
-                        <label class="form-checkbox"><input type="checkbox" x-model="spawnForm.caps.shell"> Shell</label>
-                        <label class="form-checkbox"><input type="checkbox" x-model="spawnForm.caps.agent_spawn"> Agent Spawn</label>
+                        <label class="form-checkbox"><input type="checkbox" x-model="spawnForm.caps.memory_read"> <span x-i18n="agent.memoryRead">Memory Read</span></label>
+                        <label class="form-checkbox"><input type="checkbox" x-model="spawnForm.caps.memory_write"> <span x-i18n="agent.memoryWrite">Memory Write</span></label>
+                        <label class="form-checkbox"><input type="checkbox" x-model="spawnForm.caps.network"> <span x-i18n="agent.network">Network</span></label>
+                        <label class="form-checkbox"><input type="checkbox" x-model="spawnForm.caps.shell"> <span x-i18n="agent.shell">Shell</span></label>
+                        <label class="form-checkbox"><input type="checkbox" x-model="spawnForm.caps.agent_spawn"> <span x-i18n="agent.agentSpawn">Agent Spawn</span></label>
                       </div>
                     </div>
                   </div>
@@ -5250,26 +5388,26 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                           <span x-text="spawnIdentity.emoji || '\u{1F916}'"></span>
                         </div>
                         <div>
-                          <div class="font-bold" style="font-size:15px" x-text="spawnForm.name || 'Unnamed'"></div>
+                          <div class="font-bold" style="font-size:15px" x-text="spawnForm.name || $store.i18n.t('agent.unnamed')"></div>
                           <div class="text-xs text-dim" x-text="spawnIdentity.archetype || 'agent'"></div>
                         </div>
                       </div>
                       <div class="detail-grid" style="gap:6px">
-                        <div class="detail-row"><span class="detail-label">Provider</span><span class="detail-value" x-text="spawnForm.provider"></span></div>
-                        <div class="detail-row"><span class="detail-label">Model</span><span class="detail-value" x-text="spawnForm.model"></span></div>
-                        <div class="detail-row"><span class="detail-label">Profile</span><span class="detail-value" x-text="spawnForm.profile"></span></div>
-                        <div class="detail-row" x-show="selectedPreset"><span class="detail-label">Personality</span><span class="detail-value" style="text-transform:capitalize" x-text="selectedPreset"></span></div>
+                        <div class="detail-row"><span class="detail-label" x-i18n="agent.provider">Provider</span><span class="detail-value" x-text="spawnForm.provider"></span></div>
+                        <div class="detail-row"><span class="detail-label" x-i18n="agent.model">Model</span><span class="detail-value" x-text="spawnForm.model"></span></div>
+                        <div class="detail-row"><span class="detail-label" x-i18n="agent.profile">Profile</span><span class="detail-value" x-text="spawnForm.profile"></span></div>
+                        <div class="detail-row" x-show="selectedPreset"><span class="detail-label" x-i18n="agent.personality">Personality</span><span class="detail-value" style="text-transform:capitalize" x-text="selectedPreset"></span></div>
                       </div>
                     </div>
                   </div>
 
                   <!-- Navigation buttons -->
                   <div class="flex justify-between mt-4">
-                    <button class="btn btn-ghost" x-show="spawnStep > 1" @click="prevStep()">Back</button>
+                    <button class="btn btn-ghost" x-show="spawnStep > 1" @click="prevStep()" x-i18n="agent.back">Back</button>
                     <div x-show="spawnStep <= 1"></div>
-                    <button class="btn btn-primary" x-show="spawnStep < 5" @click="nextStep()">Next</button>
+                    <button class="btn btn-primary" x-show="spawnStep < 5" @click="nextStep()" x-i18n="agent.next">Next</button>
                     <button class="btn btn-primary" x-show="spawnStep === 5" @click="spawnAgent()" :disabled="spawning">
-                      <span x-show="!spawning">Spawn Agent</span><span x-show="spawning">Spawning...</span>
+                      <span x-show="!spawning" x-i18n="agent.spawnAgent">Spawn Agent</span><span x-show="spawning" x-i18n="agent.spawning">Spawning...</span>
                     </button>
                   </div>
                 </div>
@@ -5283,32 +5421,32 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
     <!-- Page: Approvals -->
     <template x-if="page === 'approvals'">
-      <div x-data="approvalsPage" x-init="loadData()">
+      <div x-data="approvalsPage" x-init="init()">
         <div class="page-header">
-          <h2>Execution Approvals</h2>
+          <h2 x-i18n="approvals.title">Execution Approvals</h2>
           <div class="flex items-center gap-2">
             <span class="badge badge-warn" x-show="pendingCount > 0" x-text="pendingCount + ' pending'"></span>
-            <button class="btn btn-ghost btn-sm" @click="loadData()">Refresh</button>
+            <button class="btn btn-ghost btn-sm" @click="loadData()" x-i18n="common.refresh">Refresh</button>
           </div>
         </div>
         <div class="page-body">
-          <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading...</span></div>
+          <div x-show="loading" class="loading-state"><div class="spinner"></div><span x-i18n="common.loading">Loading...</span></div>
           <div x-show="!loading && loadError" class="error-state">
             <span class="error-icon">!</span>
             <p x-text="loadError"></p>
-            <button class="btn btn-ghost btn-sm" @click="loadData()">Retry</button>
+            <button class="btn btn-ghost btn-sm" @click="loadData()" x-i18n="common.retry">Retry</button>
           </div>
           <template x-if="!loading && !loadError">
             <div>
               <div class="filter-pills mb-4">
-                <button class="filter-pill" :class="{ active: filterStatus === 'all' }" @click="filterStatus = 'all'">All</button>
-                <button class="filter-pill" :class="{ active: filterStatus === 'pending' }" @click="filterStatus = 'pending'">Pending</button>
-                <button class="filter-pill" :class="{ active: filterStatus === 'approved' }" @click="filterStatus = 'approved'">Approved</button>
-                <button class="filter-pill" :class="{ active: filterStatus === 'rejected' }" @click="filterStatus = 'rejected'">Rejected</button>
+                <button class="filter-pill" :class="{ active: filterStatus === 'all' }" @click="filterStatus = 'all'" x-i18n="common.all">All</button>
+                <button class="filter-pill" :class="{ active: filterStatus === 'pending' }" @click="filterStatus = 'pending'" x-i18n="common.pending">Pending</button>
+                <button class="filter-pill" :class="{ active: filterStatus === 'approved' }" @click="filterStatus = 'approved'" x-i18n="common.approved">Approved</button>
+                <button class="filter-pill" :class="{ active: filterStatus === 'rejected' }" @click="filterStatus = 'rejected'" x-i18n="common.rejected">Rejected</button>
               </div>
               <div x-show="filtered.length === 0" class="empty-state">
-                <h4>No approvals</h4>
-                <p class="hint">When agents request permission for sensitive actions, they'll appear here.</p>
+                <h4 x-i18n="approvals.noApprovals">No approvals</h4>
+                <p class="hint" x-i18n="approvals.noApprovalsHint">When agents request permission for sensitive actions, they'll appear here.</p>
               </div>
               <div class="card-grid">
                 <template x-for="a in filtered" :key="a.id">
@@ -5321,8 +5459,8 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                     <div class="text-xs text-dim">Agent: <span x-text="a.agent_name"></span> &middot; <span x-text="timeAgo(a.created_at)"></span></div>
                     <template x-if="a.status === 'pending'">
                       <div class="approval-actions" style="display:flex;gap:8px;margin-top:12px">
-                        <button class="btn btn-success btn-sm" @click="approve(a.id)">Approve</button>
-                        <button class="btn btn-danger btn-sm" @click="reject(a.id)">Reject</button>
+                        <button class="btn btn-success btn-sm" @click="approve(a.id)" x-i18n="approvals.approve">Approve</button>
+                        <button class="btn btn-danger btn-sm" @click="reject(a.id)" x-i18n="approvals.reject">Reject</button>
                       </div>
                     </template>
                   </div>
@@ -5338,10 +5476,10 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
     <template x-if="page === 'workflows'">
       <div x-data="{ wfTab: 'list' }">
         <div class="page-header">
-          <h2>Workflows</h2>
+          <h2 x-i18n="workflows.title">Workflows</h2>
           <div class="flex gap-2">
-            <button class="btn btn-ghost btn-sm" :class="{ active: wfTab === 'list' }" @click="wfTab = 'list'">List</button>
-            <button class="btn btn-ghost btn-sm" :class="{ active: wfTab === 'builder' }" @click="wfTab = 'builder'">Visual Builder</button>
+            <button class="btn btn-ghost btn-sm" :class="{ active: wfTab === 'list' }" @click="wfTab = 'list'" x-i18n="workflows.list">List</button>
+            <button class="btn btn-ghost btn-sm" :class="{ active: wfTab === 'builder' }" @click="wfTab = 'builder'" x-i18n="workflows.visualBuilder">Visual Builder</button>
           </div>
         </div>
 
@@ -5391,16 +5529,16 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
             <div class="empty-state-icon">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12M18 9a9 9 0 0 1-9 9"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/></svg>
             </div>
-            <h3>No workflows yet</h3>
-            <p>Chain multiple agents into automated pipelines with branching, fan-out, and loops.</p>
-            <button class="btn btn-primary" @click="showCreateModal = true">Create Workflow</button>
+            <h3 x-i18n="workflows.noWorkflows">No workflows yet</h3>
+            <p x-i18n="workflows.tryVisualBuilder">Chain multiple agents into automated pipelines with branching, fan-out, and loops.</p>
+            <button class="btn btn-primary" @click="showCreateModal = true" x-i18n="workflows.createWorkflow">Create Workflow</button>
           </div>
           </div>
           <!-- Create modal -->
           <template x-if="showCreateModal">
             <div class="modal-overlay" @click.self="showCreateModal = false" @keydown.escape.window="showCreateModal = false">
               <div class="modal">
-                <div class="modal-header"><h3>Create Workflow</h3><button class="modal-close" @click="showCreateModal = false">&times;</button></div>
+                <div class="modal-header"><h3 x-i18n="workflows.createWorkflow">Create Workflow</h3><button class="modal-close" @click="showCreateModal = false">&times;</button></div>
                 <div class="form-group"><label>Name</label><input class="form-input" x-model="newWf.name" placeholder="my-workflow"></div>
                 <div class="form-group"><label>Description</label><input class="form-input" x-model="newWf.description" placeholder="What does this workflow do?"></div>
                 <div class="mb-4">
@@ -5455,7 +5593,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
           <template x-if="showEditModal && editingWf">
             <div class="modal-overlay" @click.self="showEditModal = false" @keydown.escape.window="showEditModal = false">
               <div class="modal">
-                <div class="modal-header"><h3>Edit Workflow</h3><button class="modal-close" @click="showEditModal = false">&times;</button></div>
+                <div class="modal-header"><h3 x-i18n="workflows.editWorkflow">Edit Workflow</h3><button class="modal-close" @click="showEditModal = false">&times;</button></div>
                 <div class="form-group"><label>Name</label><input class="form-input" x-model="editingWf.name" placeholder="my-workflow"></div>
                 <div class="form-group"><label>Description</label><input class="form-input" x-model="editingWf.description" placeholder="What does this workflow do?"></div>
                 <div class="mb-4">
@@ -5728,23 +5866,23 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
     <template x-if="page === 'scheduler'">
       <div x-data="schedulerPage()">
         <div class="page-header">
-          <h2>Scheduler</h2>
+          <h2 x-i18n="scheduler.title">Scheduler</h2>
           <div class="flex gap-2">
-            <button class="btn btn-primary btn-sm" x-show="tab === 'jobs'" @click="showCreateForm = true">+ New Job</button>
+            <button class="btn btn-primary btn-sm" x-show="tab === 'jobs'" @click="showCreateForm = true">+ <span x-i18n="scheduler.newJob">New Job</span></button>
           </div>
         </div>
         <div class="tabs" role="tablist">
           <div class="tab" role="tab" :class="{ active: tab === 'jobs' }" @click="tab = 'jobs'">
-            Scheduled Jobs <span class="badge badge-dim" x-show="jobs.length" x-text="jobCount() + '/' + jobs.length + ' active'" style="margin-left:4px"></span>
+            <span x-i18n="scheduler.scheduledJobs">Scheduled Jobs</span> <span class="badge badge-dim" x-show="jobs.length" x-text="jobCount() + '/' + jobs.length + ' active'" style="margin-left:4px"></span>
           </div>
           <div class="tab" role="tab" :class="{ active: tab === 'triggers' }" @click="tab = 'triggers'; if (!triggers.length && !trigLoading) loadTriggers()">
-            Event Triggers <span class="badge badge-dim" x-show="triggers.length" x-text="triggers.length" style="margin-left:4px"></span>
+            <span x-i18n="scheduler.eventTriggers">Event Triggers</span> <span class="badge badge-dim" x-show="triggers.length" x-text="triggers.length" style="margin-left:4px"></span>
           </div>
           <div class="tab" :class="{ active: tab === 'history' }" @click="tab = 'history'; loadHistory()">
-            Run History
+            <span x-i18n="scheduler.runHistory">Run History</span>
           </div>
           <div class="tab" :class="{ active: tab === 'trigger-history' }" @click="tab = 'trigger-history'; loadTriggerHistory()">
-            Trigger History
+            <span x-i18n="scheduler.triggerHistory">Trigger History</span>
           </div>
         </div>
         <div class="page-body" x-init="loadData()">
@@ -5819,7 +5957,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
               <!-- Empty State -->
               <div class="empty-state" x-show="!jobs.length">
-                <h4>No scheduled jobs</h4>
+                <h4 x-i18n="scheduler.noScheduledJobs">No scheduled jobs</h4>
                 <p class="hint">Create a cron job to run agents on a recurring schedule. Jobs are stored persistently and survive restarts.</p>
                 <button class="btn btn-primary mt-4" @click="showCreateForm = true">+ Create Scheduled Job</button>
               </div>
@@ -6149,7 +6287,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
     <template x-if="page === 'channels'">
       <div x-data="channelsPage">
         <div class="page-header">
-          <h2>Channels <span class="badge badge-muted" x-text="configuredCount + '/' + allChannels.length + ' configured'"></span></h2>
+          <h2><span x-i18n="channels.title">Channels</span> <span class="badge badge-muted" x-text="configuredCount + '/' + allChannels.length + ' configured'"></span></h2>
         </div>
         <div class="page-body" x-init="loadChannels()">
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading channels...</span></div>
@@ -6415,15 +6553,15 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
     <!-- Page: Skills -->
     <template x-if="page === 'skills'">
       <div x-data="skillsPage">
-        <div class="page-header"><h2>Skills</h2></div>
+        <div class="page-header"><h2 x-i18n="skills.title">Skills</h2></div>
         <div class="page-body" x-init="loadSkills()">
           <div class="info-card">
-            <h4>Skills &amp; Ecosystem</h4>
-            <p>Skills extend your agents with new capabilities. FangClaw-go supports the <strong>OpenClaw/ClawHub</strong> ecosystem (3,000+ community skills) plus local skills.</p>
+            <h4 x-i18n="skills.ecosystem">Skills &amp; Ecosystem</h4>
+            <p x-i18n="skills.ecosystemDesc">Skills extend your agents with new capabilities. FangClaw-go supports the OpenClaw/ClawHub ecosystem (3,000+ community skills) plus local skills.</p>
             <ul>
-              <li><strong>Prompt-only</strong> &mdash; inject context and instructions into the agent's system prompt (most ClawHub skills)</li>
-              <li><strong>Python / Node.js</strong> &mdash; executable tools that agents can call during conversations</li>
-              <li><strong>MCP Servers</strong> &mdash; external tools via Model Context Protocol (GitHub, filesystem, databases, etc.)</li>
+              <li><strong x-i18n="skills.promptOnly">Prompt-only</strong> &mdash; <span x-i18n="skills.promptOnlyDesc">inject context and instructions into the agent's system prompt (most ClawHub skills)</span></li>
+              <li><strong x-i18n="skills.executable">Python / Node.js</strong> &mdash; <span x-i18n="skills.executableDesc">executable tools that agents can call during conversations</span></li>
+              <li><strong x-i18n="skills.mcpServers">MCP Servers</strong> &mdash; <span x-i18n="skills.mcpServersDesc">external tools via Model Context Protocol (GitHub, filesystem, databases, etc.)</span></li>
             </ul>
           </div>
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading skills...</span></div>
@@ -6735,11 +6873,11 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
     <!-- Page: Hands -->
     <template x-if="page === 'hands'">
       <div x-data="handsPage">
-        <div class="page-header"><h2>Hands</h2></div>
+        <div class="page-header"><h2 x-i18n="hands.title">Hands</h2></div>
         <div class="page-body" x-init="loadData()">
           <div class="info-card">
-            <h4>Hands &mdash; Curated Autonomous Capability Packages</h4>
-            <p>Hands are pre-configured AI agents that autonomously handle specific tasks. Each hand includes a tuned system prompt, required tools, and a dashboard for tracking work.</p>
+            <h4 x-i18n="hands.curatedPackages">Hands &mdash; Curated Autonomous Capability Packages</h4>
+            <p x-i18n="hands.curatedPackagesDesc">Hands are pre-configured AI agents that autonomously handle specific tasks. Each hand includes a tuned system prompt, required tools, and a dashboard for tracking work.</p>
           </div>
 
           <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading hands...</span></div>
@@ -7256,33 +7394,33 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
     <!-- Page: Settings -->
     <template x-if="page === 'settings'">
       <div x-data="settingsPage" x-init="init()">
-        <div class="page-header"><h2>Settings</h2></div>
+        <div class="page-header"><h2 x-i18n="settings.title">Settings</h2></div>
         <div class="page-body">
-          <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading settings...</span></div>
+          <div x-show="loading" class="loading-state"><div class="spinner"></div><span x-i18n="settings.loadingSettings">Loading settings...</span></div>
           <div x-show="!loading && loadError" class="error-state">
             <span class="error-icon">!</span>
             <p x-text="loadError"></p>
-            <button class="btn btn-ghost btn-sm" @click="loadData()">Retry</button>
+            <button class="btn btn-ghost btn-sm" @click="loadData()" x-i18n="common.retry">Retry</button>
           </div>
           <div x-show="!loading && !loadError">
           <div class="tabs" role="tablist">
-            <div class="tab" role="tab" :class="{ active: tab === 'providers' }" @click="tab = 'providers'">Providers</div>
-            <div class="tab" role="tab" :class="{ active: tab === 'models' }" @click="tab = 'models'">Models</div>
-            <div class="tab" role="tab" :class="{ active: tab === 'config' }" @click="tab = 'config'; if (!configSchema) loadConfigSchema()">Config</div>
+            <div class="tab" role="tab" :class="{ active: tab === 'providers' }" @click="tab = 'providers'" x-i18n="settings.providers">Providers</div>
+            <div class="tab" role="tab" :class="{ active: tab === 'models' }" @click="tab = 'models'" x-i18n="settings.models">Models</div>
+            <div class="tab" role="tab" :class="{ active: tab === 'config' }" @click="tab = 'config'; if (!configSchema) loadConfigSchema()" x-i18n="settings.config">Config</div>
             <div class="tabs-separator"></div>
-            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'tools' }" @click="tab = 'tools'">Tools</div>
-            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'security' }" @click="tab = 'security'; if (!securityData && !secLoading) loadSecurity()">Security</div>
-            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'network' }" @click="tab = 'network'; if (!peers.length && !peersLoading) { loadPeers(); startPeerPolling(); }">Network</div>
-            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'budget' }" @click="tab = 'budget'">Budget</div>
-            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'info' }" @click="tab = 'info'">System</div>
-            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'migration' }" @click="tab = 'migration'">Migration</div>
+            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'tools' }" @click="tab = 'tools'" x-i18n="settings.tools">Tools</div>
+            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'security' }" @click="tab = 'security'; if (!securityData && !secLoading) loadSecurity()" x-i18n="settings.security">Security</div>
+            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'network' }" @click="tab = 'network'; if (!peers.length && !peersLoading) { loadPeers(); startPeerPolling(); }" x-i18n="settings.network">Network</div>
+            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'budget' }" @click="tab = 'budget'" x-i18n="settings.budget">Budget</div>
+            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'info' }" @click="tab = 'info'" x-i18n="settings.system">System</div>
+            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'migration' }" @click="tab = 'migration'" x-i18n="settings.migration">Migration</div>
           </div>
 
           <!-- Providers tab -->
           <div x-show="tab === 'providers'">
             <div class="info-card">
-              <h4>LLM Providers</h4>
-              <p>FangClaw-go supports 12 LLM providers out of the box. Configure API keys to unlock models from each provider. Set environment variables and restart, or use the form below to save keys directly.</p>
+              <h4 x-i18n="settings.llmProviders">LLM Providers</h4>
+              <p x-i18n="settings.llmProvidersDesc">FangClaw-go supports 12 LLM providers out of the box. Configure API keys to unlock models from each provider. Set environment variables and restart, or use the form below to save keys directly.</p>
             </div>
             <div class="card-grid">
               <template x-for="p in providers" :key="p.id">
@@ -7948,30 +8086,30 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
     <!-- Page: Analytics -->
     <template x-if="page === 'analytics'">
       <div x-data="analyticsPage">
-        <div class="page-header"><h2>Analytics</h2></div>
+        <div class="page-header"><h2 x-i18n="analytics.title">Analytics</h2></div>
         <div class="page-body" x-init="loadUsage()">
-          <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading usage data...</span></div>
+          <div x-show="loading" class="loading-state"><div class="spinner"></div><span x-i18n="analytics.loadingData">Loading usage data...</span></div>
           <div x-show="!loading && loadError" class="error-state">
             <span class="error-icon">!</span>
             <p x-text="loadError"></p>
-            <button class="btn btn-ghost btn-sm" @click="loadData()">Retry</button>
+            <button class="btn btn-ghost btn-sm" @click="loadData()" x-i18n="common.retry">Retry</button>
           </div>
           <div x-show="!loading && !loadError">
           <div class="stats-row">
-            <div class="stat-card"><div class="stat-value" x-text="formatTokens((summary.total_input_tokens || 0) + (summary.total_output_tokens || 0))"></div><div class="stat-label">Total Tokens</div></div>
-            <div class="stat-card"><div class="stat-value" x-text="formatCost(summary.total_cost_usd)"></div><div class="stat-label">Estimated Cost</div></div>
-            <div class="stat-card"><div class="stat-value" x-text="summary.call_count || 0"></div><div class="stat-label">API Calls</div></div>
-            <div class="stat-card"><div class="stat-value" x-text="summary.total_tool_calls || 0"></div><div class="stat-label">Tool Calls</div></div>
+            <div class="stat-card"><div class="stat-value" x-text="formatTokens((summary.total_input_tokens || 0) + (summary.total_output_tokens || 0))"></div><div class="stat-label" x-i18n="analytics.totalTokens">Total Tokens</div></div>
+            <div class="stat-card"><div class="stat-value" x-text="formatCost(summary.total_cost_usd)"></div><div class="stat-label" x-i18n="analytics.estimatedCost">Estimated Cost</div></div>
+            <div class="stat-card"><div class="stat-value" x-text="summary.call_count || 0"></div><div class="stat-label" x-i18n="analytics.apiCalls">API Calls</div></div>
+            <div class="stat-card"><div class="stat-value" x-text="summary.total_tool_calls || 0"></div><div class="stat-label" x-i18n="analytics.toolCalls">Tool Calls</div></div>
           </div>
           <div class="tabs mt-4">
-            <div class="tab" :class="{ active: tab === 'summary' }" @click="tab = 'summary'">Summary</div>
-            <div class="tab" :class="{ active: tab === 'by-model' }" @click="tab = 'by-model'">By Model</div>
-            <div class="tab" :class="{ active: tab === 'by-agent' }" @click="tab = 'by-agent'">By Agent</div>
-            <div class="tab" :class="{ active: tab === 'costs' }" @click="tab = 'costs'">Costs</div>
+            <div class="tab" :class="{ active: tab === 'summary' }" @click="tab = 'summary'" x-i18n="analytics.summary">Summary</div>
+            <div class="tab" :class="{ active: tab === 'by-model' }" @click="tab = 'by-model'" x-i18n="analytics.byModel">By Model</div>
+            <div class="tab" :class="{ active: tab === 'by-agent' }" @click="tab = 'by-agent'" x-i18n="analytics.byAgent">By Agent</div>
+            <div class="tab" :class="{ active: tab === 'costs' }" @click="tab = 'costs'" x-i18n="analytics.costs">Costs</div>
           </div>
           <div x-show="tab === 'summary'">
             <div class="card mt-4">
-              <div class="card-header">Token Breakdown</div>
+              <div class="card-header" x-i18n="analytics.tokenBreakdown">Token Breakdown</div>
               <div class="detail-grid" style="margin-top:8px">
                 <div class="detail-row"><span class="detail-label">Input Tokens</span><span class="detail-value" x-text="formatTokens(summary.total_input_tokens)"></span></div>
                 <div class="detail-row"><span class="detail-label">Output Tokens</span><span class="detail-value" x-text="formatTokens(summary.total_output_tokens)"></span></div>
@@ -8004,11 +8142,12 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <div x-show="tab === 'by-agent'">
             <div class="table-wrap mt-4" x-show="byAgent.length">
               <table>
-                <thead><tr><th>Agent</th><th>Total Tokens</th><th>Tool Calls</th></tr></thead>
+                <thead><tr><th>Agent Name</th><th>Agent ID</th><th>Total Tokens</th><th>Tool Calls</th></tr></thead>
                 <tbody>
                   <template x-for="a in byAgent" :key="a.agent_id">
                     <tr>
                       <td class="font-bold" x-text="a.name"></td>
+                      <td style="font-size: 11px; color: var(--text-dim)" x-text="a.agent_id"></td>
                       <td x-text="a.total_tokens ? a.total_tokens.toLocaleString() : '0'"></td>
                       <td x-text="a.tool_calls || 0"></td>
                     </tr>
@@ -8186,26 +8325,26 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
     <template x-if="page === 'sessions'">
       <div x-data="sessionsPage" x-init="init()">
         <div class="page-header">
-          <h2>Sessions</h2>
-          <input class="form-input" style="width:200px" placeholder="Filter by agent..." x-model="searchFilter" x-show="tab === 'sessions'">
+          <h2 x-i18n="navigation.sessions">Sessions</h2>
+          <input class="form-input" style="width:200px" :placeholder="$store.i18n.t('sessions.filterByAgent')" x-model="searchFilter" x-show="tab === 'sessions'">
         </div>
         <div class="tabs">
-          <div class="tab" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'">Sessions</div>
-          <div class="tab" :class="{ active: tab === 'memory' }" @click="tab = 'memory'">Memory</div>
+          <div class="tab" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'" x-i18n="navigation.sessions">Sessions</div>
+          <div class="tab" :class="{ active: tab === 'memory' }" @click="tab = 'memory'" x-i18n="sessions.memory">Memory</div>
         </div>
         <div class="page-body" x-init="loadSessions()">
           <!-- Sessions tab -->
           <div x-show="tab === 'sessions'">
-            <div x-show="loading" class="loading-state"><div class="spinner"></div><span>Loading sessions...</span></div>
+            <div x-show="loading" class="loading-state"><div class="spinner"></div><span x-i18n="sessions.loadingSessions">Loading sessions...</span></div>
             <div x-show="!loading && loadError" class="error-state">
               <span class="error-icon">!</span>
               <p x-text="loadError"></p>
-              <button class="btn btn-ghost btn-sm" @click="loadData()">Retry</button>
+              <button class="btn btn-ghost btn-sm" @click="loadData()" x-i18n="common.retry">Retry</button>
             </div>
             <div x-show="!loading && !loadError">
             <div class="card mb-4" style="border-left:3px solid var(--accent)">
-              <div class="font-bold" style="font-size:13px;margin-bottom:4px">Conversation Sessions</div>
-              <div class="text-sm text-dim" style="line-height:1.6">
+              <div class="font-bold" style="font-size:13px;margin-bottom:4px" x-i18n="sessions.conversationSessions">Conversation Sessions</div>
+              <div class="text-sm text-dim" style="line-height:1.6" x-i18n="sessions.conversationSessionsDesc">
                 Each conversation with an agent creates a session. Sessions store the full message history so you can resume conversations later, or review past interactions.
               </div>
             </div>
@@ -8374,7 +8513,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
     <template x-if="page === 'logs'">
       <div x-data="logsPage">
         <div class="page-header">
-          <h2>Logs</h2>
+          <h2 x-i18n="logs.title">Logs</h2>
           <div class="flex gap-2 items-center" x-show="tab === 'live'">
             <!-- Connection status indicator -->
             <span class="live-indicator" :class="connectionClass">
@@ -8382,20 +8521,20 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
               <span x-text="connectionLabel"></span>
             </span>
             <select class="form-select" style="width:100px" x-model="levelFilter">
-              <option value="">All</option>
+              <option value="" x-i18n="logs.all">All</option>
               <option value="info">INFO</option>
               <option value="warn">WARN</option>
               <option value="error">ERROR</option>
             </select>
-            <input class="form-input" style="width:180px" placeholder="Search..." x-model="textFilter">
-            <button class="btn btn-ghost btn-sm" @click="togglePause()" x-text="streamPaused ? 'Resume' : 'Pause'"></button>
-            <button class="btn btn-ghost btn-sm" @click="clearLogs()">Clear</button>
-            <button class="btn btn-ghost btn-sm" @click="exportLogs()">Export</button>
-            <div class="toggle" :class="{ active: autoRefresh }" @click="autoRefresh = !autoRefresh" title="Auto-scroll"></div>
-            <span class="text-xs text-dim" x-text="autoRefresh ? 'Auto-scroll' : 'Scroll locked'"></span>
+            <input class="form-input" style="width:180px" :placeholder="$store.i18n.t('logs.search')" x-model="textFilter">
+            <button class="btn btn-ghost btn-sm" @click="togglePause()" :x-text="streamPaused ? $store.i18n.t('logs.resume') : $store.i18n.t('logs.pause')" x-text="streamPaused ? 'Resume' : 'Pause'"></button>
+            <button class="btn btn-ghost btn-sm" @click="clearLogs()" x-i18n="logs.clear">Clear</button>
+            <button class="btn btn-ghost btn-sm" @click="exportLogs()" x-i18n="logs.export">Export</button>
+            <div class="toggle" :class="{ active: autoRefresh }" @click="autoRefresh = !autoRefresh" :title="$store.i18n.t('logs.autoScroll')"></div>
+            <span class="text-xs text-dim" x-text="autoRefresh ? $store.i18n.t('logs.autoScroll') : $store.i18n.t('logs.scrollLocked')"></span>
           </div>
           <div class="flex gap-2 items-center" x-show="tab === 'audit'">
-            <button class="btn btn-ghost btn-sm" @click="verifyChain()">Verify Chain</button>
+            <button class="btn btn-ghost btn-sm" @click="verifyChain()" x-i18n="logs.verifyChain">Verify Chain</button>
             <span class="badge" :class="chainValid === true ? 'badge-running' : chainValid === false ? 'badge-crashed' : ''" x-text="chainValid === true ? 'VALID' : chainValid === false ? 'BROKEN' : ''" x-show="chainValid !== null"></span>
           </div>
         </div>
@@ -8492,21 +8631,21 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
     <template x-if="page === 'a2a'">
       <div x-data="a2aPage" x-init="loadData()" @page-leave.window="stopSSE()">
         <div class="page-header">
-          <h2>A2A (Agent-to-Agent)</h2>
+          <h2 x-i18n="a2a.title">A2A (Agent-to-Agent)</h2>
           <div class="flex items-center gap-2">
             <button class="btn btn-primary btn-sm" @click="openSendModal()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
-              Send Message
+              <span x-i18n="a2a.sendMessage">Send Message</span>
             </button>
             <button class="btn btn-ghost btn-sm" @click="openTaskModal()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-              Post Task
+              <span x-i18n="a2a.postTask">Post Task</span>
             </button>
             <button class="btn btn-ghost btn-sm" @click="openDiscoverModal()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-              Discover Agent
+              <span x-i18n="a2a.discoverAgent">Discover Agent</span>
             </button>
-            <button class="btn btn-ghost btn-sm" @click="loadData()" title="Refresh">
+            <button class="btn btn-ghost btn-sm" @click="loadData()" :title="$store.i18n.t('common.refresh')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/></svg>
             </button>
           </div>
@@ -9168,20 +9307,20 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
     <template x-if="page === 'pairing'">
       <div x-data="pairingPage" x-init="loadDevices()">
         <div class="page-header">
-          <h2>Device Pairing</h2>
+          <h2 x-i18n="pairing.title">Device Pairing</h2>
         </div>
         <div class="page-body">
           <!-- Loading State -->
           <div x-show="loading" class="loading-state">
             <div class="spinner"></div>
-            <span>Loading pairing...</span>
+            <span x-i18n="pairing.loading">Loading pairing...</span>
           </div>
 
           <!-- Error State -->
           <div x-show="!loading && loadError" class="error-state">
             <span class="error-icon">!</span>
             <p x-text="loadError"></p>
-            <button class="btn btn-ghost btn-sm" @click="loadDevices()">Retry</button>
+            <button class="btn btn-ghost btn-sm" @click="loadDevices()" x-i18n="common.retry">Retry</button>
           </div>
 
           <!-- Main Content -->
@@ -9189,7 +9328,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <!-- Pairing Config Card -->
             <div class="card mb-4" style="border-left:4px solid var(--accent)">
               <div class="flex justify-between items-center mb-2">
-                <div class="card-header" style="margin:0">Pairing Settings</div>
+                <div class="card-header" style="margin:0" x-i18n="pairing.settings">Pairing Settings</div>
                 <div class="flex gap-2">
                   <span class="badge" :class="config?.enabled ? 'badge-success' : 'badge-muted'" x-text="config?.enabled ? 'Enabled' : 'Disabled'"></span>
                 </div>
@@ -9322,9 +9461,9 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
     <template x-if="page === 'delivery'">
       <div x-data="deliveryPage" x-init="init()">
         <div class="page-header">
-          <h2>Delivery</h2>
+          <h2 x-i18n="delivery.title">Delivery</h2>
           <div class="flex items-center gap-2">
-            <button class="btn btn-ghost btn-sm" @click="refreshAll()" title="Refresh">
+            <button class="btn btn-ghost btn-sm" @click="refreshAll()" :title="$store.i18n.t('common.refresh')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
             </button>
           </div>
@@ -9334,19 +9473,19 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <div class="stats-row mb-4">
             <div class="stat-card">
               <div class="stat-value" x-text="totalReceipts"></div>
-              <div class="stat-label">Total Messages</div>
+              <div class="stat-label" x-i18n="delivery.totalMessages">Total Messages</div>
             </div>
             <div class="stat-card">
               <div class="stat-value stat-value-success" x-text="sentCount"></div>
-              <div class="stat-label">Sent/Delivered</div>
+              <div class="stat-label" x-i18n="delivery.sentDelivered">Sent/Delivered</div>
             </div>
             <div class="stat-card">
               <div class="stat-value" :class="failedCount > 0 ? 'stat-value-error' : ''" x-text="failedCount"></div>
-              <div class="stat-label">Failed</div>
+              <div class="stat-label" x-i18n="delivery.failed">Failed</div>
             </div>
             <div class="stat-card">
               <div class="stat-value stat-value-accent" x-text="pendingTasksCount"></div>
-              <div class="stat-label">Pending Tasks</div>
+              <div class="stat-label" x-i18n="delivery.pendingTasksCount">Pending Tasks</div>
             </div>
           </div>
 
@@ -9518,6 +9657,26 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
 
 <!-- Toast notification container -->
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+<!-- Floating Language Button (右上角浮动层) -->
+<div class="floating-language-btn" 
+     x-data="{ open: false }">
+  
+  <!-- 主按钮 -->
+  <button @click="open = !open" class="floating-btn" :title="$store.i18n.t('language.switchLanguage')">
+    🌐
+  </button>
+  
+  <!-- 下拉菜单 -->
+  <div x-show="open" @click.outside="open = false" class="floating-dropdown">
+    <button @click="$store.i18n.switchLanguage('en'); open = false" class="language-option" :class="{ active: $store.i18n.currentLang === 'en' }">
+      English
+    </button>
+    <button @click="$store.i18n.switchLanguage('zh-CN'); open = false" class="language-option" :class="{ active: $store.i18n.currentLang === 'zh-CN' }">
+      中文
+    </button>
+  </div>
+</div>
 <script>
 /**
  * marked v15.0.12 - a markdown parser
@@ -10957,7 +11116,7 @@ var FangClawGoToast = (function() {
 // ── Friendly Error Messages ──
 function friendlyError(status, serverMsg) {
   if (status === 0 || !status) return 'Cannot reach daemon — is fangclaw-go running?';
-  if (status === 401) return 'Not authorized — check your API key';
+  if (status === 401) return 'Not authorized — check your name/password or API key';
   if (status === 403) return 'Permission denied';
   if (status === 404) return serverMsg || 'Resource not found';
   if (status === 429) return 'Rate limited — slow down and try again';
@@ -18492,6 +18651,7 @@ function approvalsPage() {
     filterStatus: 'all',
     loading: true,
     loadError: '',
+    initialized: false,
 
     get filtered() {
       var f = this.filterStatus;
@@ -18503,7 +18663,68 @@ function approvalsPage() {
       return this.approvals.filter(function(a) { return a.status === 'pending'; }).length;
     },
 
+    async init() {
+      var self = this;
+      if(!Alpine.store('app').currentUser) {
+        this.loading = false;
+        // 监听 user-login 事件，确保用户登录后加载数据
+        document.addEventListener('user-login', async function() {
+          await self.loadData();
+        });
+        return;
+      }
+      
+      this.loading = true;
+      this.loadError = '';
+      try {
+        await self.loadData();
+      } catch(e) {
+        self.loadError = e.message || 'Could not load approvals.';
+      } finally {
+        self.loading = false;
+      }
+      // 监听 user-logout 事件，清空数据
+      document.addEventListener('user-logout', function() {
+        self.approvals = [];
+        self.loadError = '';
+        self.loading = false;
+      });
+      
+      // 尝试立即加载数据
+      // var tryLoad = async function() {
+      //   if (Alpine.store('app') && Alpine.store('app').currentUser) {
+      //     await self.loadData();
+      //   } else {
+      //     // 如果还没准备好，先设置 loading 为 false，稍后再试
+      //     self.loading = false;
+      //     // 延迟一小段时间后再次尝试
+      //     setTimeout(function() {
+      //       if (Alpine.store('app') && Alpine.store('app').currentUser) {
+      //         self.loadData();
+      //       }
+      //     }, 500);
+      //   }
+      // };
+      
+      // // 检查 Alpine store 是否已经准备好
+      // if (Alpine.store) {
+      //   await tryLoad();
+      // } else {
+      //   // 如果 Alpine 还没完全初始化，等待 alpine:init 事件
+      //   document.addEventListener('alpine:init', async function() {
+      //     await tryLoad();
+      //   });
+      //   self.loading = false;
+      // }
+      
+      self.initialized = true;
+    },
+
     async loadData() {
+      if (!Alpine.store('app').currentUser) {
+        this.loading = false;
+        return;
+      }
       this.loading = true;
       this.loadError = '';
       try {
@@ -19357,6 +19578,222 @@ function deliveryPage() {
   };
 }
 
+</script>
+<script>
+// FangClaw-go Internationalization (i18n) Module
+'use strict';
+
+// Global i18n store for Alpine.js
+function i18nStore() {
+  return {
+    // Current language (default to English)
+    currentLang: 'en',
+    
+    // Available languages
+    languages: {
+      'en': 'English',
+      'zh-CN': '中文'
+    },
+    
+    // Translation data
+    translations: {},
+    
+    // Initialize i18n system
+    async init() {
+      // Load user preference from localStorage
+      const savedLang = localStorage.getItem('fangclaw-lang');
+      if (savedLang && this.languages[savedLang]) {
+        this.currentLang = savedLang;
+      } else {
+        // Try to detect browser language
+        const browserLang = navigator.language || navigator.userLanguage;
+        if (browserLang.startsWith('zh')) {
+          this.currentLang = 'zh-CN';
+        }
+      }
+      
+      // Load translations
+      await this.loadTranslations(this.currentLang);
+    },
+    
+    // Load translation file
+    async loadTranslations(lang) {
+      try {
+        
+        const url = `/locales/${lang}.json`;
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to load ${lang} translations: ${response.status}`);
+        }
+        
+        this.translations = await response.json();
+        
+        // Update HTML lang attribute
+        document.documentElement.lang = lang;
+        
+        // Save preference
+        localStorage.setItem('fangclaw-lang', lang);
+        
+        // Dispatch language change event
+        document.dispatchEvent(new CustomEvent('language-changed', {
+          detail: { lang: lang }
+        }));
+        
+      } catch (error) {
+        console.error('Failed to load translations:', error);
+        // Fallback to English
+        if (lang !== 'en') {
+          await this.loadTranslations('en');
+        }
+      }
+    },
+    
+    // Switch language
+    async switchLanguage(lang) {
+      if (this.languages[lang] && lang !== this.currentLang) {
+        this.currentLang = lang;
+        await this.loadTranslations(lang);
+      }
+    },
+    
+    // Get translation by key
+    t(key, defaultValue = '') {
+      if (!key) return defaultValue;
+      
+      // Support nested keys like "common.signIn"
+      const keys = key.split('.');
+      let value = this.translations;
+      
+      for (const k of keys) {
+        if (value && typeof value === 'object' && k in value) {
+          value = value[k];
+        } else {
+          return defaultValue || key;
+        }
+      }
+      
+      return value || defaultValue || key;
+    },
+    
+    // Get current language display name
+    getCurrentLanguageName() {
+      return this.languages[this.currentLang] || 'English';
+    },
+    
+    // Check if current language is Chinese
+    isChinese() {
+      return this.currentLang === 'zh-CN';
+    },
+    
+    // Check if current language is English
+    isEnglish() {
+      return this.currentLang === 'en';
+    }
+  };
+}
+
+// Alpine.js directive for i18n
+function i18nDirective(Alpine) {
+  Alpine.directive('i18n', (el, { expression }, { effect }) => {
+    const updateTranslation = () => {
+      const store = Alpine.store('i18n');
+      if (store && store.translations && Object.keys(store.translations).length > 0) {
+        const translation = store.t(expression);
+        el.textContent = translation;
+      }
+    };
+    
+    document.addEventListener('language-changed', updateTranslation);
+    
+    effect(updateTranslation);
+    
+    Alpine.onAttributeRemoved(el, 'x-i18n', () => {
+      document.removeEventListener('language-changed', updateTranslation);
+    });
+  });
+  
+  Alpine.directive('i18n-attr', (el, { expression }, { effect }) => {
+    const [attrName, key] = expression.split(',').map(s => s.trim());
+    
+    const updateTranslation = () => {
+      const store = Alpine.store('i18n');
+      if (store && store.translations && Object.keys(store.translations).length > 0) {
+        el.setAttribute(attrName, store.t(key));
+      }
+    };
+    
+    document.addEventListener('language-changed', updateTranslation);
+    
+    effect(updateTranslation);
+    
+    Alpine.onAttributeRemoved(el, 'x-i18n-attr', () => {
+      document.removeEventListener('language-changed', updateTranslation);
+    });
+  });
+}
+
+// Initialize i18n when Alpine is ready
+function initializeI18n() {
+  // Register i18n store with Alpine
+  Alpine.store('i18n', i18nStore());
+  
+  // Register directives
+  i18nDirective(Alpine);
+  
+  // Initialize i18n
+  Alpine.store('i18n').init().then(() => {
+     }).catch(error => {
+    console.error('i18n: Initialization failed:', error);
+  });
+}
+
+// Wait for Alpine to be available
+if (typeof Alpine !== 'undefined') {
+  // Alpine is already available
+  initializeI18n();
+} else {
+  // Wait for Alpine to be loaded
+  document.addEventListener('alpine:init', () => {
+    initializeI18n();
+  });
+  
+  // Fallback: try to initialize when DOM is ready
+  document.addEventListener('DOMContentLoaded', () => {
+    if (typeof Alpine !== 'undefined') {
+      initializeI18n();
+    }
+  });
+}
+
+// Safe access to i18n store
+function safeI18nAccess(property, ...args) {
+  if (typeof Alpine === 'undefined') {
+    console.warn('i18n: Alpine.js not available');
+    return args[0] || '';
+  }
+  
+  const store = Alpine.store('i18n');
+  if (!store) {
+    console.warn('i18n: Store not initialized yet');
+    return args[0] || '';
+  }
+  
+  if (typeof store[property] === 'function') {
+    return store[property](...args);
+  }
+  
+  return store[property];
+}
+
+// Export for global usage
+window.i18n = {
+  t: (key, defaultValue) => safeI18nAccess('t', key, defaultValue),
+  switchLanguage: async (lang) => safeI18nAccess('switchLanguage', lang),
+  getCurrentLanguage: () => safeI18nAccess('currentLang'),
+  getCurrentLanguageName: () => safeI18nAccess('getCurrentLanguageName'),
+  currentLang: safeI18nAccess('currentLang')
+};
 </script>
 <script>
 (()=>{var ie=!1,oe=!1,Y=[],se=-1,ae=!1;function We(t){Bn(t)}function Ge(){ae=!0}function Je(){ae=!1,Xe()}function Bn(t){Y.includes(t)||Y.push(t),Xe()}function Ye(t){let e=Y.indexOf(t);e!==-1&&e>se&&Y.splice(e,1)}function Xe(){if(!oe&&!ie){if(ae)return;ie=!0,queueMicrotask(zn)}}function zn(){ie=!1,oe=!0;for(let t=0;t<Y.length;t++)Y[t](),se=t;Y.length=0,se=-1,oe=!1}var M,D,z,le,ce=!0;function Ze(t){ce=!1,t(),ce=!0}function Qe(t){M=t.reactive,z=t.release,D=e=>t.effect(e,{scheduler:r=>{ce?We(r):r()}}),le=t.raw}function ue(t){D=t}function tr(t){let e=()=>{};return[n=>{let i=D(n);return t._x_effects||(t._x_effects=new Set,t._x_runEffects=()=>{t._x_effects.forEach(o=>o())}),t._x_effects.add(i),e=()=>{i!==void 0&&(t._x_effects.delete(i),z(i))},i},()=>{e()}]}function Ot(t,e){let r=!0,n,i=D(()=>{let o=t();if(JSON.stringify(o),!r&&(typeof o=="object"||o!==n)){let s=n;queueMicrotask(()=>{e(o,s)})}n=o,r=!1});return()=>z(i)}async function er(t){Ge();try{await t(),await Promise.resolve()}finally{Je()}}var rr=[],nr=[],ir=[];function or(t){ir.push(t)}function it(t,e){typeof e=="function"?(t._x_cleanups||(t._x_cleanups=[]),t._x_cleanups.push(e)):(e=t,nr.push(e))}function Tt(t){rr.push(t)}function Rt(t,e,r){t._x_attributeCleanups||(t._x_attributeCleanups={}),t._x_attributeCleanups[e]||(t._x_attributeCleanups[e]=[]),t._x_attributeCleanups[e].push(r)}function fe(t,e){t._x_attributeCleanups&&Object.entries(t._x_attributeCleanups).forEach(([r,n])=>{(e===void 0||e.includes(r))&&(n.forEach(i=>i()),delete t._x_attributeCleanups[r])})}function sr(t){for(t._x_effects?.forEach(Ye);t._x_cleanups?.length;)t._x_cleanups.pop()()}var de=new MutationObserver(_e),pe=!1;function mt(){de.observe(document,{subtree:!0,childList:!0,attributes:!0,attributeOldValue:!0}),pe=!0}function me(){Hn(),de.disconnect(),pe=!1}var pt=[];function Hn(){let t=de.takeRecords();pt.push(()=>t.length>0&&_e(t));let e=pt.length;queueMicrotask(()=>{if(pt.length===e)for(;pt.length>0;)pt.shift()()})}function h(t){if(!pe)return t();me();let e=t();return mt(),e}var he=!1,Ct=[];function ar(){he=!0}function cr(){he=!1,_e(Ct),Ct=[]}function _e(t){if(he){Ct=Ct.concat(t);return}let e=[],r=new Set,n=new Map,i=new Map;for(let o=0;o<t.length;o++)if(!t[o].target._x_ignoreMutationObserver&&(t[o].type==="childList"&&(t[o].removedNodes.forEach(s=>{s.nodeType===1&&s._x_marker&&r.add(s)}),t[o].addedNodes.forEach(s=>{if(s.nodeType===1){if(r.has(s)){r.delete(s);return}s._x_marker||e.push(s)}})),t[o].type==="attributes")){let s=t[o].target,a=t[o].attributeName,c=t[o].oldValue,l=()=>{n.has(s)||n.set(s,[]),n.get(s).push({name:a,value:s.getAttribute(a)})},u=()=>{i.has(s)||i.set(s,[]),i.get(s).push(a)};s.hasAttribute(a)&&c===null?l():s.hasAttribute(a)?(u(),l()):u()}i.forEach((o,s)=>{fe(s,o)}),n.forEach((o,s)=>{rr.forEach(a=>a(s,o))});for(let o of r)e.some(s=>s.contains(o))||nr.forEach(s=>s(o));for(let o of e)o.isConnected&&ir.forEach(s=>s(o));e=null,r=null,n=null,i=null}function Mt(t){return I(H(t))}function P(t,e,r){return t._x_dataStack=[e,...H(r||t)],()=>{t._x_dataStack=t._x_dataStack.filter(n=>n!==e)}}function H(t){return t._x_dataStack?t._x_dataStack:typeof ShadowRoot=="function"&&t instanceof ShadowRoot?H(t.host):t.parentNode?H(t.parentNode):[]}function I(t){return new Proxy({objects:t},Kn)}var Kn={ownKeys({objects:t}){return Array.from(new Set(t.flatMap(e=>Object.keys(e))))},has({objects:t},e){return e==Symbol.unscopables?!1:t.some(r=>Object.prototype.hasOwnProperty.call(r,e)||Reflect.has(r,e))},get({objects:t},e,r){return e=="toJSON"?Vn:Reflect.get(t.find(n=>Reflect.has(n,e))||{},e,r)},set({objects:t},e,r,n){let i=t.find(s=>Object.prototype.hasOwnProperty.call(s,e))||t[t.length-1],o=Object.getOwnPropertyDescriptor(i,e);return o?.set&&o?.get?o.set.call(n,r)||!0:Reflect.set(i,e,r)}};function Vn(){return Reflect.ownKeys(this).reduce((e,r)=>(e[r]=Reflect.get(this,r),e),{})}function ot(t){let e=n=>typeof n=="object"&&!Array.isArray(n)&&n!==null,r=(n,i="")=>{Object.entries(Object.getOwnPropertyDescriptors(n)).forEach(([o,{value:s,enumerable:a}])=>{if(a===!1||s===void 0||typeof s=="object"&&s!==null&&s.__v_skip)return;let c=i===""?o:`${i}.${o}`;typeof s=="object"&&s!==null&&s._x_interceptor?n[o]=s.initialize(t,c,o):e(s)&&s!==n&&!(s instanceof Element)&&r(s,c)})};return r(t)}function Nt(t,e=()=>{}){let r={initialValue:void 0,_x_interceptor:!0,initialize(n,i,o){return t(this.initialValue,()=>Un(n,i),s=>ge(n,i,s),i,o)}};return e(r),n=>{if(typeof n=="object"&&n!==null&&n._x_interceptor){let i=r.initialize.bind(r);r.initialize=(o,s,a)=>{let c=n.initialize(o,s,a);return r.initialValue=c,i(o,s,a)}}else r.initialValue=n;return r}}function Un(t,e){return e.split(".").reduce((r,n)=>r[n],t)}function ge(t,e,r){if(typeof e=="string"&&(e=e.split(".")),e.length===1)t[e[0]]=r;else{if(e.length===0)throw error;return t[e[0]]||(t[e[0]]={}),ge(t[e[0]],e.slice(1),r)}}var lr={};function y(t,e){lr[t]=e}function U(t,e){let r=qn(e);return Object.entries(lr).forEach(([n,i])=>{Object.defineProperty(t,`$${n}`,{get(){return i(e,r)},enumerable:!1})}),t}function qn(t){let[e,r]=xe(t),n={interceptor:Nt,...e};return it(t,r),n}function ur(t,e,r,...n){try{return r(...n)}catch(i){st(i,t,e)}}function st(...t){return fr(...t)}var fr=Wn;function dr(t){fr=t}function Wn(t,e,r=void 0){t=Object.assign(t??{message:"No error message given."},{el:e,expression:r}),console.warn(`Alpine Expression Error: ${t.message}

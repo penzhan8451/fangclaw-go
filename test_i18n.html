@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>i18n Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="/js/i18n.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .language-switcher {
+            position: relative;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .language-btn {
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .language-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            min-width: 120px;
+        }
+        .language-option {
+            display: block;
+            width: 100%;
+            padding: 8px 12px;
+            background: none;
+            border: none;
+            text-align: left;
+            cursor: pointer;
+        }
+        .language-option:hover {
+            background: #f5f5f5;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container" x-data="app">
+        <h1>i18n 功能测试</h1>
+        
+        <!-- 语言切换器 -->
+        <div x-data="{ open: false }" class="language-switcher">
+            <button @click="open = !open" class="language-btn">
+                <span x-text="$store.i18n.getCurrentLanguageName()">English</span>
+                <span>▼</span>
+            </button>
+            <div x-show="open" @click.outside="open = false" class="language-dropdown">
+                <button @click="$store.i18n.switchLanguage('en'); open = false" class="language-option">English</button>
+                <button @click="$store.i18n.switchLanguage('zh-CN'); open = false" class="language-option">中文</button>
+            </div>
+        </div>
+
+        <!-- 测试内容 -->
+        <div class="test-section">
+            <h3>基本文本测试</h3>
+            <p><strong>应用名称:</strong> <span x-text="$store.i18n.t('common.appName')">FANGCLAW-GO</span></p>
+            <p><strong>登录提示:</strong> <span x-text="$store.i18n.t('common.signIn')">Sign in to your account</span></p>
+            <p><strong>用户名:</strong> <span x-text="$store.i18n.t('common.username')">Username</span></p>
+            <p><strong>密码:</strong> <span x-text="$store.i18n.t('common.password')">Password</span></p>
+        </div>
+
+        <div class="test-section">
+            <h3>导航菜单测试</h3>
+            <p><strong>概览:</strong> <span x-text="$store.i18n.t('navigation.overview')">Overview</span></p>
+            <p><strong>代理:</strong> <span x-text="$store.i18n.t('navigation.agents')">Agents</span></p>
+            <p><strong>工作流:</strong> <span x-text="$store.i18n.t('navigation.workflows')">Workflows</span></p>
+            <p><strong>设置:</strong> <span x-text="$store.i18n.t('navigation.settings')">Settings</span></p>
+        </div>
+
+        <div class="test-section">
+            <h3>设置向导测试</h3>
+            <p><strong>需要设置:</strong> <span x-text="$store.i18n.t('setup.setupRequired')">SETUP REQUIRED</span></p>
+            <p><strong>配置API密钥:</strong> <span x-text="$store.i18n.t('setup.configureApiKey')">Please configure your API key first</span></p>
+            <p><strong>开始使用:</strong> <span x-text="$store.i18n.t('setup.getStarted')">To get started, you need to configure your provider and API key in Settings.</span></p>
+        </div>
+
+        <div class="test-section">
+            <h3>状态信息</h3>
+            <p><strong>当前语言:</strong> <span x-text="$store.i18n.currentLang">en</span></p>
+            <p><strong>是否为中文:</strong> <span x-text="$store.i18n.isChinese()">false</span></p>
+            <p><strong>是否为英文:</strong> <span x-text="$store.i18n.isEnglish()">true</span></p>
+        </div>
+    </div>
+
+    <script>
+        // 简单的Alpine.js应用状态
+        document.addEventListener('alpine:init', () => {
+            Alpine.store('app', {
+                // 空的应用状态
+            });
+        });
+    </script>
+</body>
+</html>

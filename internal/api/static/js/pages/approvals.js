@@ -7,6 +7,7 @@ function approvalsPage() {
     filterStatus: 'all',
     loading: true,
     loadError: '',
+    initialized: false,
 
     get filtered() {
       var f = this.filterStatus;
@@ -18,7 +19,68 @@ function approvalsPage() {
       return this.approvals.filter(function(a) { return a.status === 'pending'; }).length;
     },
 
+    async init() {
+      var self = this;
+      if(!Alpine.store('app').currentUser) {
+        this.loading = false;
+        // 监听 user-login 事件，确保用户登录后加载数据
+        document.addEventListener('user-login', async function() {
+          await self.loadData();
+        });
+        return;
+      }
+      
+      this.loading = true;
+      this.loadError = '';
+      try {
+        await self.loadData();
+      } catch(e) {
+        self.loadError = e.message || 'Could not load approvals.';
+      } finally {
+        self.loading = false;
+      }
+      // 监听 user-logout 事件，清空数据
+      document.addEventListener('user-logout', function() {
+        self.approvals = [];
+        self.loadError = '';
+        self.loading = false;
+      });
+      
+      // 尝试立即加载数据
+      // var tryLoad = async function() {
+      //   if (Alpine.store('app') && Alpine.store('app').currentUser) {
+      //     await self.loadData();
+      //   } else {
+      //     // 如果还没准备好，先设置 loading 为 false，稍后再试
+      //     self.loading = false;
+      //     // 延迟一小段时间后再次尝试
+      //     setTimeout(function() {
+      //       if (Alpine.store('app') && Alpine.store('app').currentUser) {
+      //         self.loadData();
+      //       }
+      //     }, 500);
+      //   }
+      // };
+      
+      // // 检查 Alpine store 是否已经准备好
+      // if (Alpine.store) {
+      //   await tryLoad();
+      // } else {
+      //   // 如果 Alpine 还没完全初始化，等待 alpine:init 事件
+      //   document.addEventListener('alpine:init', async function() {
+      //     await tryLoad();
+      //   });
+      //   self.loading = false;
+      // }
+      
+      self.initialized = true;
+    },
+
     async loadData() {
+      if (!Alpine.store('app').currentUser) {
+        this.loading = false;
+        return;
+      }
       this.loading = true;
       this.loadError = '';
       try {
