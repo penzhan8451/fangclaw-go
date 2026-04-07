@@ -21,11 +21,11 @@ const (
 
 // ApprovalPolicy defines which operations require approval.
 type ApprovalPolicy struct {
-	RequireApproval       []string `json:"require_approval"`        // Tool names requiring approval
-	AutoApproveLow        bool     `json:"auto_approve_low"`        // Auto-approve low risk
-	TimeoutSecs           int      `json:"timeout_secs"`            // Timeout in seconds before auto-deny
-	AutoApproveAutonomous bool     `json:"auto_approve_autonomous"` // Auto-approve in autonomous mode
-	AutoApprove           bool     `json:"auto_approve"`            // Alias: if true, clears require list
+	RequireApproval []string `json:"require_approval"` // Tool names requiring approval
+	AutoApproveLow  bool     `json:"auto_approve_low"` // Auto-approve low risk
+	TimeoutSecs     int      `json:"timeout_secs"`     // Timeout in seconds before auto-deny
+	// AutoApproveAutonomous bool     `json:"auto_approve_autonomous"` // Auto-approve in autonomous mode
+	AutoApprove bool `json:"auto_approve"` // Alias: if true, clears require list
 }
 
 // DefaultApprovalPolicy returns the default approval policy.
@@ -46,10 +46,10 @@ func DefaultApprovalPolicy() ApprovalPolicy {
 			"purchase",
 			"send_message",
 		},
-		AutoApproveLow:        true,
-		TimeoutSecs:           60 * 5, // Default 5 min timeout
-		AutoApproveAutonomous: false,
-		AutoApprove:           false,
+		AutoApproveLow: true,
+		TimeoutSecs:    60 * 5, // Default 5 min timeout
+		// AutoApproveAutonomous: false,
+		AutoApprove: false,
 	}
 
 	// Apply shorthands: if auto_approve is true, clear require list

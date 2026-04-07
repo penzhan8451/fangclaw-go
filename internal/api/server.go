@@ -93,7 +93,7 @@ type ServerConfig struct {
 // DefaultServerConfig returns default configuration.
 func DefaultServerConfig() *ServerConfig {
 	return &ServerConfig{
-		ListenAddr:   "127.0.0.1:4200",
+		ListenAddr:   "0.0.0.0:8080",
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 300 * time.Second, // 5 minutes for workflow execution
 		IdleTimeout:  60 * time.Second,

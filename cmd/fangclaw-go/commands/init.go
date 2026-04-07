@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -13,8 +14,8 @@ var initQuick bool
 func initCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize OpenFang (create ~/.fangclaw-go/ and default config)",
-		Long: `Initialize OpenFang by creating the configuration directory
+		Short: "Initialize FangClaw-Go (create ~/.fangclaw-go/ and default config)",
+		Long: `Initialize FangClaw-Go by creating the configuration directory
 and default configuration file.`,
 		RunE: runInit,
 	}
@@ -49,20 +50,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Write default config if not exists
 	configPath := filepath.Join(fangclawGoDir, "config.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		defaultConfig := `# FangClaw Agent OS configuration
-# See https://github.com/penzhan8451/fangclaw-go for documentation
-
-api_listen = "127.0.0.1:4200"
-
-[default_model]
-provider = "groq"
-model = "llama-3.3-70b-versatile"
-api_key_env = "GROQ_API_KEY"
-
-[memory]
-decay_rate = 0.05
-`
-		if err := os.WriteFile(configPath, []byte(defaultConfig), 0644); err != nil {
+		defaultConfig := config.DefaultConfig()
+		if err := config.Save(defaultConfig, configPath); err != nil {
 			return fmt.Errorf("failed to write config: %w", err)
 		}
 		fmt.Printf("Created: %s\n", configPath)

@@ -405,8 +405,8 @@ func NewRouter(k *kernel.Kernel) *Router {
 			return
 		}
 
-		// Broadcast to all connected clients
-		wsManager.BroadcastToAll(msgBytes)
+		// Broadcast only to the agent's connected clients
+		wsManager.Broadcast(req.AgentID, msgBytes)
 	})
 
 	// Register approval resolved callback to notify frontend
@@ -434,8 +434,8 @@ func NewRouter(k *kernel.Kernel) *Router {
 			return
 		}
 
-		// Broadcast to all connected clients
-		wsManager.BroadcastToAll(msgBytes)
+		// Broadcast only to the agent's connected clients
+		wsManager.Broadcast(req.AgentID, msgBytes)
 	})
 
 	return r
@@ -627,6 +627,8 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/approvals", r.handleCreateApproval)
 	mux.HandleFunc("POST /api/approvals/{id}/approve", r.handleApproveApproval)
 	mux.HandleFunc("POST /api/approvals/{id}/reject", r.handleRejectApproval)
+	mux.HandleFunc("GET /api/approvals/policy", r.handleGetApprovalPolicy)
+	mux.HandleFunc("PUT /api/approvals/policy", r.handleSetApprovalPolicy)
 	// Budget endpoints
 	mux.HandleFunc("GET /api/budget", r.handleBudget)
 	mux.HandleFunc("GET /api/budget/agents", r.handleBudgetAgents)
@@ -3414,8 +3416,52 @@ func (r *Router) handleDeleteAgentAlias(w http.ResponseWriter, req *http.Request
 }
 
 func (r *Router) handleTools(w http.ResponseWriter, req *http.Request) {
+	var tools []map[string]interface{}
+
+	// 默认内置工具
+	builtinTools := []struct {
+		name        string
+		description string
+	}{
+		{"shell", "Execute shell commands"},
+		{"shell_exec", "Execute shell commands"},
+		{"write_file", "Write content to files"},
+		{"file_write", "Write content to files"},
+		{"read_file", "Read file contents"},
+		{"file_read", "Read file contents"},
+		{"list_dir", "List directory contents"},
+		{"file_list", "List directory contents"},
+		{"delete", "Delete files or directories"},
+		{"exec", "Execute external programs"},
+		{"browser", "Control web browser"},
+		{"purchase", "Make purchases"},
+		{"send_message", "Send messages"},
+		{"agent_send", "Send messages to other agents"},
+		{"agent_list", "List available agents"},
+		{"memory_store", "Store data in memory"},
+		{"memory_recall", "Recall data from memory"},
+		{"fetch", "Fetch content from URLs"},
+		{"search", "Search the web"},
+	}
+
+	for _, t := range builtinTools {
+		tools = append(tools, map[string]interface{}{
+			"name":        t.name,
+			"description": t.description,
+		})
+	}
+
+	// 添加 MCP 工具
+	mcpTools := r.getKernel(req).GetMcpTools()
+	for _, t := range mcpTools {
+		tools = append(tools, map[string]interface{}{
+			"name":        t.Name,
+			"description": t.Description,
+		})
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"tools": []interface{}{},
+		"tools": tools,
 	})
 }
 
@@ -5066,6 +5112,65 @@ func (r *Router) handleRejectApproval(w http.ResponseWriter, req *http.Request) 
 		"id":         id,
 		"status":     "rejected",
 		"decided_at": time.Now().Format(time.RFC3339),
+	})
+}
+
+func (r *Router) handleGetApprovalPolicy(w http.ResponseWriter, req *http.Request) {
+	user := GetUserFromContext(req.Context())
+	var cfg *config.Config
+	var err error
+	if user != nil && !IsOwner(user) {
+		cfg, err = config.LoadUserConfig(user.Username)
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+	} else {
+		cfg, err = config.Load("")
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+	}
+
+	respondJSON(w, http.StatusOK, cfg.Approvals)
+}
+
+func (r *Router) handleSetApprovalPolicy(w http.ResponseWriter, req *http.Request) {
+	var policy approvals.ApprovalPolicy
+	if err := json.NewDecoder(req.Body).Decode(&policy); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	user := GetUserFromContext(req.Context())
+	var cfg *config.Config
+	var err error
+	if user != nil && !IsOwner(user) {
+		cfg, err = config.LoadUserConfig(user.Username)
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+		cfg.Approvals = policy
+		if err := config.SaveUserConfig(user.Username, cfg); err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to save user config: "+err.Error())
+			return
+		}
+	} else {
+		cfg, err = config.Load("")
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+		cfg.Approvals = policy
+		if err := config.Save(cfg, ""); err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to save config: "+err.Error())
+			return
+		}
+	}
+
+	r.getKernel(req).ApprovalManager().SetPolicy(policy)
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"policy":  policy,
 	})
 }
 

@@ -15,7 +15,7 @@ import (
 func startCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
-		Short: "Start the OpenFang kernel daemon",
+		Short: "Start the FangClaw-Go kernel daemon",
 		Long:  "Start the kernel daemon which serves the API and manages agents.",
 		RunE:  runStart,
 	}

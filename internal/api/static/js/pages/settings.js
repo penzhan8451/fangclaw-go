@@ -29,6 +29,11 @@ function settingsPage() {
     loading: true,
     loadError: '',
     initialized: false,
+    
+    // -- Approval Policy state --
+    approvalPolicy: {},
+    approvalLoading: false,
+    approvalSaving: false,
 
     async init() {
       var self = this;
@@ -675,6 +680,43 @@ function settingsPage() {
         this.migStep = 'result';
       }
       this.migrating = false;
+    },
+
+    async loadApprovalPolicy() {
+      this.approvalLoading = true;
+      try {
+        this.approvalPolicy = await FangClawGoAPI.get('/api/approvals/policy');
+      } catch(e) {
+        FangClawGoToast.error('Failed to load approval policy: ' + e.message);
+        this.approvalPolicy = {};
+      }
+      this.approvalLoading = false;
+    },
+
+    async saveApprovalPolicy() {
+      this.approvalSaving = true;
+      try {
+        await FangClawGoAPI.put('/api/approvals/policy', this.approvalPolicy);
+        FangClawGoToast.success('Approval policy saved');
+      } catch(e) {
+        FangClawGoToast.error('Failed to save approval policy: ' + e.message);
+      }
+      this.approvalSaving = false;
+    },
+
+    isToolInRequireApproval(toolName) {
+      if (!this.approvalPolicy || !this.approvalPolicy.require_approval) return false;
+      return this.approvalPolicy.require_approval.indexOf(toolName) !== -1;
+    },
+
+    toggleToolApproval(toolName) {
+      if (!this.approvalPolicy.require_approval) this.approvalPolicy.require_approval = [];
+      var idx = this.approvalPolicy.require_approval.indexOf(toolName);
+      if (idx === -1) {
+        this.approvalPolicy.require_approval.push(toolName);
+      } else {
+        this.approvalPolicy.require_approval.splice(idx, 1);
+      }
     },
 
     destroy() {

@@ -230,8 +230,9 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 	// Check quota before executing
 	agentID := agentCtx.AgentID.String()
 	if r.agentScheduler != nil {
+	quotaCheckLoop:
 		if err := r.agentScheduler.CheckQuota(agentID); err != nil {
-			// Quota exceeded, send approval message
+			// Quota exceeded, send approval message and wait for decision
 			if r.approvalMgr != nil {
 				approvalMsg := fmt.Sprintf("⚠️ Quota exceeded for agent '%s': %v", agentCtx.Name, err)
 				req := approvals.NewApprovalRequest(agentID, "quota_check", approvalMsg, "Quota Exceeded", "deny", approvalMsg, approvals.RiskLevelMedium)
@@ -239,9 +240,27 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 				req.SessionID = agentCtx.SessionID.String()
 				req.ModelProvider = agentCtx.Provider
 				req.ModelName = agentCtx.Model
-				_, _ = r.approvalMgr.RequestApproval(req)
+				decisionCh, err := r.approvalMgr.RequestApproval(req)
+				if err != nil {
+					return nil, fmt.Errorf("approval system error: %w", err)
+				}
+
+				select {
+				case decision := <-decisionCh:
+					if decision == approvals.ApprovalDecisionApproved {
+						// User approved, reset quota usage and continue
+						r.agentScheduler.ResetUsage(agentID)
+						goto quotaCheckLoop
+					} else {
+						// User rejected or timed out, return error
+						return nil, fmt.Errorf("quota exceeded and approval %s: %w", decision, err)
+					}
+				case <-ctx.Done():
+					return nil, fmt.Errorf("approval cancelled: %w", ctx.Err())
+				}
+			} else {
+				return nil, fmt.Errorf("quota exceeded: %w", err)
 			}
-			return nil, fmt.Errorf("quota exceeded: %w", err)
 		}
 	}
 

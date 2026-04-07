@@ -9,22 +9,24 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/penzhan8451/fangclaw-go/internal/approvals"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
 // config.toml: Config represents the FangClaw-Go configuration.
 type Config struct {
-	APIListen    string                  `toml:"api_listen"`
-	DefaultModel ModelSettings           `toml:"default_model"`
-	DefaultAgent string                  `toml:"default_agent"`
-	Memory       MemorySettings          `toml:"memory"`
-	Security     SecuritySettings        `toml:"security"`
-	Log          LogSettings             `toml:"log"`
-	Channels     ChannelsConfig          `toml:"channels"`
-	McpServers   []types.McpServerConfig `toml:"mcp_servers,omitempty"`
-	Browser      BrowserSettings         `toml:"browser"`
-	A2a          types.A2aConfig         `toml:"a2a"`
-	Auth         types.AuthConfig        `toml:"auth"`
+	APIListen    string                   `toml:"api_listen"`
+	DefaultModel ModelSettings            `toml:"default_model"`
+	DefaultAgent string                   `toml:"default_agent"`
+	Memory       MemorySettings           `toml:"memory"`
+	Security     SecuritySettings         `toml:"security"`
+	Log          LogSettings              `toml:"log"`
+	Channels     ChannelsConfig           `toml:"channels"`
+	McpServers   []types.McpServerConfig  `toml:"mcp_servers,omitempty"`
+	Browser      BrowserSettings          `toml:"browser"`
+	A2a          types.A2aConfig          `toml:"a2a"`
+	Auth         types.AuthConfig         `toml:"auth"`
+	Approvals    approvals.ApprovalPolicy `toml:"approvals"`
 }
 
 // config.toml: BrowserSettings represents the browser settings.
@@ -108,7 +110,7 @@ type LogSettings struct {
 // DefaultConfig returns the default configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		APIListen: "127.0.0.1:4200",
+		APIListen: "0.0.0.0:8080",
 		DefaultModel: ModelSettings{
 			Provider:  "groq",
 			Model:     "llama-3.3-70b-versatile",
@@ -127,6 +129,7 @@ func DefaultConfig() *Config {
 		Auth: types.AuthConfig{
 			Enabled: false,
 		},
+		Approvals: approvals.DefaultApprovalPolicy(),
 	}
 }
 

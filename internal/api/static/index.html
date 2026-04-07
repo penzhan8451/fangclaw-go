@@ -7408,6 +7408,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <div class="tab" role="tab" :class="{ active: tab === 'models' }" @click="tab = 'models'" x-i18n="settings.models">Models</div>
             <div class="tab" role="tab" :class="{ active: tab === 'config' }" @click="tab = 'config'; if (!configSchema) loadConfigSchema()" x-i18n="settings.config">Config</div>
             <div class="tabs-separator"></div>
+            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'approvals' }" @click="tab = 'approvals'; if (!tools.length) loadTools(); if (!approvalPolicy.require_approval) loadApprovalPolicy()">Approvals</div>
             <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'tools' }" @click="tab = 'tools'" x-i18n="settings.tools">Tools</div>
             <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'security' }" @click="tab = 'security'; if (!securityData && !secLoading) loadSecurity()" x-i18n="settings.security">Security</div>
             <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'network' }" @click="tab = 'network'; if (!peers.length && !peersLoading) { loadPeers(); startPeerPolling(); }" x-i18n="settings.network">Network</div>
@@ -7581,6 +7582,75 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                   </template>
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          <!-- Approvals tab -->
+          <div x-show="tab === 'approvals'">
+            <div class="info-card">
+              <h4>Approval Policy</h4>
+              <p>Configure when agent actions require manual approval before execution.</p>
+            </div>
+
+            <div x-show="approvalLoading" class="loading-state"><div class="spinner"></div><span>Loading approval policy...</span></div>
+            <div x-show="!approvalLoading">
+              <div class="card mb-4">
+                <div class="card-header">General Settings</div>
+                <div class="detail-grid" style="margin-top:12px">
+                  <div class="detail-row" style="align-items:center">
+                    <span class="detail-label">Auto-approve all requests</span>
+                    <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+                      <label class="form-checkbox" style="margin:0">
+                        <input type="checkbox" :checked="approvalPolicy.auto_approve" @change="approvalPolicy.auto_approve = $event.target.checked">
+                      </label>
+                    </div>
+                    <div class="text-xs text-dim" style="grid-column:1/-1;padding-left:2px">Skip all approvals and automatically allow every action</div>
+                  </div>
+                  <div class="detail-row" style="align-items:center">
+                    <span class="detail-label">Auto-approve low-risk operations</span>
+                    <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+                      <label class="form-checkbox" style="margin:0">
+                        <input type="checkbox" :checked="approvalPolicy.auto_approve_low" @change="approvalPolicy.auto_approve_low = $event.target.checked">
+                      </label>
+                    </div>
+                  </div>
+                  <!-- <div class="detail-row" style="align-items:center">
+                    <span class="detail-label">Auto-approve in autonomous mode</span>
+                    <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+                      <label class="form-checkbox" style="margin:0">
+                        <input type="checkbox" :checked="approvalPolicy.auto_approve_autonomous" @change="approvalPolicy.auto_approve_autonomous = $event.target.checked">
+                      </label>
+                    </div>
+                  </div> -->
+                  <div class="detail-row" style="align-items:center">
+                    <span class="detail-label">Timeout (seconds)</span>
+                    <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+                      <input class="form-input" type="number" style="width:120px" :value="approvalPolicy.timeout_secs" @input="approvalPolicy.timeout_secs = Number($event.target.value)">
+                    </div>
+                    <div class="text-xs text-dim" style="grid-column:1/-1;padding-left:2px">Automatically reject pending approvals after this timeout</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card mb-4">
+                <div class="card-header">Tool Approval List</div>
+                <div class="text-xs text-dim mb-2" style="margin-top:8px">Select tools that require manual approval before execution</div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">
+                  <template x-for="t in tools" :key="t.name">
+                    <label class="form-checkbox" style="margin:0;display:flex;align-items:center;gap:6px;padding:8px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-subtle)">
+                      <input type="checkbox" :checked="isToolInRequireApproval(t.name)" @change="toggleToolApproval(t.name)">
+                      <span class="font-bold" style="font-size:12px" x-text="t.name"></span>
+                    </label>
+                  </template>
+                </div>
+              </div>
+
+              <div style="text-align:right">
+                <button class="btn btn-primary" @click="saveApprovalPolicy()" :disabled="approvalSaving">
+                  <span x-show="!approvalSaving">Save Policy</span>
+                  <span x-show="approvalSaving" class="spinner" style="width:14px;height:14px;border-width:2px"></span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -16809,6 +16879,11 @@ function settingsPage() {
     loading: true,
     loadError: '',
     initialized: false,
+    
+    // -- Approval Policy state --
+    approvalPolicy: {},
+    approvalLoading: false,
+    approvalSaving: false,
 
     async init() {
       var self = this;
@@ -17455,6 +17530,43 @@ function settingsPage() {
         this.migStep = 'result';
       }
       this.migrating = false;
+    },
+
+    async loadApprovalPolicy() {
+      this.approvalLoading = true;
+      try {
+        this.approvalPolicy = await FangClawGoAPI.get('/api/approvals/policy');
+      } catch(e) {
+        FangClawGoToast.error('Failed to load approval policy: ' + e.message);
+        this.approvalPolicy = {};
+      }
+      this.approvalLoading = false;
+    },
+
+    async saveApprovalPolicy() {
+      this.approvalSaving = true;
+      try {
+        await FangClawGoAPI.put('/api/approvals/policy', this.approvalPolicy);
+        FangClawGoToast.success('Approval policy saved');
+      } catch(e) {
+        FangClawGoToast.error('Failed to save approval policy: ' + e.message);
+      }
+      this.approvalSaving = false;
+    },
+
+    isToolInRequireApproval(toolName) {
+      if (!this.approvalPolicy || !this.approvalPolicy.require_approval) return false;
+      return this.approvalPolicy.require_approval.indexOf(toolName) !== -1;
+    },
+
+    toggleToolApproval(toolName) {
+      if (!this.approvalPolicy.require_approval) this.approvalPolicy.require_approval = [];
+      var idx = this.approvalPolicy.require_approval.indexOf(toolName);
+      if (idx === -1) {
+        this.approvalPolicy.require_approval.push(toolName);
+      } else {
+        this.approvalPolicy.require_approval.splice(idx, 1);
+      }
     },
 
     destroy() {
