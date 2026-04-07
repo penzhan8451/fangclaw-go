@@ -89,7 +89,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Created: %s\n", envPath)
 	}
 
-	fmt.Println("\n✓ OpenFang initialized!")
+	fmt.Println("\n✓ !")
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Edit ~/.fangclaw-go/.fangclaw-go.env")
 	fmt.Println("  2. Add your API key to ~/.fangclaw-go/.fangclaw-go.env")

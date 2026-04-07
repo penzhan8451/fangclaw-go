@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -378,6 +379,8 @@ func (am *AuthManager) AuthenticateUser(username, password string) (*Session, er
 	am.mu.Lock()
 	defer am.mu.Unlock()
 
+	normalizedUsername := NormalizeUsername(username)
+
 	var user User
 	var apiKeysJSON, bindingsJSON, settingsJSON string
 	var createdAtStr string
@@ -388,7 +391,7 @@ func (am *AuthManager) AuthenticateUser(username, password string) (*Session, er
 	err := am.db.QueryRow(`
 		SELECT id, username, email, password_hash, role, api_keys, channel_bindings, settings, created_at, last_login, disabled, is_vip
 		FROM users WHERE username = ?
-	`, username).Scan(
+	`, normalizedUsername).Scan(
 		&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.Role,
 		&apiKeysJSON, &bindingsJSON, &settingsJSON, &createdAtStr, &lastLogin, &disabled, &isVIP,
 	)
@@ -867,4 +870,129 @@ func GetDefaultAuthDBPath() (string, error) {
 		return "", fmt.Errorf("could not determine home directory: %w", err)
 	}
 	return filepath.Join(homeDir, ".fangclaw-go", "auth.db"), nil
+}
+
+var ReservedUsernames = map[string]bool{
+	"admin":         true,
+	"administrator": true,
+	"owner":         true,
+	"root":          true,
+	"system":        true,
+	"api":           true,
+	"support":       true,
+	"help":          true,
+	"info":          true,
+	"webmaster":     true,
+	"mail":          true,
+	"email":         true,
+	"noreply":       true,
+	"no-reply":      true,
+	"test":          true,
+	"guest":         true,
+	"user":          true,
+	"users":         true,
+	"all":           true,
+	"everyone":      true,
+	"nobody":        true,
+	"anonymous":     true,
+	"unknown":       true,
+	"deleted":       true,
+	"banned":        true,
+	"moderator":     true,
+	"mod":           true,
+	"bot":           true,
+	"service":       true,
+	"official":      true,
+	"fangclaw":      true,
+	"fangclaw-go":   true,
+}
+
+const (
+	MinUsernameLength = 3
+	MaxUsernameLength = 32
+)
+
+type UsernameValidationResult struct {
+	Valid    bool
+	Username string
+	Error    string
+}
+
+func NormalizeUsername(username string) string {
+	username = strings.ToLower(username)
+	username = strings.TrimSpace(username)
+
+	var result strings.Builder
+	for _, r := range username {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			result.WriteRune(r)
+		} else if r == ' ' || r == '.' {
+			result.WriteRune('_')
+		}
+	}
+
+	normalized := result.String()
+
+	for strings.Contains(normalized, "__") {
+		normalized = strings.ReplaceAll(normalized, "__", "_")
+	}
+	for strings.Contains(normalized, "--") {
+		normalized = strings.ReplaceAll(normalized, "--", "-")
+	}
+
+	normalized = strings.Trim(normalized, "_-")
+
+	return normalized
+}
+
+func ValidateUsername(username string) *UsernameValidationResult {
+	result := &UsernameValidationResult{}
+
+	if username == "" {
+		result.Error = "username is required"
+		return result
+	}
+
+	normalized := NormalizeUsername(username)
+
+	if len(normalized) < MinUsernameLength {
+		result.Error = fmt.Sprintf("username must be at least %d characters", MinUsernameLength)
+		return result
+	}
+
+	if len(normalized) > MaxUsernameLength {
+		result.Error = fmt.Sprintf("username must be at most %d characters", MaxUsernameLength)
+		return result
+	}
+
+	if ReservedUsernames[normalized] {
+		result.Error = "this username is reserved"
+		return result
+	}
+
+	if normalized[0] >= '0' && normalized[0] <= '9' {
+		result.Error = "username cannot start with a number"
+		return result
+	}
+
+	result.Valid = true
+	result.Username = normalized
+	return result
+}
+
+func GenerateUniqueUsername(baseUsername string, existsFunc func(string) bool) string {
+	normalized := NormalizeUsername(baseUsername)
+
+	if !existsFunc(normalized) {
+		return normalized
+	}
+
+	for i := 1; i <= 999; i++ {
+		candidate := fmt.Sprintf("%s%d", normalized, i)
+		if !existsFunc(candidate) {
+			return candidate
+		}
+	}
+
+	return fmt.Sprintf("%s_%s", normalized, GenerateSecureToken()[:8])
 }

@@ -547,6 +547,36 @@ function loginPage() {
     loading: false,
     loginMode: 'login',
 
+    validateUsername(username) {
+      var reserved = ['admin', 'administrator', 'owner', 'root', 'system', 'api', 
+        'support', 'help', 'info', 'webmaster', 'mail', 'email', 'noreply', 
+        'no-reply', 'test', 'guest', 'user', 'users', 'all', 'everyone', 
+        'nobody', 'anonymous', 'unknown', 'deleted', 'banned', 'moderator', 
+        'mod', 'bot', 'service', 'official', 'fangclaw', 'fangclaw-go'];
+      
+      var normalized = username.toLowerCase().trim();
+      normalized = normalized.replace(/[^a-z0-9_\-]/g, function(m) {
+        return (m === ' ' || m === '.') ? '_' : '';
+      });
+      normalized = normalized.replace(/_+/g, '_').replace(/-+/g, '-');
+      normalized = normalized.replace(/^[_\-]+|[_\-]+$/g, '');
+      
+      if (normalized.length < 3) {
+        return { valid: false, error: 'Username must be at least 3 characters' };
+      }
+      if (normalized.length > 32) {
+        return { valid: false, error: 'Username must be at most 32 characters' };
+      }
+      if (/^[0-9]/.test(normalized)) {
+        return { valid: false, error: 'Username cannot start with a number' };
+      }
+      if (reserved.indexOf(normalized) !== -1) {
+        return { valid: false, error: 'This username is reserved' };
+      }
+      
+      return { valid: true, normalized: normalized };
+    },
+
     async handleLogin() {
       var self = this;
       self.error = '';
@@ -580,6 +610,12 @@ function loginPage() {
       
       if (!self.username || !self.password) {
         self.error = 'Username and password are required';
+        return;
+      }
+
+      var validation = self.validateUsername(self.username);
+      if (!validation.valid) {
+        self.error = validation.error;
         return;
       }
 

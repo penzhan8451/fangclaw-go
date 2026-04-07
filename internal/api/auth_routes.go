@@ -120,12 +120,18 @@ func (h *AuthHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	validation := auth.ValidateUsername(req.Username)
+	if !validation.Valid {
+		respondError(w, http.StatusBadRequest, validation.Error)
+		return
+	}
+
 	if len(req.Password) < 6 {
 		respondError(w, http.StatusBadRequest, "password must be at least 6 characters")
 		return
 	}
 
-	user, err := h.authManager.CreateUser(req.Username, req.Email, req.Password, auth.RoleUser)
+	user, err := h.authManager.CreateUser(validation.Username, req.Email, req.Password, auth.RoleUser)
 	if err != nil {
 		respondError(w, http.StatusConflict, err.Error())
 		return
@@ -522,12 +528,22 @@ func (h *AuthHandler) HandleGitHubCallback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	normalizedUsername := auth.NormalizeUsername(githubUser.Login)
+	if normalizedUsername == "" {
+		normalizedUsername = "gh_" + auth.GenerateSecureToken()[:8]
+	}
+
 	var user *auth.User
-	existingUser, err := h.authManager.GetUserByUsername(githubUser.Login)
+	existingUser, err := h.authManager.GetUserByUsername(normalizedUsername)
 	if err == nil && existingUser != nil {
 		user = existingUser
 	} else {
-		user, err = h.authManager.CreateUser(githubUser.Login, githubUser.Email, "", auth.RoleUser)
+		username := auth.GenerateUniqueUsername(normalizedUsername, func(name string) bool {
+			_, err := h.authManager.GetUserByUsername(name)
+			return err == nil
+		})
+		
+		user, err = h.authManager.CreateUser(username, githubUser.Email, "", auth.RoleUser)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to create user: "+err.Error())
 			return
@@ -535,8 +551,9 @@ func (h *AuthHandler) HandleGitHubCallback(w http.ResponseWriter, r *http.Reques
 		if githubUser.Name != "" {
 			h.authManager.UpdateUser(user.ID, map[string]interface{}{
 				"settings": map[string]interface{}{
-					"github_name": githubUser.Name,
-					"github_id":   githubUser.ID,
+					"github_name":     githubUser.Name,
+					"github_id":       githubUser.ID,
+					"github_login":    githubUser.Login,
 				},
 			})
 		}
