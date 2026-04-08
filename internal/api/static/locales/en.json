@@ -376,7 +376,15 @@
     "addProvider": "Add Provider",
     "addUser": "Add User",
     "generateApiKey": "Generate API Key",
-    "save": "Save Settings"
+    "save": "Save Settings",
+    "models": "Models",
+    "config": "Config",
+    "approvals": "Approvals",
+    "tools": "Tools",
+    "network": "Network",
+    "budget": "Budget",
+    "system": "System",
+    "migration": "Migration"
   },
   "logs": {
     "title": "Logs",

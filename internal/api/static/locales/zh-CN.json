@@ -376,7 +376,15 @@
     "addProvider": "添加提供商",
     "addUser": "添加用户",
     "generateApiKey": "生成API密钥",
-    "save": "保存设置"
+    "save": "保存设置",
+    "models": "模型",
+    "config": "配置",
+    "approvals": "审批设置",
+    "tools": "工具",
+    "network": "网络",
+    "budget": "预算",
+    "system": "系统",
+    "migration": "迁移"
   },
   "logs": {
     "title": "日志",

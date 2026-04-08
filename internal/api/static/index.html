@@ -7408,7 +7408,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
             <div class="tab" role="tab" :class="{ active: tab === 'models' }" @click="tab = 'models'" x-i18n="settings.models">Models</div>
             <div class="tab" role="tab" :class="{ active: tab === 'config' }" @click="tab = 'config'; if (!configSchema) loadConfigSchema()" x-i18n="settings.config">Config</div>
             <div class="tabs-separator"></div>
-            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'approvals' }" @click="tab = 'approvals'; if (!tools.length) loadTools(); if (!approvalPolicy.require_approval) loadApprovalPolicy()">Approvals</div>
+            <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'approvals' }" @click="tab = 'approvals'; if (!tools.length) loadTools(); if (!approvalPolicy.require_approval) loadApprovalPolicy()" x-i18n="settings.approvals">Approvals</div>
             <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'tools' }" @click="tab = 'tools'" x-i18n="settings.tools">Tools</div>
             <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'security' }" @click="tab = 'security'; if (!securityData && !secLoading) loadSecurity()" x-i18n="settings.security">Security</div>
             <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'network' }" @click="tab = 'network'; if (!peers.length && !peersLoading) { loadPeers(); startPeerPolling(); }" x-i18n="settings.network">Network</div>
