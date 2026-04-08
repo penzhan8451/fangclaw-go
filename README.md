@@ -212,7 +212,7 @@ level = "info"
 ```
 
 > **Note**: API keys should be stored in environment variables, not in the config file. 
-> Set your API key in `~/.fangclaw-go/.fangclaw-go.env`:
+> Set your API key in `~/.fangclaw-go/secrets.env`:
 > ```bash
 > OPENROUTER_API_KEY=sk-...
 > # or
