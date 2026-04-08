@@ -1,13 +1,13 @@
 <h1 align="center">FangClaw-Go</h1>
-<h3 align="center">The Go Implementation of OpenFang</h3>
+<h3 align="center">The Go Implementation based on OpenFang</h3>
 
 <p align="center">
-  A feature-complete, Go-based Agent Operating System built from the OpenFang project. Open-source, production-ready, and battle-tested.<br/>
+  A feature-complete, Go-based Agent Operating Platform based on the OpenFang project. Open-source, production-ready, and battle-tested.<br/>
   <strong>One binary. Agents that actually work for you.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/RightNow-AI/openfang">OpenFang (Original Rust Project)</a>
+  <a href="https://github.com/RightNow-AI/openfang">OpenFang Project</a>
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
 
 ---
 
-## What is FangClaw?
+## What is FangClaw-Go?
 
 FangClaw-go is a **Go language implementation of the OpenFang project**, (https://github.com/RightNow-AI/openfang)
 
@@ -113,31 +113,6 @@ cd fangclaw-go
 go build -o fangclaw-go ./cmd/fangclaw-go
 ```
 
-### Configuration Example
-In `~/.fangclaw-go/config.toml`, you can find the default configuration:
-
-```bash
-api_listen = "127.0.0.1:4200"
-default_agent = "browser"
-
-[default_model]
-  provider = "openrouter"
-  model = "openrouter/auto"
-  api_key_env = "OPENROUTER_API_KEY"
-
-[memory]
-  decay_rate = 0.05
-
-[security]
-  rate_limit_per_minute = 0
-
-[log]
-  level = ""
-  file = ""
-```
-
-> **Note**: This is the global daemon configuration. Skills are configured per-Agent, not in this file. See the "Loading Skills" section for details.
-
 ### First-time Setup
 
 Run the setup wizard:
@@ -146,18 +121,22 @@ Run the setup wizard:
 ./fangclaw-go init
 ```
 
-The wizard will guide you through:
-1. Selecting an LLM provider (OpenAI, Anthropic, Groq, Ollama, OpenRouter)
-2. Configuring API Key
+The wizard will generate some default files, you can modify in the config.toml file located by default at `~/.fangclaw-go/config.toml`:
+1. LLM provider (OpenAI, Anthropic, Groq, Ollama, OpenRouter, etc.)
+2. Configuring Model (e.g., openai/gpt-34o, openai/gpt-4o, etc.)
 3. Selecting default model
-4. Setting data directory
+
+(After daemon started, you can also configure them by visit dashboard: http://127.0.0.1:4200/, Settings->Provider and Config tab.)
 
 Then, start the daemon:
 
 ```bash
 ./fangclaw-go start
 ```
-
+- **Check System Status**
+```bash
+./fangclaw-go status
+```
 ### Next Steps After Starting
 
 Once the daemon is running, you have several options:
@@ -201,24 +180,11 @@ Begin an interactive chat (doesn't require activating a hand first):
 ```
 
 #### 4. **Access the Dashboard**
-Open your browser to:
+You can create, activate, chat with agents (hands) in the dashboard. Open your browser to:
 - **Dashboard**: http://127.0.0.1:4200/
 - **API Status**: http://127.0.0.1:4200/api/health
 
-#### 5. **Check System Status**
-```bash
-./fangclaw-go status
-```
-
-#### 6. **View Logs**
-```bash
-./fangclaw-go logs
-```
 ---
-
-## Configuration
-
-FangClaw-go uses TOML configuration files, located by default at `~/.fangclaw-go/config.toml`.
 
 ### Example Configuration
 
