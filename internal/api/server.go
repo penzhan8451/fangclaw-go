@@ -870,6 +870,7 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 		defer conn.Close()
 
 		// Create client
+		fmt.Printf("[WebSocket] Http upgrade to WebSocket Success: %s\n", agentID)
 		clientID := fmt.Sprintf("ws-%d", time.Now().UnixNano())
 		client := wsManager.AddClient(agentID, clientID, conn)
 		defer wsManager.RemoveClient(agentID, clientID)

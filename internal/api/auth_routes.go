@@ -374,18 +374,20 @@ func (h *AuthHandler) HandleCreateAPIKey(w http.ResponseWriter, r *http.Request)
 	respondJSON(w, http.StatusOK, map[string]string{"api_key": apiKey})
 }
 
-func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/auth/login", h.HandleLogin)
-	mux.HandleFunc("POST /api/auth/logout", h.HandleLogout)
-	mux.HandleFunc("POST /api/auth/register", h.HandleRegister)
-	mux.HandleFunc("GET /api/auth/me", h.HandleGetCurrentUser)
-	mux.HandleFunc("PUT /api/auth/me", h.HandleUpdateCurrentUser)
-	mux.HandleFunc("POST /api/auth/api-keys", h.HandleCreateAPIKey)
-	mux.HandleFunc("GET /api/users", h.HandleListUsers)
-	mux.HandleFunc("GET /api/users/{id}", h.HandleGetUser)
-	mux.HandleFunc("PUT /api/users/{id}", h.HandleUpdateUser)
-	mux.HandleFunc("DELETE /api/users/{id}", h.HandleDeleteUser)
-}
+// RegisterRoutes is commented out because routes are already registered in routes.go
+// This method is kept for reference but not used
+// func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
+// 	mux.HandleFunc("POST /api/auth/login", h.HandleLogin)
+// 	mux.HandleFunc("POST /api/auth/logout", h.HandleLogout)
+// 	mux.HandleFunc("POST /api/auth/register", h.HandleRegister)
+// 	mux.HandleFunc("GET /api/auth/me", h.HandleGetCurrentUser)
+// 	mux.HandleFunc("PUT /api/auth/me", h.HandleUpdateCurrentUser)
+// 	mux.HandleFunc("POST /api/auth/api-keys", h.HandleCreateAPIKey)
+// 	mux.HandleFunc("GET /api/users", h.HandleListUsers)
+// 	mux.HandleFunc("GET /api/users/{id}", h.HandleGetUser)
+// 	mux.HandleFunc("PUT /api/users/{id}", h.HandleUpdateUser)
+// 	mux.HandleFunc("DELETE /api/users/{id}", h.HandleDeleteUser)
+// }
 
 func userToResponse(u *auth.User) *UserResponse {
 	return &UserResponse{
@@ -542,7 +544,7 @@ func (h *AuthHandler) HandleGitHubCallback(w http.ResponseWriter, r *http.Reques
 			_, err := h.authManager.GetUserByUsername(name)
 			return err == nil
 		})
-		
+
 		user, err = h.authManager.CreateUser(username, githubUser.Email, "", auth.RoleUser)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to create user: "+err.Error())
@@ -551,9 +553,9 @@ func (h *AuthHandler) HandleGitHubCallback(w http.ResponseWriter, r *http.Reques
 		if githubUser.Name != "" {
 			h.authManager.UpdateUser(user.ID, map[string]interface{}{
 				"settings": map[string]interface{}{
-					"github_name":     githubUser.Name,
-					"github_id":       githubUser.ID,
-					"github_login":    githubUser.Login,
+					"github_name":  githubUser.Name,
+					"github_id":    githubUser.ID,
+					"github_login": githubUser.Login,
 				},
 			})
 		}

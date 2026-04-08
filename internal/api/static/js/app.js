@@ -180,7 +180,7 @@ document.addEventListener('alpine:init', function() {
 
     dismissOnboarding() {
       this.showOnboarding = false;
-      localStorage.setItem('openfang-onboarded', 'true');
+      localStorage.setItem('fangclawgo-onboarded', 'true');
     },
 
     async checkAuth() {
@@ -265,18 +265,18 @@ document.addEventListener('alpine:init', function() {
       this.lastKnownApprovals = [];
       document.dispatchEvent(new CustomEvent('user-logout'));
     },
-
+    
     submitApiKey(key) {
       if (!key || !key.trim()) return;
       FangClawGoAPI.setAuthToken(key.trim());
-      localStorage.setItem('openfang-api-key', key.trim());
+      localStorage.setItem('fangclawgo-api-key', key.trim());
       this.showAuthPrompt = false;
       this.refreshAgents();
     },
 
     clearApiKey() {
       FangClawGoAPI.setAuthToken('');
-      localStorage.removeItem('openfang-api-key');
+      localStorage.removeItem('fangclawgo-api-key');
     },
 
     addApprovalNotification(approval) {
@@ -354,13 +354,13 @@ document.addEventListener('alpine:init', function() {
 function app() {
   return {
     page: 'agents',
-    themeMode: localStorage.getItem('openfang-theme-mode') || 'system',
+    themeMode: localStorage.getItem('fangclawgo-theme-mode') || 'system',
     theme: (() => {
-      var mode = localStorage.getItem('openfang-theme-mode') || 'system';
+      var mode = localStorage.getItem('fangclawgo-theme-mode') || 'system';
       if (mode === 'system') return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       return mode;
     })(),
-    sidebarCollapsed: localStorage.getItem('openfang-sidebar') === 'collapsed',
+    sidebarCollapsed: localStorage.getItem('fangclawgo-sidebar') === 'collapsed',
     mobileMenuOpen: false,
     connected: false,
     wsConnected: false,
@@ -500,7 +500,7 @@ function app() {
 
     setTheme(mode) {
       this.themeMode = mode;
-      localStorage.setItem('openfang-theme-mode', mode);
+      localStorage.setItem('fangclawgo-theme-mode', mode);
       if (mode === 'system') {
         this.theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       } else {
@@ -516,7 +516,7 @@ function app() {
 
     toggleSidebar() {
       this.sidebarCollapsed = !this.sidebarCollapsed;
-      localStorage.setItem('openfang-sidebar', this.sidebarCollapsed ? 'collapsed' : 'expanded');
+      localStorage.setItem('fangclawgo-sidebar', this.sidebarCollapsed ? 'collapsed' : 'expanded');
     },
 
     async pollStatus() {
