@@ -1,6 +1,6 @@
 {
   "id": "code-with-opencode",
-  "name": "code-with-opencode",
+  "name": "Code-with-Opencode",
   "description": "A powerful programming agent that uses OpenCode CLI for complex coding tasks, code generation, and deployment.",
   "category": "Development",
   "icon": "OC",
