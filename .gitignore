@@ -1,5 +1,6 @@
 # Binaries
 /fangclaw-go
+/app
 *.exe
 *.exe~
 *.dll
