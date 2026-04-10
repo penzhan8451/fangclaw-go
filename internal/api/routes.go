@@ -1637,7 +1637,7 @@ func (r *Router) handleListChannels(w http.ResponseWriter, req *http.Request) {
 	}
 
 	for _, meta := range CHANNEL_REGISTRY {
-		configured := isChannelConfiguredWithCfg(meta.Name, cfg)
+		configured := isChannelConfiguredWithCfg(meta.Name, cfg, k)
 		if configured {
 			configuredCount++
 		}
@@ -1657,6 +1657,12 @@ func (r *Router) handleListChannels(w http.ResponseWriter, req *http.Request) {
 			}
 		} else if meta.Name == "whatsapp" {
 			if cfg.Channels.WhatsApp != nil && cfg.Channels.WhatsApp.AccessTokenEnv != "" && k.GetSecret(cfg.Channels.WhatsApp.AccessTokenEnv) != "" && cfg.Channels.WhatsApp.PhoneNumberID != "" {
+				hasToken = true
+			} else {
+				hasToken = false
+			}
+		} else if meta.Name == "weixin" {
+			if cfg.Channels.Weixin != nil && (cfg.Channels.Weixin.Token != "" || (cfg.Channels.Weixin.TokenEnv != "" && k.GetSecret(cfg.Channels.Weixin.TokenEnv) != "")) {
 				hasToken = true
 			} else {
 				hasToken = false
@@ -1699,6 +1705,13 @@ func (r *Router) handleListChannels(w http.ResponseWriter, req *http.Request) {
 					hasValue = cfg.Channels.WhatsApp.AccessTokenEnv != "" && k.GetSecret(cfg.Channels.WhatsApp.AccessTokenEnv) != ""
 				} else if f.Key == "phone_number_id" && cfg.Channels.WhatsApp != nil {
 					hasValue = cfg.Channels.WhatsApp.PhoneNumberID != ""
+				} else if f.EnvVar != nil {
+					val := k.GetSecret(*f.EnvVar)
+					hasValue = val != ""
+				}
+			} else if meta.Name == "weixin" {
+				if f.Key == "token_env" && cfg.Channels.Weixin != nil {
+					hasValue = cfg.Channels.Weixin.Token != "" || (cfg.Channels.Weixin.TokenEnv != "" && k.GetSecret(cfg.Channels.Weixin.TokenEnv) != "")
 				} else if f.EnvVar != nil {
 					val := k.GetSecret(*f.EnvVar)
 					hasValue = val != ""
@@ -1755,10 +1768,10 @@ func isChannelConfigured(channelName string) bool {
 	if err != nil {
 		return false
 	}
-	return isChannelConfiguredWithCfg(channelName, cfg)
+	return isChannelConfiguredWithCfg(channelName, cfg, nil)
 }
 
-func isChannelConfiguredWithCfg(channelName string, cfg *config.Config) bool {
+func isChannelConfiguredWithCfg(channelName string, cfg *config.Config, k *kernel.Kernel) bool {
 	switch channelName {
 	case "telegram":
 		return cfg.Channels.Telegram != nil && cfg.Channels.Telegram.BotTokenEnv != ""
@@ -1775,7 +1788,15 @@ func isChannelConfiguredWithCfg(channelName string, cfg *config.Config) bool {
 	case "feishu":
 		return cfg.Channels.Feishu != nil && cfg.Channels.Feishu.AppID != "" && (cfg.Channels.Feishu.AppSecretEnv != "" || cfg.Channels.Feishu.AppSecret != "")
 	case "weixin":
-		return cfg.Channels.Weixin != nil && cfg.Channels.Weixin.TokenEnv != ""
+		if cfg.Channels.Weixin != nil {
+			if cfg.Channels.Weixin.Token != "" {
+				return true
+			}
+			if cfg.Channels.Weixin.TokenEnv != "" && k != nil {
+				return k.GetSecret(cfg.Channels.Weixin.TokenEnv) != ""
+			}
+		}
+		return false
 	default:
 		return false
 	}
