@@ -14,6 +14,8 @@
     "search",
     "datetime"
   ],
-  "skills": [],
+  "skills": [
+    "meeting-notes"
+  ],
   "mcp_servers": []
 }
