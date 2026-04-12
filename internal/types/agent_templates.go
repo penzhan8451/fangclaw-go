@@ -59,6 +59,7 @@ func loadDefaultTemplates() {
 		"api-designer",
 		"meeting-notes",
 		"code-with-opencode",
+		"code-reviewer",
 	}
 
 	for _, id := range templateIDs {
