@@ -52,9 +52,14 @@ func (l *Loader) LoadSkill(skillID string) (*types.Skill, error) {
 	}
 	l.mu.RUnlock()
 
+	// First check root skills directory
 	skillDir := filepath.Join(l.skillsPath, skillID)
 	if _, err := os.Stat(skillDir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("skill not found: %s", skillID)
+		// If not found, check agent-created subdirectory
+		skillDir = filepath.Join(l.skillsPath, "agent-created", skillID)
+		if _, err := os.Stat(skillDir); os.IsNotExist(err) {
+			return nil, fmt.Errorf("skill not found: %s", skillID)
+		}
 	}
 
 	manifest, err := l.loadManifest(skillDir)
@@ -75,6 +80,55 @@ func (l *Loader) LoadSkill(skillID string) (*types.Skill, error) {
 	l.mu.Unlock()
 
 	return skill, nil
+}
+
+// CreateAgentSkill creates a new agent-created skill in agent-created subdirectory.
+func (l *Loader) CreateAgentSkill(name, description, promptContext string) (*types.Skill, error) {
+	if name == "" {
+		return nil, fmt.Errorf("name cannot be empty")
+	}
+
+	for _, c := range name {
+		if !('a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' || c == '-' || c == '_') {
+			return nil, fmt.Errorf("skill name must contain only letters, numbers, hyphens, and underscores")
+		}
+	}
+
+	// Create agent-created directory if it doesn't exist
+	agentCreatedDir := filepath.Join(l.skillsPath, "agent-created")
+	if err := os.MkdirAll(agentCreatedDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create agent-created directory: %w", err)
+	}
+
+	skillDir := filepath.Join(agentCreatedDir, name)
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		return nil, fmt.Errorf("skill '%s' already exists", name)
+	}
+
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create skill directory: %w", err)
+	}
+
+	escapedDescription := strings.ReplaceAll(description, "\"", "\\\"")
+	skillMDContent := fmt.Sprintf(`---
+name: "%s"
+description: "%s"
+version: "1.0.0"
+author: "agent-created"
+tags: ["agent-created"]
+runtime:
+  runtime_type: "prompt_only"
+---
+
+%s
+`, name, escapedDescription, promptContext)
+
+	skillMDPath := filepath.Join(skillDir, "SKILL.md")
+	if err := os.WriteFile(skillMDPath, []byte(skillMDContent), 0644); err != nil {
+		return nil, fmt.Errorf("failed to write SKILL.md: %w", err)
+	}
+
+	return l.LoadSkill(name)
 }
 
 // loadManifest loads and parses the skill manifest.
@@ -178,6 +232,7 @@ func parseSKILLMD(data []byte) (types.SkillManifest, error) {
 		Name:          fm.Name,
 		Description:   fm.Description,
 		Author:        fm.Author,
+		Tags:          fm.Tags,
 		Runtime:       types.SkillRuntime{RuntimeType: types.SkillRuntimePrompt},
 		Tools:         types.SkillTools{Provided: []types.SkillToolDefinition{}},
 		Requirements:  types.SkillRequirements{},
@@ -547,22 +602,31 @@ func (l *Loader) GetSkill(skillID string) (*types.Skill, bool) {
 func (l *Loader) ListSkills() ([]*types.Skill, error) {
 	// fmt.Println("[DEBUG] ListSkills called, skillsPath:", l.skillsPath)
 
-	entries, err := os.ReadDir(l.skillsPath)
-	if err != nil {
-		// fmt.Println("[DEBUG] ListSkills failed to read dir:", err)
-		return nil, err
-	}
-	// fmt.Println("[DEBUG] ListSkills found", len(entries), "entries")
+	var allDirNames []string
 
-	var dirNames []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			dirNames = append(dirNames, entry.Name())
+	// Add skills from root skills directory
+	entries, err := os.ReadDir(l.skillsPath)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() && entry.Name() != "agent-created" {
+				allDirNames = append(allDirNames, entry.Name())
+			}
+		}
+	}
+
+	// Add skills from agent-created subdirectory
+	agentCreatedPath := filepath.Join(l.skillsPath, "agent-created")
+	agentCreatedEntries, err := os.ReadDir(agentCreatedPath)
+	if err == nil {
+		for _, entry := range agentCreatedEntries {
+			if entry.IsDir() {
+				allDirNames = append(allDirNames, entry.Name())
+			}
 		}
 	}
 
 	var skills []*types.Skill
-	for _, dirName := range dirNames {
+	for _, dirName := range allDirNames {
 		// fmt.Println("[DEBUG] Loading skill:", dirName)
 		if skill, err := l.LoadSkill(dirName); err == nil {
 			// fmt.Println("[DEBUG] Successfully loaded skill:", dirName)
@@ -633,14 +697,59 @@ runtime:
 	return l.LoadSkill(name)
 }
 
+// UpdateSkill updates an existing skill using a patch (old content -> new content)
+func (l *Loader) UpdateSkill(skillID, oldContent, newContent string) (*types.Skill, error) {
+	if skillID == "" {
+		return nil, fmt.Errorf("skill ID cannot be empty")
+	}
+
+	skill, err := l.LoadSkill(skillID)
+	if err != nil {
+		return nil, fmt.Errorf("skill not found: %w", err)
+	}
+
+	skillMDPath := filepath.Join(skill.InstallPath, "SKILL.md")
+	currentContentBytes, err := os.ReadFile(skillMDPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read SKILL.md: %w", err)
+	}
+	currentContent := string(currentContentBytes)
+
+	var updatedContent string
+	if oldContent != "" {
+		result := FuzzyFindAndReplace(currentContent, oldContent, newContent)
+		if !result.Success {
+			return nil, fmt.Errorf("failed to apply patch: %s", result.Error)
+		}
+		updatedContent = result.NewContent
+	} else {
+		updatedContent = newContent
+	}
+
+	if err := os.WriteFile(skillMDPath, []byte(updatedContent), 0644); err != nil {
+		return nil, fmt.Errorf("failed to write SKILL.md: %w", err)
+	}
+
+	l.mu.Lock()
+	delete(l.registry, skillID)
+	l.mu.Unlock()
+
+	return l.LoadSkill(skillID)
+}
+
 // UninstallSkill uninstalls a skill.
 func (l *Loader) UninstallSkill(skillID string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	// First check root skills directory
 	skillPath := filepath.Join(l.skillsPath, skillID)
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
-		return fmt.Errorf("skill not found: %s", skillID)
+		// If not found, check agent-created subdirectory
+		skillPath = filepath.Join(l.skillsPath, "agent-created", skillID)
+		if _, err := os.Stat(skillPath); os.IsNotExist(err) {
+			return fmt.Errorf("skill not found: %s", skillID)
+		}
 	}
 
 	if err := os.RemoveAll(skillPath); err != nil {

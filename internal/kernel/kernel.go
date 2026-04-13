@@ -356,6 +356,10 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 	// Register all built-in tools to AgentRuntime
 	tools.RegisterAllTools(agentRuntime)
 
+	// Register skill_manage tool with skill loader
+	skillManageTool := tools.NewSkillManageTool(skillLoader)
+	agentRuntime.RegisterTool(skillManageTool)
+
 	// Agents loaded from disk also need to be registered in AgentRuntime
 	agents := agentRegistry.List()
 	if len(agents) > 0 {

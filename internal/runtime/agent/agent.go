@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -278,7 +279,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 
 	// Build system prompt with memories and skills
 	fmt.Printf("\n------------ Current Agent [%s] Skills: %s---------------\n", agentCtx.Name, agentCtx.Skills)
-	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills, agentCtx.SkillPromptContext, agentCtx.Files)
+	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills, agentCtx.SkillPromptContext, agentCtx.Files, agentCtx.Name)
 
 	// Find user message from context
 	var userMessage string
@@ -751,7 +752,7 @@ func (r *Runtime) recallMemories(ctx context.Context, agentCtx *AgentContext) ([
 }
 
 // buildSystemPrompt builds the system prompt with memories and skills.
-func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFragment, skillIDs []string, skillPromptContext string, files map[string]string) string {
+func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFragment, skillIDs []string, skillPromptContext string, files map[string]string, agentName string) string {
 	prompt := basePrompt
 
 	// Add agent files following openfang's pattern
@@ -807,11 +808,18 @@ func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFr
 		prompt += skillPromptContext
 	}
 
-	// Add skills
-	if r.skills != nil && len(skillIDs) > 0 {
+	// Add skills (always load full content)
+	if r.skills != nil {
 		var skillsSection strings.Builder
 		skillsSection.WriteString("\n\nSkills:\n")
+
+		loadedSkillIDs := make(map[string]bool)
+
+		// 1. Load pre-defined skills from agent template
 		for _, skillID := range skillIDs {
+			if loadedSkillIDs[skillID] {
+				continue
+			}
 			skill, err := r.skills.LoadSkill(skillID)
 			if err != nil {
 				log.Printf("Warning: failed to load skill %s: %v", skillID, err)
@@ -822,7 +830,41 @@ func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFr
 				skillsSection.WriteString(skill.Manifest.PromptContext)
 				skillsSection.WriteString("\n")
 			}
+			loadedSkillIDs[skillID] = true
 		}
+
+		// 2. Load all agent-created skills automatically
+		allSkills, err := r.skills.ListSkills()
+		if err == nil {
+			for _, skill := range allSkills {
+				if loadedSkillIDs[skill.ID] {
+					continue
+				}
+				// Check if it's an agent-created skill
+				isAgentCreated := false
+				for _, tag := range skill.Manifest.Tags {
+					if tag == "agent-created" {
+						isAgentCreated = true
+						break
+					}
+				}
+				// Also check if it's in agent-created directory
+				if !isAgentCreated {
+					agentCreatedDir := "agent-created" + string(os.PathSeparator)
+					if strings.Contains(skill.InstallPath, agentCreatedDir) {
+						isAgentCreated = true
+					}
+				}
+
+				if isAgentCreated && skill.Manifest.PromptContext != "" {
+					skillsSection.WriteString(fmt.Sprintf("\n--- %s ---\n", skill.Manifest.Name))
+					skillsSection.WriteString(skill.Manifest.PromptContext)
+					skillsSection.WriteString("\n")
+					loadedSkillIDs[skill.ID] = true
+				}
+			}
+		}
+
 		if skillsSection.Len() > len("\n\nSkills:\n") {
 			prompt += skillsSection.String()
 		}

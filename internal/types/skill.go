@@ -49,6 +49,7 @@ type SkillManifest struct {
 	Name           string            `json:"name"`
 	Description    string            `json:"description"`
 	Author         string            `json:"author,omitempty"`
+	Tags           []string          `json:"tags,omitempty"`
 	Runtime        SkillRuntime      `json:"runtime"`
 	Tools          SkillTools        `json:"tools"`
 	Requirements   SkillRequirements `json:"requirements,omitempty"`
