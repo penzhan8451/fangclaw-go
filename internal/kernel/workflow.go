@@ -876,7 +876,8 @@ func (e *WorkflowEngine) loadDefaultTemplates() {
 	analystName := "analyst"
 	writerName := "writer"
 	coderName := "coder"
-	researcherName := "researcher"
+	researcherName := "researcher"  // agent id
+	codeReviewer := "code-reviewer" // agent id
 
 	templates := []types.WorkflowTemplate{
 		{
@@ -935,7 +936,7 @@ func (e *WorkflowEngine) loadDefaultTemplates() {
 					{
 						Name: "analyze-code",
 						Agent: types.StepAgent{
-							Name: &analystName,
+							Name: &codeReviewer,
 						},
 						PromptTemplate: "Analyze this code: {{input}}",
 						Mode: types.StepMode{
