@@ -4408,7 +4408,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
   <!-- Main Content -->
   <main class="main-content">
     <!-- Mobile menu button -->
-    <button class="mobile-menu-btn btn btn-ghost" @click="mobileMenuOpen = !mobileMenuOpen" style="position:fixed;top:8px;left:8px;z-index:98;padding:6px 10px">
+    <button class="mobile-menu-btn btn btn-ghost" @click="mobileMenuOpen = !mobileMenuOpen" style="position:fixed;top:8px;left:8px;z-index:1001;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-md);">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
 
@@ -7597,14 +7597,14 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
               <div class="card mb-4">
                 <div class="card-header">General Settings</div>
                 <div class="detail-grid" style="margin-top:12px">
-                  <div class="detail-row" style="align-items:center">
-                    <span class="detail-label">Auto-approve all requests</span>
+                  <div class="detail-row" style="flex-direction:column;align-items:flex-start">
                     <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+                      <span class="detail-label">Auto-approve all requests</span>
                       <label class="form-checkbox" style="margin:0">
                         <input type="checkbox" :checked="approvalPolicy.auto_approve" @change="approvalPolicy.auto_approve = $event.target.checked">
                       </label>
                     </div>
-                    <div class="text-xs text-dim" style="grid-column:1/-1;padding-left:2px">Skip all approvals and automatically allow every action</div>
+                    <div class="text-xs text-dim" style="padding-left:0;margin-top:4px">Skip all approvals and automatically allow every action</div>
                   </div>
                   <div class="detail-row" style="align-items:center">
                     <span class="detail-label">Auto-approve low-risk operations</span>
@@ -7622,12 +7622,12 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                       </label>
                     </div>
                   </div> -->
-                  <div class="detail-row" style="align-items:center">
-                    <span class="detail-label">Timeout (seconds)</span>
+                  <div class="detail-row" style="flex-direction:column;align-items:flex-start">
                     <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+                      <span class="detail-label">Timeout (seconds)</span>
                       <input class="form-input" type="number" style="width:120px" :value="approvalPolicy.timeout_secs" @input="approvalPolicy.timeout_secs = Number($event.target.value)">
                     </div>
-                    <div class="text-xs text-dim" style="grid-column:1/-1;padding-left:2px">Automatically reject pending approvals after this timeout</div>
+                    <div class="text-xs text-dim" style="padding-left:0;margin-top:4px">Automatically reject pending approvals after this timeout</div>
                   </div>
                 </div>
               </div>
