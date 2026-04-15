@@ -358,7 +358,15 @@
     "noSkills": "No skills installed",
     "installSkill": "Install Skill",
     "uninstall": "Uninstall",
-    "browse": "Browse"
+    "browse": "Browse",
+    "ecosystem": "Skills & Ecosystem",
+    "ecosystemDesc": "Skills extend your agents with new capabilities. FangClaw-go supports the OpenClaw/ClawHub ecosystem (3,000+ community skills) plus local skills.",
+    "promptOnly": "Prompt Only",
+    "promptOnlyDesc": "inject context and instructions into the agent's system prompt (most ClawHub skills)",
+    "executable": "Python / Node.js",
+    "executableDesc": "executable tools that agents can call during conversations",
+    "mcpServers": "MCP Servers",
+    "mcpServersDesc": "external tools via Model Context Protocol (GitHub, filesystem, databases, etc.)"
   },
   "hands": {
     "title": "Hands",

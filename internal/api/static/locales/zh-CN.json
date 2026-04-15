@@ -358,7 +358,15 @@
     "noSkills": "暂无已安装的技能",
     "installSkill": "安装技能",
     "uninstall": "卸载",
-    "browse": "浏览"
+    "browse": "浏览",
+    "ecosystem": "技能和生态系统",
+    "ecosystemDesc": "技能扩展您的代理能力。FangClaw-go 支持 OpenClaw/ClawHub 生态系统（3,000+ 社区技能）以及本地技能。",
+    "promptOnly": "仅提示词",
+    "promptOnlyDesc": "将上下文和指令注入到代理的系统提示词中（大多数 ClawHub 技能）",
+    "executable": "Python / Node.js",
+    "executableDesc": "可执行工具，代理(agent)可以在交谈中调用",
+    "mcpServers": "MCP服务器",
+    "mcpServersDesc": "通过模型上下协议（如 GitHub、文件系统、数据库等）的外部工具，代理(agent)可以在交谈中调用"
   },
   "hands": {
     "title": "操作",
