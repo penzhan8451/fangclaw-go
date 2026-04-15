@@ -484,11 +484,12 @@ func WaitForShutdown() <-chan struct{} {
 
 // WSMessage represents a WebSocket message.
 type WSMessage struct {
-	Type    string          `json:"type"`
-	AgentID string          `json:"agent_id,omitempty"`
-	Message string          `json:"message,omitempty"`
-	Content string          `json:"content,omitempty"`
-	Data    json.RawMessage `json:"data,omitempty"`
+	Type        string          `json:"type"`
+	AgentID     string          `json:"agent_id,omitempty"`
+	Message     string          `json:"message,omitempty"`
+	Content     string          `json:"content,omitempty"`
+	Data        json.RawMessage `json:"data,omitempty"`
+	Attachments []Attachment    `json:"attachments,omitempty"`
 }
 
 // WSClient represents a WebSocket client.
@@ -928,7 +929,7 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 
 						// Get message content
 						text := msg.Content
-						if text == "" {
+						if text == "" && len(msg.Attachments) == 0 {
 							// Send error
 							errorData := map[string]string{"content": "Error: No message content"}
 							errorDataBytes, _ := json.Marshal(errorData)
@@ -937,6 +938,9 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 							client.Send <- errorRespBytes
 							return
 						}
+
+						// Process attachments
+						text = ResolveAttachments(msg.Attachments, text)
 
 						// Get agent runtime
 						agentRuntime := k.AgentRuntime()

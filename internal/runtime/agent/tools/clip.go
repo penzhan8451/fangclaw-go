@@ -3,8 +3,12 @@ package tools
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
+
+	"github.com/penzhan8451/fangclaw-go/internal/mediaprocessing"
+	"github.com/penzhan8451/fangclaw-go/internal/uploadregistry"
 )
 
 // ============ Video Editor Tool (Clip) ============
@@ -13,8 +17,10 @@ type VideoEditorTool struct{}
 
 func NewVideoEditorTool() *VideoEditorTool { return &VideoEditorTool{} }
 
-func (t *VideoEditorTool) Name() string        { return "video_editor" }
-func (t *VideoEditorTool) Description() string { return "Edit videos by trimming, cutting, merging, and applying basic effects" }
+func (t *VideoEditorTool) Name() string { return "video_editor" }
+func (t *VideoEditorTool) Description() string {
+	return "Edit videos by trimming, cutting, merging, and applying basic effects"
+}
 
 func (t *VideoEditorTool) Schema() map[string]interface{} {
 	return map[string]interface{}{
@@ -27,9 +33,9 @@ func (t *VideoEditorTool) Schema() map[string]interface{} {
 				"properties": map[string]interface{}{
 					"input_file": map[string]interface{}{"type": "string", "description": "Path to input video file"},
 					"operations": map[string]interface{}{
-						"type": "array",
+						"type":        "array",
 						"description": "List of editing operations to perform",
-						"items": map[string]interface{}{"type": "object"},
+						"items":       map[string]interface{}{"type": "object"},
 					},
 					"output_file": map[string]interface{}{"type": "string", "description": "Path for output video file"},
 					"format":      map[string]interface{}{"type": "string", "description": "Output format (mp4, avi, mov, etc.)", "default": "mp4"},
@@ -61,18 +67,32 @@ func (t *VideoEditorTool) Execute(ctx context.Context, args map[string]interface
 		outputFile = fmt.Sprintf("edited_%d.%s", time.Now().Unix(), format)
 	}
 
+	// First, try to find the file path from upload registry
+	var filePath string
+	if meta, ok := uploadregistry.Get(inputFile); ok {
+		filePath = meta.FilePath
+	} else if meta, ok := uploadregistry.FindByFilename(inputFile); ok {
+		filePath = meta.FilePath
+	} else if meta, ok := uploadregistry.FindByBasename(inputFile); ok {
+		filePath = meta.FilePath
+	} else if _, err := os.Stat(inputFile); err == nil {
+		filePath = inputFile
+	} else {
+		return "", fmt.Errorf("file not found: %s", inputFile)
+	}
+
 	// Parse operations
-	var operations []VideoOperation
+	var operations []mediaprocessing.VideoOperation
 	for _, opRaw := range opsRaw {
 		opMap, ok := opRaw.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		
-		op := VideoOperation{
+
+		op := mediaprocessing.VideoOperation{
 			Type: opMap["type"].(string),
 		}
-		
+
 		if start, ok := opMap["start_time"].(string); ok {
 			op.StartTime = start
 		}
@@ -85,14 +105,46 @@ func (t *VideoEditorTool) Execute(ctx context.Context, args map[string]interface
 		if position, ok := opMap["position"].(string); ok {
 			op.Position = position
 		}
-		
+
 		operations = append(operations, op)
 	}
 
-	// In a real implementation, this would use FFmpeg or similar
-	result := simulateVideoEditing(inputFile, operations, outputFile, format)
-	
-	return result, nil
+	// Call the real video editing using FFmpeg
+	result, err := mediaprocessing.EditVideo(ctx, filePath, operations, outputFile, format)
+	if err != nil {
+		return "", err
+	}
+
+	var output strings.Builder
+	output.WriteString(fmt.Sprintf("Video Editing Report\n"))
+	output.WriteString(fmt.Sprintf("====================\n"))
+	output.WriteString(fmt.Sprintf("Input File: %s\n", filePath))
+	output.WriteString(fmt.Sprintf("Output File: %s\n", result.OutputFile))
+	output.WriteString(fmt.Sprintf("Format: %s\n", format))
+	output.WriteString(fmt.Sprintf("Duration: %s\n", result.Duration))
+	output.WriteString(fmt.Sprintf("Size: %s\n", result.Size))
+	output.WriteString(fmt.Sprintf("Operations Performed: %d\n\n", len(operations)))
+
+	for i, op := range operations {
+		output.WriteString(fmt.Sprintf("%d. Operation: %s\n", i+1, op.Type))
+		if op.StartTime != "" {
+			output.WriteString(fmt.Sprintf("   Start Time: %s\n", op.StartTime))
+		}
+		if op.EndTime != "" {
+			output.WriteString(fmt.Sprintf("   End Time: %s\n", op.EndTime))
+		}
+		if op.Text != "" {
+			output.WriteString(fmt.Sprintf("   Text: %s\n", op.Text))
+		}
+		if op.Position != "" {
+			output.WriteString(fmt.Sprintf("   Position: %s\n", op.Position))
+		}
+		output.WriteString("\n")
+	}
+
+	output.WriteString(fmt.Sprintf("✅ %s\n", result.Message))
+
+	return output.String(), nil
 }
 
 // ============ Transcribe Tool (Clip) ============
@@ -101,8 +153,10 @@ type TranscribeTool struct{}
 
 func NewTranscribeTool() *TranscribeTool { return &TranscribeTool{} }
 
-func (t *TranscribeTool) Name() string        { return "transcribe" }
-func (t *TranscribeTool) Description() string { return "Transcribe audio/video content to text with timestamp support" }
+func (t *TranscribeTool) Name() string { return "transcribe" }
+func (t *TranscribeTool) Description() string {
+	return "Transcribe audio/video content to text with timestamp support"
+}
 
 func (t *TranscribeTool) Schema() map[string]interface{} {
 	return map[string]interface{}{
@@ -113,10 +167,10 @@ func (t *TranscribeTool) Schema() map[string]interface{} {
 			"parameters": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"media_file": map[string]interface{}{"type": "string", "description": "Path to audio/video file"},
-					"language":   map[string]interface{}{"type": "string", "description": "Language code (en, zh, es, etc.)", "default": "en"},
-					"model":      map[string]interface{}{"type": "string", "description": "Speech recognition model", "default": "whisper-base"},
-					"timestamps": map[string]interface{}{"type": "boolean", "description": "Include timestamps in output", "default": true},
+					"media_file":          map[string]interface{}{"type": "string", "description": "Path to audio/video file"},
+					"language":            map[string]interface{}{"type": "string", "description": "Language code (en, zh, es, etc.)", "default": "en"},
+					"model":               map[string]interface{}{"type": "string", "description": "Speech recognition model", "default": "whisper-base"},
+					"timestamps":          map[string]interface{}{"type": "boolean", "description": "Include timestamps in output", "default": true},
 					"speaker_diarization": map[string]interface{}{"type": "boolean", "description": "Identify different speakers", "default": false},
 				},
 				"required": []string{"media_file"},
@@ -131,30 +185,27 @@ func (t *TranscribeTool) Execute(ctx context.Context, args map[string]interface{
 		return "", fmt.Errorf("media_file required")
 	}
 
-	language := "en"
-	if lang, ok := args["language"].(string); ok && lang != "" {
-		language = lang
+	// First, try to find the file path from upload registry
+	var filePath string
+	if meta, ok := uploadregistry.Get(mediaFile); ok {
+		filePath = meta.FilePath
+	} else if meta, ok := uploadregistry.FindByFilename(mediaFile); ok {
+		filePath = meta.FilePath
+	} else if meta, ok := uploadregistry.FindByBasename(mediaFile); ok {
+		filePath = meta.FilePath
+	} else if _, err := os.Stat(mediaFile); err == nil {
+		filePath = mediaFile
+	} else {
+		return "", fmt.Errorf("file not found: %s", mediaFile)
 	}
 
-	model := "whisper-base"
-	if m, ok := args["model"].(string); ok && m != "" {
-		model = m
+	// Call the real transcription using OpenAI/Groq Whisper API
+	text, err := mediaprocessing.TranscribeAudio(ctx, filePath)
+	if err != nil {
+		return "", err
 	}
 
-	timestamps := true
-	if ts, ok := args["timestamps"].(bool); ok {
-		timestamps = ts
-	}
-
-	speakerDiarization := false
-	if sd, ok := args["speaker_diarization"].(bool); ok {
-		speakerDiarization = sd
-	}
-
-	// In a real implementation, this would use Whisper or similar ASR model
-	result := simulateTranscription(mediaFile, language, model, timestamps, speakerDiarization)
-	
-	return result, nil
+	return text, nil
 }
 
 // ============ Highlight Detection Tool (Clip) ============
@@ -163,8 +214,10 @@ type HighlightDetectionTool struct{}
 
 func NewHighlightDetectionTool() *HighlightDetectionTool { return &HighlightDetectionTool{} }
 
-func (t *HighlightDetectionTool) Name() string        { return "highlight_detection" }
-func (t *HighlightDetectionTool) Description() string { return "Detect and extract highlight moments from videos based on audio/activity cues" }
+func (t *HighlightDetectionTool) Name() string { return "highlight_detection" }
+func (t *HighlightDetectionTool) Description() string {
+	return "Detect and extract highlight moments from videos based on audio/activity cues"
+}
 
 func (t *HighlightDetectionTool) Schema() map[string]interface{} {
 	return map[string]interface{}{
@@ -177,13 +230,13 @@ func (t *HighlightDetectionTool) Schema() map[string]interface{} {
 				"properties": map[string]interface{}{
 					"video_file": map[string]interface{}{"type": "string", "description": "Path to input video file"},
 					"detection_method": map[string]interface{}{
-						"type": "string", 
+						"type":        "string",
 						"description": "Method to use (audio_energy, motion_detection, scene_analysis)",
-						"default": "audio_energy",
+						"default":     "audio_energy",
 					},
-					"sensitivity": map[string]interface{}{"type": "number", "description": "Detection sensitivity (0.0-1.0)", "default": 0.7},
+					"sensitivity":  map[string]interface{}{"type": "number", "description": "Detection sensitivity (0.0-1.0)", "default": 0.7},
 					"min_duration": map[string]interface{}{"type": "number", "description": "Minimum highlight duration in seconds", "default": 5.0},
-					"max_clips": map[string]interface{}{"type": "integer", "description": "Maximum number of highlights to extract", "default": 10},
+					"max_clips":    map[string]interface{}{"type": "integer", "description": "Maximum number of highlights to extract", "default": 10},
 				},
 				"required": []string{"video_file"},
 			},
@@ -217,10 +270,47 @@ func (t *HighlightDetectionTool) Execute(ctx context.Context, args map[string]in
 		maxClips = int(mc)
 	}
 
-	// In a real implementation, this would use computer vision and audio analysis
-	highlights := simulateHighlightDetection(videoFile, method, sensitivity, minDuration, maxClips)
-	
-	return highlights, nil
+	// First, try to find the file path from upload registry
+	var filePath string
+	if meta, ok := uploadregistry.Get(videoFile); ok {
+		filePath = meta.FilePath
+	} else if meta, ok := uploadregistry.FindByFilename(videoFile); ok {
+		filePath = meta.FilePath
+	} else if meta, ok := uploadregistry.FindByBasename(videoFile); ok {
+		filePath = meta.FilePath
+	} else if _, err := os.Stat(videoFile); err == nil {
+		filePath = videoFile
+	} else {
+		return "", fmt.Errorf("file not found: %s", videoFile)
+	}
+
+	// Call the real highlight detection using FFmpeg
+	result, err := mediaprocessing.DetectHighlights(ctx, filePath, method, sensitivity, minDuration, maxClips)
+	if err != nil {
+		return "", err
+	}
+
+	var output strings.Builder
+	output.WriteString(fmt.Sprintf("Highlight Detection Report\n"))
+	output.WriteString(fmt.Sprintf("==========================\n"))
+	output.WriteString(fmt.Sprintf("Video File: %s\n", filePath))
+	output.WriteString(fmt.Sprintf("Detection Method: %s\n", method))
+	output.WriteString(fmt.Sprintf("Sensitivity: %.2f\n", sensitivity))
+	output.WriteString(fmt.Sprintf("Min Duration: %.1f sec\n", minDuration))
+	output.WriteString(fmt.Sprintf("Max Clips: %d\n", maxClips))
+	output.WriteString(fmt.Sprintf("Highlights Found: %d\n\n", len(result.Highlights)))
+
+	for i, highlight := range result.Highlights {
+		output.WriteString(fmt.Sprintf("Highlight #%d:\n", i+1))
+		output.WriteString(fmt.Sprintf("  Start: %s\n", highlight.Start))
+		output.WriteString(fmt.Sprintf("  End:   %s\n", highlight.End))
+		output.WriteString(fmt.Sprintf("  Confidence: %.0f%%\n", highlight.Confidence*100))
+		output.WriteString(fmt.Sprintf("  Description: %s\n\n", highlight.Description))
+	}
+
+	output.WriteString(fmt.Sprintf("✅ %s\n", result.Message))
+
+	return output.String(), nil
 }
 
 // ============ Caption Generator Tool (Clip) ============
@@ -229,8 +319,10 @@ type CaptionGeneratorTool struct{}
 
 func NewCaptionGeneratorTool() *CaptionGeneratorTool { return &CaptionGeneratorTool{} }
 
-func (t *CaptionGeneratorTool) Name() string        { return "caption_generator" }
-func (t *CaptionGeneratorTool) Description() string { return "Generate captions/subtitles for videos with formatting and timing options" }
+func (t *CaptionGeneratorTool) Name() string { return "caption_generator" }
+func (t *CaptionGeneratorTool) Description() string {
+	return "Generate captions/subtitles for videos with formatting and timing options"
+}
 
 func (t *CaptionGeneratorTool) Schema() map[string]interface{} {
 	return map[string]interface{}{
@@ -244,18 +336,18 @@ func (t *CaptionGeneratorTool) Schema() map[string]interface{} {
 					"video_file": map[string]interface{}{"type": "string", "description": "Path to input video file"},
 					"transcript": map[string]interface{}{"type": "string", "description": "Transcript text with timestamps"},
 					"format": map[string]interface{}{
-						"type": "string", 
+						"type":        "string",
 						"description": "Caption format (srt, vtt, ass)",
-						"default": "srt",
+						"default":     "srt",
 					},
 					"style": map[string]interface{}{
-						"type": "object",
+						"type":        "object",
 						"description": "Caption styling options",
 						"properties": map[string]interface{}{
-							"font_size": map[string]interface{}{"type": "integer", "default": 16},
-							"font_color": map[string]interface{}{"type": "string", "default": "white"},
+							"font_size":        map[string]interface{}{"type": "integer", "default": 16},
+							"font_color":       map[string]interface{}{"type": "string", "default": "white"},
 							"background_color": map[string]interface{}{"type": "string", "default": "black"},
-							"position": map[string]interface{}{"type": "string", "default": "bottom"},
+							"position":         map[string]interface{}{"type": "string", "default": "bottom"},
 						},
 					},
 					"burn_in": map[string]interface{}{"type": "boolean", "description": "Burn captions into video", "default": false},
@@ -288,7 +380,7 @@ func (t *CaptionGeneratorTool) Execute(ctx context.Context, args map[string]inte
 	}
 
 	// Parse style if provided
-	var style CaptionStyle
+	var style mediaprocessing.CaptionStyle
 	if styleRaw, ok := args["style"].(map[string]interface{}); ok {
 		if fs, ok := styleRaw["font_size"].(float64); ok {
 			style.FontSize = int(fs)
@@ -304,165 +396,41 @@ func (t *CaptionGeneratorTool) Execute(ctx context.Context, args map[string]inte
 		}
 	}
 
-	// In a real implementation, this would generate actual caption files
-	result := simulateCaptionGeneration(videoFile, transcript, format, style, burnIn)
-	
-	return result, nil
-}
-
-// Supporting types and helper functions
-
-type VideoOperation struct {
-	Type     string
-	StartTime string
-	EndTime  string
-	Text     string
-	Position string
-}
-
-type CaptionStyle struct {
-	FontSize        int
-	FontColor       string
-	BackgroundColor string
-	Position        string
-}
-
-func simulateVideoEditing(inputFile string, operations []VideoOperation, outputFile, format string) string {
-	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Video Editing Report\n"))
-	result.WriteString(fmt.Sprintf("====================\n"))
-	result.WriteString(fmt.Sprintf("Input File: %s\n", inputFile))
-	result.WriteString(fmt.Sprintf("Output File: %s\n", outputFile))
-	result.WriteString(fmt.Sprintf("Format: %s\n", format))
-	result.WriteString(fmt.Sprintf("Operations Performed: %d\n\n", len(operations)))
-	
-	for i, op := range operations {
-		result.WriteString(fmt.Sprintf("%d. Operation: %s\n", i+1, op.Type))
-		if op.StartTime != "" {
-			result.WriteString(fmt.Sprintf("   Start Time: %s\n", op.StartTime))
-		}
-		if op.EndTime != "" {
-			result.WriteString(fmt.Sprintf("   End Time: %s\n", op.EndTime))
-		}
-		if op.Text != "" {
-			result.WriteString(fmt.Sprintf("   Text: %s\n", op.Text))
-		}
-		if op.Position != "" {
-			result.WriteString(fmt.Sprintf("   Position: %s\n", op.Position))
-		}
-		result.WriteString("\n")
+	// First, try to find the file path from upload registry
+	var filePath string
+	if meta, ok := uploadregistry.Get(videoFile); ok {
+		filePath = meta.FilePath
+	} else if meta, ok := uploadregistry.FindByFilename(videoFile); ok {
+		filePath = meta.FilePath
+	} else if meta, ok := uploadregistry.FindByBasename(videoFile); ok {
+		filePath = meta.FilePath
+	} else if _, err := os.Stat(videoFile); err == nil {
+		filePath = videoFile
+	} else {
+		return "", fmt.Errorf("file not found: %s", videoFile)
 	}
-	
-	result.WriteString("✅ Video editing simulation completed successfully!\n")
-	result.WriteString("Note: This is a simulation. In production, FFmpeg would be used for actual video processing.")
-	
-	return result.String()
-}
 
-func simulateTranscription(mediaFile, language, model string, timestamps, speakerDiarization bool) string {
-	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Transcription Results\n"))
-	result.WriteString(fmt.Sprintf("=====================\n"))
-	result.WriteString(fmt.Sprintf("Media File: %s\n", mediaFile))
-	result.WriteString(fmt.Sprintf("Language: %s\n", language))
-	result.WriteString(fmt.Sprintf("Model: %s\n", model))
-	result.WriteString(fmt.Sprintf("Timestamps: %v\n", timestamps))
-	result.WriteString(fmt.Sprintf("Speaker Diarization: %v\n\n", speakerDiarization))
-	
-	// Simulated transcription output
-	result.WriteString("Transcribed Text:\n")
-	result.WriteString("[00:00:01.234 --> 00:00:05.678] Hello everyone, welcome to this presentation.\n")
-	result.WriteString("[00:00:05.678 --> 00:00:09.123] Today we'll be discussing artificial intelligence.\n")
-	result.WriteString("[00:00:09.123 --> 00:00:13.456] This technology is transforming various industries.\n")
-	
-	if speakerDiarization {
-		result.WriteString("\nSpeaker Identification:\n")
-		result.WriteString("- Speaker 1: [00:00:01.234 --> 00:00:09.123]\n")
-		result.WriteString("- Speaker 2: [00:00:09.123 --> 00:00:13.456]\n")
+	// Call the real caption generation
+	result, err := mediaprocessing.GenerateCaptions(ctx, filePath, transcript, format, style, burnIn)
+	if err != nil {
+		return "", err
 	}
-	
-	result.WriteString("\n✅ Transcription simulation completed!\n")
-	result.WriteString("Note: This uses simulated output. Production implementation would use Whisper or similar ASR models.")
-	
-	return result.String()
-}
 
-func simulateHighlightDetection(videoFile, method string, sensitivity, minDuration float64, maxClips int) string {
-	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Highlight Detection Results\n"))
-	result.WriteString(fmt.Sprintf("==========================\n"))
-	result.WriteString(fmt.Sprintf("Video File: %s\n", videoFile))
-	result.WriteString(fmt.Sprintf("Detection Method: %s\n", method))
-	result.WriteString(fmt.Sprintf("Sensitivity: %.2f\n", sensitivity))
-	result.WriteString(fmt.Sprintf("Min Duration: %.1f seconds\n", minDuration))
-	result.WriteString(fmt.Sprintf("Max Clips: %d\n\n", maxClips))
-	
-	// Simulated highlights
-	highlights := []struct{
-		start, end string
-		confidence float64
-		description string
-	}{
-		{"00:02:15", "00:02:45", 0.92, "Exciting moment with audience reaction"},
-		{"00:08:30", "00:09:10", 0.87, "Key demonstration segment"},
-		{"00:15:22", "00:16:05", 0.89, "Important announcement"},
-		{"00:22:45", "00:23:30", 0.85, "Q&A session highlight"},
-	}
-	
-	result.WriteString("Detected Highlights:\n")
-	for i, hl := range highlights {
-		if i >= maxClips {
-			break
-		}
-		result.WriteString(fmt.Sprintf("%d. %s - %s (Confidence: %.2f%%)\n", i+1, hl.start, hl.end, hl.confidence*100))
-		result.WriteString(fmt.Sprintf("   Description: %s\n\n", hl.description))
-	}
-	
-	result.WriteString("✅ Highlight detection simulation completed!\n")
-	result.WriteString("Note: This uses simulated detection. Production would use audio energy analysis and computer vision.")
-	
-	return result.String()
-}
+	var output strings.Builder
+	output.WriteString(fmt.Sprintf("Caption Generation Report\n"))
+	output.WriteString(fmt.Sprintf("=========================\n"))
+	output.WriteString(fmt.Sprintf("Video File: %s\n", filePath))
+	output.WriteString(fmt.Sprintf("Caption File: %s\n", result.CaptionFile))
+	output.WriteString(fmt.Sprintf("Format: %s\n", result.Format))
+	output.WriteString(fmt.Sprintf("Captions Generated: %d\n", result.CaptionsCount))
+	output.WriteString(fmt.Sprintf("Burn-in: %v\n\n", burnIn))
 
-func simulateCaptionGeneration(videoFile, transcript, format string, style CaptionStyle, burnIn bool) string {
-	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Caption Generation Results\n"))
-	result.WriteString(fmt.Sprintf("=========================\n"))
-	result.WriteString(fmt.Sprintf("Video File: %s\n", videoFile))
-	result.WriteString(fmt.Sprintf("Format: %s\n", format))
-	result.WriteString(fmt.Sprintf("Burn-in Captions: %v\n", burnIn))
-	result.WriteString(fmt.Sprintf("Style: Font Size=%d, Color=%s, BG=%s, Position=%s\n\n", 
-		style.FontSize, style.FontColor, style.BackgroundColor, style.Position))
-	
-	// Simulated caption file content
-	result.WriteString("Generated Caption File Content:\n")
-	switch format {
-	case "srt":
-		result.WriteString("1\n")
-		result.WriteString("00:00:01,234 --> 00:00:05,678\n")
-		result.WriteString("Hello everyone, welcome to this presentation.\n\n")
-		
-		result.WriteString("2\n")
-		result.WriteString("00:00:05,678 --> 00:00:09,123\n")
-		result.WriteString("Today we'll be discussing artificial intelligence.\n\n")
-		
-		result.WriteString("3\n")
-		result.WriteString("00:00:09,123 --> 00:00:13,456\n")
-		result.WriteString("This technology is transforming various industries.\n")
-	case "vtt":
-		result.WriteString("WEBVTT\n\n")
-		result.WriteString("00:00:01.234 --> 00:00:05.678\n")
-		result.WriteString("Hello everyone, welcome to this presentation.\n\n")
-		
-		result.WriteString("00:00:05.678 --> 00:00:09.123\n")
-		result.WriteString("Today we'll be discussing artificial intelligence.\n\n")
-		
-		result.WriteString("00:00:09.123 --> 00:00:13.456\n")
-		result.WriteString("This technology is transforming various industries.\n")
+	if style.FontSize > 0 {
+		output.WriteString(fmt.Sprintf("Style: Font Size=%d, Color=%s, BG Color=%s, Position=%s\n",
+			style.FontSize, style.FontColor, style.BackgroundColor, style.Position))
 	}
-	
-	result.WriteString("\n✅ Caption generation simulation completed!\n")
-	result.WriteString("Note: This generates simulated caption files. Production would create actual .srt/.vtt files.")
-	
-	return result.String()
+
+	output.WriteString(fmt.Sprintf("\n✅ %s\n", result.Message))
+
+	return output.String(), nil
 }

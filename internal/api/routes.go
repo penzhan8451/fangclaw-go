@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -28,11 +29,13 @@ import (
 	deliv "github.com/penzhan8451/fangclaw-go/internal/delivery"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
+	"github.com/penzhan8451/fangclaw-go/internal/mediaprocessing"
 	"github.com/penzhan8451/fangclaw-go/internal/pairing"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/security"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
+	"github.com/penzhan8451/fangclaw-go/internal/uploadregistry"
 	"github.com/penzhan8451/fangclaw-go/internal/userdir"
 	"github.com/penzhan8451/fangclaw-go/internal/wizard"
 )
@@ -332,7 +335,7 @@ func updateHandStatusForKernel(k *kernel.Kernel, handID, status string) {
 }
 
 // sharedMemoryAgentID is the well-known shared-memory agent ID used for cross-agent KV storage.
-// Must match the value in openfang-kernel.
+// Must match the value in fangclaw-kernel.
 func sharedMemoryAgentID() string {
 	return uuid.UUID{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}.String()
 }
@@ -652,6 +655,10 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/agents/{id}/files", r.handleListAgentFiles)
 	mux.HandleFunc("GET /api/agents/{id}/files/{filename}", r.handleGetAgentFile)
 	mux.HandleFunc("PUT /api/agents/{id}/files/{filename}", r.handleSetAgentFile)
+	mux.HandleFunc("POST /api/agents/{id}/upload", r.handleUpload)
+
+	// Uploads endpoints
+	mux.HandleFunc("GET /api/uploads/{fileId}", r.handleGetUpload)
 
 	// Agent session endpoints
 	mux.HandleFunc("GET /api/agents/{id}/session", r.handleGetAgentSession)
@@ -3293,7 +3300,8 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 
 	// Parse request body
 	var reqBody struct {
-		Message string `json:"message"`
+		Message     string       `json:"message"`
+		Attachments []Attachment `json:"attachments,omitempty"`
 	}
 	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
@@ -3335,8 +3343,11 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	// Process attachments
+	message := ResolveAttachments(reqBody.Attachments, reqBody.Message)
+
 	ctx := context.Background()
-	response, inputTokens, outputTokens, err := r.getKernel(req).SendMessageWithUsage(ctx, actualAgentID, reqBody.Message)
+	response, inputTokens, outputTokens, err := r.getKernel(req).SendMessageWithUsage(ctx, actualAgentID, message)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -6495,4 +6506,150 @@ func (r *Router) handleWeixinQRStatus(w http.ResponseWriter, req *http.Request) 
 	if statusResp.Status == "success" {
 		delete(weixinQRSessions, sessionID)
 	}
+}
+
+func getUploadsDir(req *http.Request) (string, error) {
+	mgr, err := userdir.GetDefaultManager()
+	if err != nil {
+		return "", fmt.Errorf("could not get userdir manager: %w", err)
+	}
+
+	user := GetUserFromContext(req.Context())
+	var userDir string
+	if user != nil && !IsOwner(user) {
+		userDir = mgr.UserDir(user.Username)
+	} else {
+		userDir = mgr.BaseDir()
+	}
+
+	return filepath.Join(userDir, "uploads"), nil
+}
+
+func (r *Router) handleGetUpload(w http.ResponseWriter, req *http.Request) {
+	fileID := req.PathValue("fileId")
+	if fileID == "" {
+		respondError(w, http.StatusBadRequest, "fileId is required")
+		return
+	}
+
+	if _, err := uuid.Parse(fileID); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid file ID")
+		return
+	}
+
+	uploadDir, err := getUploadsDir(req)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	filePath := filepath.Join(uploadDir, fileID)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		respondError(w, http.StatusNotFound, "file not found")
+		return
+	}
+
+	var contentType string
+	if meta, ok := uploadregistry.Get(fileID); ok {
+		contentType = meta.ContentType
+	}
+
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+
+	http.ServeFile(w, req, filePath)
+}
+
+func (r *Router) handleUpload(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	agentID, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent ID")
+		return
+	}
+
+	k := r.getKernel(req)
+	agent := k.AgentRegistry().Get(agentID)
+	if agent == nil {
+		respondError(w, http.StatusNotFound, "agent not found")
+		return
+	}
+
+	filename := req.Header.Get("X-Filename")
+	if filename == "" {
+		respondError(w, http.StatusBadRequest, "X-Filename header is required")
+		return
+	}
+
+	contentType := req.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	content, err := io.ReadAll(req.Body)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to read request body")
+		return
+	}
+	defer req.Body.Close()
+
+	if len(content) == 0 {
+		respondError(w, http.StatusBadRequest, "empty file")
+		return
+	}
+
+	uploadDir, err := getUploadsDir(req)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to create upload directory")
+		return
+	}
+
+	fileID := uuid.NewString()
+	filePath := filepath.Join(uploadDir, fileID)
+
+	if err := os.WriteFile(filePath, content, 0644); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to save file")
+		return
+	}
+
+	uploadregistry.Register(fileID, uploadregistry.UploadMeta{
+		Filename:    filename,
+		ContentType: contentType,
+		FilePath:    filePath,
+	})
+
+	transcription := ""
+	if isAudioFile(contentType, filename) {
+		if text, err := mediaprocessing.TranscribeAudio(req.Context(), filePath); err == nil {
+			transcription = text
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"filename":      filename,
+		"file_id":       fileID,
+		"size_bytes":    len(content),
+		"transcription": transcription,
+	})
+}
+
+func isAudioFile(contentType, filename string) bool {
+	if strings.HasPrefix(contentType, "audio/") {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(filename))
+	audioExts := map[string]bool{
+		".mp3":  true,
+		".wav":  true,
+		".m4a":  true,
+		".ogg":  true,
+		".flac": true,
+		".aac":  true,
+		".wma":  true,
+	}
+	return audioExts[ext]
 }

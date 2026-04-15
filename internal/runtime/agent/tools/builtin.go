@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/penzhan8451/fangclaw-go/internal/security"
+	"github.com/penzhan8451/fangclaw-go/internal/uploadregistry"
 )
 
 type Tool interface {
@@ -794,11 +795,37 @@ func (t *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	if path == "" {
 		return "", fmt.Errorf("path required")
 	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("read failed: %w", err)
+
+	var content []byte
+	var err error
+
+	content, err = os.ReadFile(path)
+	if err == nil {
+		return string(content), nil
 	}
-	return string(content), nil
+
+	if meta, ok := uploadregistry.FindByBasename(path); ok {
+		content, err = os.ReadFile(meta.FilePath)
+		if err == nil {
+			return string(content), nil
+		}
+	}
+
+	if meta, ok := uploadregistry.Get(path); ok {
+		content, err = os.ReadFile(meta.FilePath)
+		if err == nil {
+			return string(content), nil
+		}
+	}
+
+	if meta, ok := uploadregistry.FindByFilename(path); ok {
+		content, err = os.ReadFile(meta.FilePath)
+		if err == nil {
+			return string(content), nil
+		}
+	}
+
+	return "", fmt.Errorf("read failed: %w", err)
 }
 
 type FileWriteTool struct{}
