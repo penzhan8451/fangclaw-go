@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FANGGO - 智能代理平台</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" href="/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/home.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <img src="/logo.png" alt="FANGGO Logo">
+                <span class="nav-title">FANGGO</span>
+            </div>
+            <div class="nav-actions" id="nav-actions">
+                <a href="/index.html" class="btn-nav" id="btn-dashboard" style="display: none;">Dashboard</a>
+                <a href="/index.html" class="btn-primary" id="btn-login">登录</a>
+            </div>
+        </div>
+    </nav>
+
+    <script>
+        function checkAuth() {
+            var token = localStorage.getItem('fangclawgo-token');
+            var btnDashboard = document.getElementById('btn-dashboard');
+            var btnLogin = document.getElementById('btn-login');
+
+            if (token) {
+                btnDashboard.style.display = 'inline-block';
+                btnLogin.style.display = 'none';
+            } else {
+                btnDashboard.style.display = 'none';
+                btnLogin.style.display = 'inline-block';
+            }
+        }
+
+        checkAuth();
+    </script>
+
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1 class="hero-title">智能代理，为您工作</h1>
+                <p class="hero-subtitle">FANGGO 是一个功能完整的 Go 语言 Agent 操作系统，支持多租户、Agent 模板、工作流编排等强大功能。</p>
+                <div class="hero-actions">
+                    <a href="/index.html" class="btn-lg btn-primary">立即开始</a>
+                    <a href="#features" class="btn-lg btn-outline">了解更多</a>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="hero-card">
+                    <div class="hero-card-header">
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                    </div>
+                    <div class="hero-card-body">
+                        <div class="code-line">
+                            <span class="code-keyword">agent</span> := <span class="code-function">NewAgent</span>(<span class="code-string">"researcher"</span>)
+                        </div>
+                        <div class="code-line">
+                            <span class="code-comment">// 自动研究、生成报告</span>
+                        </div>
+                        <div class="code-line">
+                            agent.<span class="code-function">Activate</span>()
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="features" class="features">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">核心功能</h2>
+                <p class="section-subtitle">打造企业级智能代理平台</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">多租户支持</h3>
+                    <p class="feature-desc">完善的多租户架构，数据隔离、权限管理，支持企业级部署。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="9" y1="9" x2="15" y2="9"/>
+                            <line x1="9" y1="15" x2="15" y2="15"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">Agent Templates</h3>
+                    <p class="feature-desc">预置 7 个专业 Agent 模板：Researcher、Lead、Collector 等，开箱即用。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">Agent 创建向导</h3>
+                    <p class="feature-desc">可视化 Wizard 系统，自然语言生成 Agent 配置，零代码上手。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 20V6a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v14"/>
+                            <circle cx="12" cy="20" r="2"/>
+                            <path d="M2 12h20"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">Agent 自我提升</h3>
+                    <p class="feature-desc">持续学习、记忆积累、知识图谱构建，Agent 越用越智能。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                            <line x1="8" y1="21" x2="16" y2="21"/>
+                            <line x1="12" y1="17" x2="12" y2="21"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">大模型 Provider</h3>
+                    <p class="feature-desc">支持 OpenAI、Anthropic、Groq、Ollama、OpenRouter 等主流模型。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">工作流编排</h3>
+                    <p class="feature-desc">灵活的工作流定义，支持条件分支、并行执行、错误重试。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="templates">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Agent 模板</h2>
+                <p class="section-subtitle">7 个专业 Agent，覆盖各类场景</p>
+            </div>
+            <div class="templates-grid">
+                <div class="template-card">
+                    <div class="template-badge">content</div>
+                    <h4 class="template-name">Researcher</h4>
+                    <p class="template-desc">深度自主研究员，交叉验证多源信息，生成带引用的报告。</p>
+                </div>
+                <div class="template-card">
+                    <div class="template-badge">productivity</div>
+                    <h4 class="template-name">Lead</h4>
+                    <p class="template-desc">每日运行，发现符合您 ICP 的潜在客户，富集研究并评分 0-100。</p>
+                </div>
+                <div class="template-card">
+                    <div class="template-badge">data</div>
+                    <h4 class="template-name">Collector</h4>
+                    <p class="template-desc">OSINT 级情报，持续监控目标，检测变更并构建知识图谱。</p>
+                </div>
+                <div class="template-card">
+                    <div class="template-badge">data</div>
+                    <h4 class="template-name">Predictor</h4>
+                    <p class="template-desc">超级预测引擎，收集信号，构建校准推理链，做出预测。</p>
+                </div>
+                <div class="template-card">
+                    <div class="template-badge">content</div>
+                    <h4 class="template-name">Clip</h4>
+                    <p class="template-desc">YouTube 视频处理，下载、识别最佳时刻、剪辑成竖版短视频。</p>
+                </div>
+                <div class="template-card">
+                    <div class="template-badge">communication</div>
+                    <h4 class="template-name">Twitter</h4>
+                    <p class="template-desc">自主 Twitter/X 账号管理，创作内容、定时发布、回复提及。</p>
+                </div>
+                <div class="template-card">
+                    <div class="template-badge">productivity</div>
+                    <h4 class="template-name">Browser</h4>
+                    <p class="template-desc">Web 自动化代理，导航网站、填写表单、处理多步工作流。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="cta">
+        <div class="container">
+            <div class="cta-content">
+                <h2 class="cta-title">准备好开始了吗？</h2>
+                <p class="cta-desc">一个二进制文件，真正为您工作的 Agent。</p>
+                <a href="/index.html" class="btn-xl btn-primary">进入 Dashboard</a>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="/logo.png" alt="Fanggo Logo">
+                    <span class="footer-title">Fanggo</span>
+                </div>
+                <p class="footer-copyright">© 2026 Fanggo. 基于 OpenFang 项目。</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

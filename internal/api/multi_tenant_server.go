@@ -238,6 +238,9 @@ func (s *MultiTenantServer) isPublicRoute(path string) bool {
 		"/api/status",
 		"/api/version",
 		"/.well-known/",
+		"/home",
+		"/index",
+		"/index.html",
 	}
 	for _, route := range publicRoutes {
 		if path == route {
@@ -298,12 +301,29 @@ func (s *MultiTenantServer) setupStaticFiles(mux *http.ServeMux) {
 	fs := http.FileServer(http.Dir(staticDir))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			indexPath := staticDir + "/index.html"
-			http.ServeFile(w, r, indexPath)
+
+		switch r.URL.Path {
+		case "/index.html":
+			http.Redirect(w, r, "/index", http.StatusFound)
+			return
+		case "/", "/home":
+			// indexPath := staticDir + "/index.html"
+			// http.ServeFile(w, r, indexPath)
+			// return
+			http.Redirect(w, r, "/home", http.StatusFound)
 			return
 		}
 		fs.ServeHTTP(w, r)
+	})
+
+	mux.HandleFunc("/index", func(w http.ResponseWriter, r *http.Request) {
+		indexPath := staticDir + "/index.html"
+		http.ServeFile(w, r, indexPath)
+	})
+
+	mux.HandleFunc("/home", func(w http.ResponseWriter, r *http.Request) {
+		homePath := staticDir + "/home.html"
+		http.ServeFile(w, r, homePath)
 	})
 }
 

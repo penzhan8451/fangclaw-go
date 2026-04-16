@@ -198,14 +198,41 @@ func NewServer(k *kernel.Kernel, cfg *ServerConfig) *Server {
 	staticDir := findStaticDir()
 	fs := http.FileServer(http.Dir(staticDir))
 
-	// Custom handler to serve index.html for root path
+	// Custom handler to serve index.html for root path (check auth)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
-			indexPath := filepath.Join(staticDir, "index.html")
-			http.ServeFile(w, r, indexPath)
+			// Check if we should show dashboard or redirect to home
+			showDashboard := false
+
+			token := extractTokenFromRequest(r)
+			if token != "" {
+				if k.AuthManager() != nil {
+					// Auth enabled, check if token is valid
+					if _, err := k.AuthManager().ValidateToken(token); err == nil {
+						showDashboard = true
+					}
+				} else {
+					// No auth enabled, always show dashboard
+					showDashboard = true
+				}
+			}
+
+			if showDashboard {
+				indexPath := filepath.Join(staticDir, "index.html")
+				http.ServeFile(w, r, indexPath)
+			} else {
+				// Not authenticated, redirect to home
+				http.Redirect(w, r, "/home", http.StatusFound)
+			}
 			return
 		}
 		fs.ServeHTTP(w, r)
+	})
+
+	// Handle /home route
+	mux.HandleFunc("/home", func(w http.ResponseWriter, r *http.Request) {
+		homePath := filepath.Join(staticDir, "home.html")
+		http.ServeFile(w, r, homePath)
 	})
 
 	return server

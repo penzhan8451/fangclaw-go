@@ -264,6 +264,7 @@ document.addEventListener('alpine:init', function() {
       this.approvalNotifications = [];
       this.lastKnownApprovals = [];
       document.dispatchEvent(new CustomEvent('user-logout'));
+      window.location.href = '/';
     },
     
     submitApiKey(key) {

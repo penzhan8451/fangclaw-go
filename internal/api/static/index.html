@@ -4098,8 +4098,8 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
       </div>
       
       <div class="login-header">
-        <img src="/logo.png" alt="FangClaw-go" width="48" height="48">
-        <h1 x-i18n="common.appName">FANGCLAW-GO</h1>
+        <img src="/logo.png" alt="FANGGO" width="48" height="48">
+        <h1 x-i18n="common.appName">FANGGO</h1>
         <p x-show="loginMode === 'login'" x-i18n="common.signIn">Sign in to your account</p>
         <p x-show="loginMode === 'register'" x-i18n="common.createAccount">Create a new account</p>
       </div>
@@ -4222,13 +4222,13 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
   <nav class="sidebar" :class="{ collapsed: sidebarCollapsed, 'mobile-open': mobileMenuOpen }">
     <div class="sidebar-header">
       <div class="sidebar-header-text">
-        <div class="sidebar-logo">
-          <img src="/logo.png" alt="FangClaw-go" width="36" height="36">
+        <a href="/" style="text-decoration: none;"><div class="sidebar-logo">
+          <img src="/logo.png" alt="FANGGO" width="36" height="36">
           <div>
             <h1>FANGGO</h1>
             <div class="version" x-text="'v' + version"></div>
           </div>
-        </div>
+        </div></a>
       </div>
       <div class="theme-switcher">
         <button class="theme-opt" :class="{ active: themeMode === 'light' }" @click="setTheme('light')" title="Light">&#9788;</button>
@@ -11739,6 +11739,7 @@ document.addEventListener('alpine:init', function() {
       this.approvalNotifications = [];
       this.lastKnownApprovals = [];
       document.dispatchEvent(new CustomEvent('user-logout'));
+      window.location.href = '/';
     },
     
     submitApiKey(key) {
