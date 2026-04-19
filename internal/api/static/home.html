@@ -19,6 +19,8 @@
                 <span class="nav-title">FANGGO</span>
             </div>
             <div class="nav-actions" id="nav-actions">
+                <a href="/markdown?file=/docs/README.md" class="btn-nav">文档</a>
+                <a href="/markdown?file=/examples/README.md" class="btn-nav">示例</a>
                 <a href="/index.html" class="btn-nav" id="btn-dashboard" style="display: none;">Dashboard</a>
                 <a href="/index.html" class="btn-primary" id="btn-login">登录</a>
             </div>
@@ -83,7 +85,7 @@
                 <p class="section-subtitle">打造企业级智能代理平台</p>
             </div>
             <div class="features-grid">
-                <div class="feature-card">
+                <a href="/markdown?file=/docs/getting-started.md" class="feature-card" style="text-decoration: none;">
                     <div class="feature-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -91,8 +93,8 @@
                     </div>
                     <h3 class="feature-title">多租户支持</h3>
                     <p class="feature-desc">完善的多租户架构，数据隔离、权限管理，支持企业级部署。</p>
-                </div>
-                <div class="feature-card">
+                </a>
+                <a href="/markdown?file=/docs/agent-templates.md" class="feature-card" style="text-decoration: none;">
                     <div class="feature-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -102,7 +104,7 @@
                     </div>
                     <h3 class="feature-title">Agent Templates</h3>
                     <p class="feature-desc">预置 7 个专业 Agent 模板：Researcher、Lead、Collector 等，开箱即用。</p>
-                </div>
+                </a>
                 <div class="feature-card">
                     <div class="feature-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -124,7 +126,7 @@
                     <h3 class="feature-title">Agent 自我提升</h3>
                     <p class="feature-desc">持续学习、记忆积累、知识图谱构建，Agent 越用越智能。</p>
                 </div>
-                <div class="feature-card">
+                <a href="/markdown?file=/examples/cron-examples/README.md" class="feature-card" style="text-decoration: none;">
                     <div class="feature-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
@@ -132,18 +134,44 @@
                             <line x1="12" y1="17" x2="12" y2="21"/>
                         </svg>
                     </div>
-                    <h3 class="feature-title">大模型 Provider</h3>
-                    <p class="feature-desc">支持 OpenAI、Anthropic、Groq、Ollama、OpenRouter 等主流模型。</p>
-                </div>
-                <div class="feature-card">
+                    <h3 class="feature-title">定时任务</h3>
+                    <p class="feature-desc">灵活的 Cron 调度，支持一次性、周期性任务，11个实用示例。</p>
+                </a>
+                <a href="/markdown?file=/examples/workflow-examples/README.md" class="feature-card" style="text-decoration: none;">
                     <div class="feature-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
                         </svg>
                     </div>
                     <h3 class="feature-title">工作流编排</h3>
-                    <p class="feature-desc">灵活的工作流定义，支持条件分支、并行执行、错误重试。</p>
-                </div>
+                    <p class="feature-desc">11个工作流示例，从简单到复杂，涵盖各类实际应用场景。</p>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section class="templates" style="background: var(--bg-light);">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">实用示例</h2>
+                <p class="section-subtitle">30+ 精心准备的示例，快速上手各种功能</p>
+            </div>
+            <div class="templates-grid">
+                <a href="/markdown?file=/examples/README.md#定时任务示例" class="template-card" style="text-decoration: none;">
+                    <div class="template-badge">11个示例</div>
+                    <h4 class="template-name">定时任务</h4>
+                    <p class="template-desc">从简单到复杂的 Cron 示例：备份、报表、健康检查等。</p>
+                </a>
+                <a href="/markdown?file=/examples/README.md#工作流示例" class="template-card" style="text-decoration: none;">
+                    <div class="template-badge">11个示例</div>
+                    <h4 class="template-name">工作流</h4>
+                    <p class="template-desc">软件发布、内容创作、市场调研等实际应用场景。</p>
+                </a>
+                <a href="/markdown?file=/examples/README.md#事件总线处理器示例" class="template-card" style="text-decoration: none;">
+                    <div class="template-badge">8个示例</div>
+                    <h4 class="template-name">事件总线</h4>
+                    <p class="template-desc">Go 代码示例：告警、指标收集、Webhook 集成、审计日志。</p>
+                </a>
             </div>
         </div>
     </section>
@@ -210,6 +238,12 @@
                 <div class="footer-brand">
                     <img src="/logo.png" alt="Fanggo Logo">
                     <span class="footer-title">Fanggo</span>
+                </div>
+                <div style="display: flex; gap: 24px; align-items: center;">
+                    <a href="/markdown?file=/docs/getting-started.md" style="color: var(--text-muted); text-decoration: none; font-size: 14px;">快速开始</a>
+                    <a href="/markdown?file=/docs/workflow-configuration.md" style="color: var(--text-muted); text-decoration: none; font-size: 14px;">工作流</a>
+                    <a href="/markdown?file=/docs/agent-templates.md" style="color: var(--text-muted); text-decoration: none; font-size: 14px;">Agent 模板</a>
+                    <a href="/markdown?file=/examples/README.md" style="color: var(--text-muted); text-decoration: none; font-size: 14px;">示例</a>
                 </div>
                 <p class="footer-copyright">© 2026 Fanggo. 基于 OpenFang 项目。</p>
             </div>

@@ -1,0 +1,20 @@
+{
+  "agent_id": "YOUR-AGENT-ID-HERE",
+  "name": "monthly-billing-report",
+  "enabled": true,
+  "schedule": {
+    "kind": "cron",
+    "expr": "0 8 1 * *"
+  },
+  "action": {
+    "kind": "agent_turn",
+    "message": "请生成上个月的完整账单报告，包括所有费用明细",
+    "model_override": "gpt-4-turbo",
+    "timeout_secs": 900
+  },
+  "delivery": {
+    "kind": "webhook",
+    "url": "https://your-billing-system.com/report"
+  },
+  "one_shot": false
+}

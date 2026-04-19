@@ -1,0 +1,17 @@
+{
+  "agent_id": "YOUR-AGENT-ID-HERE",
+  "name": "every-10-minutes-check",
+  "enabled": true,
+  "schedule": {
+    "kind": "every",
+    "every_secs": 600
+  },
+  "action": {
+    "kind": "agent_turn",
+    "message": "请简要检查一下当前的系统状态"
+  },
+  "delivery": {
+    "kind": "none"
+  },
+  "one_shot": false
+}

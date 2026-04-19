@@ -1,0 +1,72 @@
+{
+  "id": "market-research-report",
+  "name": "Market Research Report Generator",
+  "description": "Comprehensive market research: competitor analysis, trends, customer insights, and recommendations",
+  "steps": [
+    {
+      "name": "competitor-analysis",
+      "agent": {
+        "name": "researcher"
+      },
+      "prompt_template": "Analyze the key competitors in this market. Include their strengths, weaknesses, market share, and strategies:\n\nMarket: {{input}}",
+      "mode": "fan_out",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "competitors"
+    },
+    {
+      "name": "market-trends",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Identify and analyze current market trends, emerging technologies, and future predictions for this market:\n\nMarket: {{input}}",
+      "mode": "fan_out",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "trends"
+    },
+    {
+      "name": "customer-insights",
+      "agent": {
+        "name": "researcher"
+      },
+      "prompt_template": "Analyze customer behavior, preferences, pain points, and needs for this market:\n\nMarket: {{input}}",
+      "mode": "fan_out",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "customers"
+    },
+    {
+      "name": "swot-analysis",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Perform a SWOT (Strengths, Weaknesses, Opportunities, Threats) analysis for a company entering this market:\n\nMarket: {{input}}\n\nCompetitors: {{competitors}}\n\nTrends: {{trends}}\n\nCustomers: {{customers}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "swot"
+    },
+    {
+      "name": "strategic-recommendations",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Provide strategic recommendations for market entry and growth based on all previous analyses:\n\nSWOT Analysis: {{swot}}\n\nCompetitors: {{competitors}}\n\nTrends: {{trends}}\n\nCustomers: {{customers}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "recommendations"
+    },
+    {
+      "name": "compile-report",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Compile all analyses into a comprehensive market research report. Structure it with executive summary, main sections, and conclusion:\n\nCompetitor Analysis:\n{{competitors}}\n\nMarket Trends:\n{{trends}}\n\nCustomer Insights:\n{{customers}}\n\nSWOT Analysis:\n{{swot}}\n\nRecommendations:\n{{recommendations}}",
+      "mode": "sequential",
+      "timeout_secs": 600,
+      "error_mode": "fail"
+    }
+  ]
+}

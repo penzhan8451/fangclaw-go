@@ -1,0 +1,75 @@
+{
+  "id": "tech-doc-workflow",
+  "name": "Technical Documentation Workflow",
+  "description": "Create technical documentation from code: API docs, tutorials, examples, and troubleshooting guides",
+  "steps": [
+    {
+      "name": "code-analysis",
+      "agent": {
+        "name": "coder"
+      },
+      "prompt_template": "Analyze this code thoroughly. Identify all functions, classes, methods, parameters, return values, and important implementation details:\n\n{{input}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": {
+        "type": "retry",
+        "max_retries": 2
+      },
+      "output_var": "code_analysis"
+    },
+    {
+      "name": "api-reference",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Generate comprehensive API reference documentation from this analysis. Include all endpoints, parameters, request/response examples, and error codes:\n\n{{code_analysis}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "api_docs"
+    },
+    {
+      "name": "getting-started",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Create a getting started guide with installation, basic setup, and hello world example:\n\n{{code_analysis}}",
+      "mode": "fan_out",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "getting_started"
+    },
+    {
+      "name": "tutorials",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Create step-by-step tutorials for common use cases:\n\n{{code_analysis}}",
+      "mode": "fan_out",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "tutorials"
+    },
+    {
+      "name": "troubleshooting",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Create a troubleshooting guide with common issues, error messages, and solutions based on this code:\n\n{{code_analysis}}",
+      "mode": "fan_out",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "troubleshooting"
+    },
+    {
+      "name": "assemble-documentation",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Assemble all documentation into a coherent package with proper structure, table of contents, and cross-references:\n\nAPI Reference:\n{{api_docs}}\n\nGetting Started:\n{{getting_started}}\n\nTutorials:\n{{tutorials}}\n\nTroubleshooting:\n{{troubleshooting}}",
+      "mode": "sequential",
+      "timeout_secs": 600,
+      "error_mode": "fail"
+    }
+  ]
+}

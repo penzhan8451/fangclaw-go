@@ -1,0 +1,20 @@
+{
+  "agent_id": "YOUR-AGENT-ID-HERE",
+  "name": "daily-backup-script",
+  "enabled": true,
+  "schedule": {
+    "kind": "cron",
+    "expr": "0 2 * * *"
+  },
+  "action": {
+    "kind": "execute_shell",
+    "command": "tar",
+    "args": ["-czf", "/backup/data-$(date +%Y%m%d).tar.gz", "/data"],
+    "timeout_secs": 3600
+  },
+  "delivery": {
+    "kind": "webhook",
+    "url": "https://your-webhook-url.com/backup-status"
+  },
+  "one_shot": false
+}

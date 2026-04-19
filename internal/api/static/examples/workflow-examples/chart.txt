@@ -1,0 +1,31 @@
+examples/workflow-examples/
+├── simple/                          # 简单示例 (5个)
+│   ├── 01-simple-sequential-pipeline.json    # 基础顺序执行
+│   ├── 02-conditional-workflow.json          # 条件执行
+│   ├── 03-fan-out-parallel.json               # 并行执行
+│   ├── 04-error-handling-with-retry.json      # 错误处理和重试
+│   └── 05-variable-passing.json               # 变量传递
+├── complex/                         # 复杂实际场景 (6个)
+│   ├── 01-software-release-workflow.json      # 软件发布流程
+│   ├── 02-content-creation-pipeline.json      # 内容创作流水线
+│   ├── 03-market-research-report.json         # 市场研究报告
+│   ├── 04-technical-documentation-workflow.json  # 技术文档生成
+│   ├── 05-data-analysis-pipeline.json          # 数据分析流程
+│   └── 06-customer-support-ticket-handler.json # 客服工单处理
+└── README.md                        # 详细英文文档
+
+
+### ✨ 简单示例涵盖的功能
+- Sequential : 基础顺序执行
+- Conditional : 基于输出内容的条件执行
+- Fan-out : 并行执行多个步骤
+- Error Handling : fail、skip、retry 三种错误处理模式
+- Variable Passing : 使用 output_var 在步骤间传递变量
+
+### 🏢 复杂实际工作场景
+1. Software Release Pipeline : 代码审查 → 安全扫描 → 性能分析 → 文档 → 发布说明
+2. Content Creation Pipeline : 研究 → 大纲 → 草稿 → 审查 → 修订 → 定稿
+3. Market Research Report : 竞品分析 → 市场趋势 → 客户洞察 → SWOT → 建议 → 报告
+4. Technical Documentation : 代码分析 → API 文档 → 入门指南 → 教程 → 故障排除
+5. Data Analysis Pipeline : 数据评估 → 清洗 → 探索 → 统计 → 可视化 → 洞察 → 建议
+6. Customer Support Ticket Handler : 分类 → 分析 → 紧急判断 → 响应草稿 → 审查 → 修订 → 终稿

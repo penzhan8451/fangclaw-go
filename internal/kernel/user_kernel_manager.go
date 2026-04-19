@@ -98,6 +98,7 @@ func (m *UserKernelManager) loadUserEnvAndConfig(userID, username string) (types
 
 func (m *UserKernelManager) GetOrCreateKernel(userID, username string, role auth.Role) (*Kernel, error) {
 	if role == auth.RoleOwner {
+
 		ownerSecrets, err := userdir.LoadUserSecrets(username)
 		if err != nil {
 			log.Warn().Err(err).Str("user", username).Msg("Failed to load owner secrets")

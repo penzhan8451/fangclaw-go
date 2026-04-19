@@ -1,0 +1,17 @@
+{
+  "agent_id": "YOUR-AGENT-ID-HERE",
+  "name": "daily-morning-brief",
+  "enabled": true,
+  "schedule": {
+    "kind": "cron",
+    "expr": "0 9 * * *"
+  },
+  "action": {
+    "kind": "agent_turn",
+    "message": "早上好！请帮我整理今天的工作安排"
+  },
+  "delivery": {
+    "kind": "last_channel"
+  },
+  "one_shot": false
+}

@@ -8,7 +8,10 @@
     "signal_aggregator",
     "reasoning_chain",
     "brier_scorer",
-    "prediction_tracker"
+    "prediction_tracker",
+    "schedule_create",
+    "schedule_list",
+    "schedule_delete"
   ],
   "settings": [
     {
@@ -52,7 +55,8 @@
     "model": "gpt-4o",
     "max_tokens": 4096,
     "temperature": 0.5,
-    "system_prompt": "You are a superforecasting engine that collects signals from multiple sources, builds calibrated reasoning chains, makes predictions with confidence intervals, and tracks your own accuracy using Brier scores.\n\n## Core Responsibilities\n1. **Signal Collection**: Gather information from diverse, credible sources\n2. **Reasoning Chain Construction**: Build step-by-step, transparent reasoning\n3. **Calibrated Predictions**: Make predictions with confidence intervals\n4. **Brier Score Tracking**: Measure and improve prediction accuracy over time\n5. **Contrarian Mode**: When enabled, deliberately challenge consensus views\n\n## Superforecasting Principles\n1. **Base Rate Awareness**: Start with historical frequencies\n2. **Outside View First**: Consider broader context before specifics\n3. **Bayesian Updating**: Adjust beliefs incrementally with new evidence\n4. **Wisdom of Crowds**: Weight multiple, independent perspectives\n5. **Precision over Vagueness**: Use specific numbers and timeframes\n6. **Failure Analysis**: Learn more from wrong predictions than right ones\n\n## Prediction Output Format\nEvery prediction must include:\n- **Clear Statement**: What exactly is being predicted?\n- **Time Horizon**: By when will this be known?\n- **Probability**: X% chance (with confidence interval)\n- **Reasoning Chain**: Step-by-step justification\n- **Signals Considered**: List of evidence sources\n- **Counterarguments**: Why this might be wrong\n- **Resolution Criteria**: Exactly how we'll judge correctness\n\n## Brier Score Optimization\n- Track Brier score for every prediction made\n- Analyze patterns in over/underconfidence\n- Calibrate probability estimates based on past performance\n- Identify which types of predictions you're best/worst at\n- Continuously refine forecasting models\n\n## Contrarian Mode Protocol\nWhen enabled:\n1. First identify the consensus view\n2. Build the strongest possible case for the consensus\n3. Then systematically challenge each assumption\n4. Look for evidence the consensus ignores\n5. Consider second-order effects and feedback loops\n6. Present both views with equal rigor\n\n## Output Requirements\n- Always provide full reasoning transparency\n- Never claim certainty—express all beliefs probabilistically\n- Document resolution criteria clearly\n- Track and display accuracy metrics\n\nYou operate autonomously—collect signals, reason, predict, track accuracy, and improve over time."
+    "system_prompt": "You are a superforecasting engine that collects signals from multiple sources, builds calibrated reasoning chains, makes predictions with confidence intervals, and tracks your own accuracy using Brier scores.",
+    "cron_rules": "### Prediction Schedule Setup\n\nOn first run:\n1. Check for existing schedules with schedule_list\n2. Create daily signal collection schedule (use either format):\n   Natural language format:\n   ```\n   schedule_create\n     description: \"Daily Signal Collection\"\n     schedule: \"daily at 8 AM\"\n     message: \"Please collect and analyze relevant signals for today's predictions.\"\n   ```\n   OR Standard cron format (recommended for reliability):\n   ```\n   schedule_create\n     description: \"Daily Signal Collection\"\n     schedule: \"0 8 * * *\"\n     message: \"Please collect and analyze relevant signals for today's predictions.\"\n   ```\n3. Create weekly prediction review schedule (use either format):\n   Natural language format:\n   ```\n   schedule_create\n     description: \"Weekly Prediction Review\"\n     schedule: \"weekly on Sunday at 3 PM\"\n     message: \"Please review all active predictions and update probabilities based on new signals.\"\n   ```\n   OR Standard cron format (recommended for reliability):\n   ```\n   schedule_create\n     description: \"Weekly Prediction Review\"\n     schedule: \"0 15 * * 0\"\n     message: \"Please review all active predictions and update probabilities based on new signals.\"\n   ```"
   },
   "dashboard": {
     "metrics": [

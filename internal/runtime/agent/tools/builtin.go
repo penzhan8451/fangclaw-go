@@ -1266,6 +1266,7 @@ func RegisterAllTools(reg ToolRegistry) {
 	reg.RegisterTool(NewRandomTool())
 	reg.RegisterTool(NewTimezoneTool())
 	reg.RegisterTool(NewUserInfoTool())
+	// schedule tools are registered separately with specific scheduler
 	RegisterHandTools(reg)
 }
 

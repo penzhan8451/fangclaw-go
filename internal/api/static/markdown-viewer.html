@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>文档查看器</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/home.css">
+  <link rel="stylesheet" href="/vendor/github-dark.min.css">
+  <style>
+    .markdown-container {
+      max-width: 900px;
+      margin: 80px auto 60px;
+      padding: 0 24px;
+    }
+    .markdown-content {
+      background: var(--bg);
+      padding: 40px;
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-md);
+    }
+    .markdown-content img {
+      max-width: 100%;
+      height: auto;
+      border-radius: var(--radius-md);
+    }
+    .markdown-content pre {
+      background: #fef4f4;
+      padding: 16px;
+      border-radius: var(--radius-md);
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+    .markdown-content pre code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 14px;
+      display: block;
+      white-space: pre;
+      word-wrap: normal;
+    }
+    .markdown-content :not(pre) > code {
+      background: #fef4f4;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+    }
+    .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+      margin-top: 24px;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+    .markdown-content h1 {
+      font-size: 32px;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .markdown-content h2 {
+      font-size: 24px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    .markdown-content h3 {
+      font-size: 20px;
+    }
+    .markdown-content p {
+      margin: 12px 0;
+      line-height: 1.8;
+      color: var(--text-secondary);
+    }
+    .markdown-content ul, .markdown-content ol {
+      margin: 12px 0;
+      padding-left: 24px;
+      color: var(--text-secondary);
+    }
+    .markdown-content li {
+      margin: 8px 0;
+      line-height: 1.6;
+    }
+    .markdown-content a {
+      color: var(--primary);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .markdown-content a:hover {
+      text-decoration: underline;
+    }
+    .markdown-content blockquote {
+      border-left: 4px solid var(--primary);
+      padding-left: 16px;
+      margin: 16px 0;
+      color: var(--text-dim);
+      background: var(--bg-light);
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+    }
+    .markdown-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+    }
+    .markdown-content th, .markdown-content td {
+      border: 1px solid var(--border);
+      padding: 12px 16px;
+      text-align: left;
+    }
+    .markdown-content th {
+      background: var(--bg-light);
+      font-weight: 600;
+    }
+    .markdown-nav {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      align-items: center;
+    }
+    .markdown-nav a {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      color: var(--text-secondary);
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    .markdown-nav a:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: var(--primary-50);
+    }
+    .markdown-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text);
+      flex: 1;
+    }
+    .loading {
+      text-align: center;
+      padding: 60px;
+      color: var(--text-dim);
+    }
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .error {
+      text-align: center;
+      padding: 60px;
+      color: var(--error);
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="nav-logo">
+        <img src="/logo.png" alt="FANGGO Logo">
+        <span class="nav-title">FANGGO</span>
+      </div>
+      <div class="nav-actions">
+        <a href="/home" class="btn-nav">首页</a>
+        <a href="/markdown?file=/docs/README.md" class="btn-nav">文档</a>
+        <a href="/markdown?file=/examples/README.md" class="btn-nav">示例</a>
+        <a href="/index.html" class="btn-primary">Dashboard</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="markdown-container">
+    <div class="markdown-nav">
+      <a href="#" onclick="goBack()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        返回
+      </a>
+      <div class="markdown-title" id="page-title">文档</div>
+    </div>
+    <div class="markdown-content" id="markdown-content">
+      <div class="loading">
+        <div class="loading-spinner"></div>
+        <p>加载中...</p>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-brand">
+          <img src="/logo.png" alt="Fanggo Logo">
+          <span class="footer-title">Fanggo</span>
+        </div>
+        <div style="display:flex; gap:24px; align-items:center;">
+          <a href="/markdown?file=/docs/getting-started.md" style="color:var(--text-dim); text-decoration:none; font-size:14px;">快速开始</a>
+          <a href="/markdown?file=/docs/workflow-configuration.md" style="color:var(--text-dim); text-decoration:none; font-size:14px;">工作流</a>
+          <a href="/markdown?file=/docs/agent-templates.md" style="color:var(--text-dim); text-decoration:none; font-size:14px;">Agent 模板</a>
+          <a href="/markdown?file=/examples/README.md" style="color:var(--text-dim); text-decoration:none; font-size:14px;">示例</a>
+        </div>
+        <p class="footer-copyright">© 2026 Fanggo. 基于 OpenFang 项目.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/highlight.min.js"></script>
+  <script>
+    // Configure marked
+    marked.setOptions({
+      highlight: function(code, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          try {
+            return hljs.highlight(code, { language: lang }).value;
+          } catch (e) {}
+        }
+        return code;
+      },
+      breaks: true,
+      gfm: true
+    });
+
+    // Get file extension
+    function getFileExtension(filePath) {
+      const parts = filePath.split('.');
+      return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+    }
+
+    // Get language for highlight
+    function getLanguage(ext) {
+      const langMap = {
+        'go': 'go',
+        'json': 'json',
+        'js': 'javascript',
+        'ts': 'typescript',
+        'py': 'python',
+        'md': 'markdown',
+        'html': 'html',
+        'css': 'css',
+        'yaml': 'yaml',
+        'yml': 'yaml',
+        'toml': 'toml',
+        'sh': 'bash',
+        'bash': 'bash'
+      };
+      return langMap[ext] || 'plaintext';
+    }
+
+    // Check if file is code file
+    function isCodeFile(filePath) {
+      const codeExts = ['go', 'json', 'js', 'ts', 'py', 'html', 'css', 'yaml', 'yml', 'toml', 'sh', 'bash', 'rs', 'java', 'c', 'cpp', 'h', 'hpp'];
+      return codeExts.includes(getFileExtension(filePath));
+    }
+
+    // Check if file is markdown
+    function isMarkdownFile(filePath) {
+      return getFileExtension(filePath) === 'md';
+    }
+
+    // Get the file path from URL
+    function getFilePath() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('file') || '/docs/README.md';
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Resolve relative path
+    function resolvePath(basePath, relativePath) {
+      if (relativePath.startsWith('/')) {
+        return relativePath;
+      }
+      
+      // 处理 .. 和 .
+      const baseDir = basePath.substring(0, basePath.lastIndexOf('/') + 1);
+      const parts = (baseDir + relativePath).split('/');
+      const resolved = [];
+      
+      for (const part of parts) {
+        if (part === '..') {
+          if (resolved.length > 0) {
+            resolved.pop();
+          }
+        } else if (part !== '.' && part !== '') {
+          resolved.push(part);
+        }
+      }
+      
+      return '/' + resolved.join('/');
+    }
+
+    // Load and render file
+    async function loadFile() {
+      const filePath = getFilePath();
+      const contentDiv = document.getElementById('markdown-content');
+      const titleDiv = document.getElementById('page-title');
+
+      // Set title (decode URL encoded strings)
+      const parts = filePath.split('/');
+      const fileName = decodeURIComponent(parts[parts.length - 1]);
+      titleDiv.textContent = fileName;
+
+      try {
+        const response = await fetch(filePath);
+        if (!response.ok) {
+          throw new Error('文件加载失败 (' + response.status + ')');
+        }
+        const content = await response.text();
+
+        if (isMarkdownFile(filePath)) {
+          // Render markdown
+          const html = marked.parse(content);
+          contentDiv.innerHTML = html;
+
+          // Highlight code blocks
+          contentDiv.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+          });
+
+          // Fix links - add click handlers for markdown and code files
+          contentDiv.querySelectorAll('a').forEach((link) => {
+            const href = link.getAttribute('href');
+            if (href && !href.startsWith('http') && !href.startsWith('#')) {
+              link.addEventListener('click', (e) => {
+                const targetPath = resolvePath(filePath, href);
+                if (targetPath.endsWith('.md') || isCodeFile(targetPath)) {
+                  e.preventDefault();
+                  window.location.href = '/markdown?file=' + encodeURIComponent(targetPath);
+                }
+              });
+            }
+          });
+        } else if (isCodeFile(filePath)) {
+          // Render code file
+          const lang = getLanguage(getFileExtension(filePath));
+          contentDiv.innerHTML = '<pre><code class="language-' + lang + '">' + escapeHtml(content) + '</code></pre>';
+          contentDiv.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+          });
+        } else {
+          // Render as plain text
+          contentDiv.innerHTML = '<pre><code>' + escapeHtml(content) + '</code></pre>';
+        }
+      } catch (error) {
+        contentDiv.innerHTML = '<div class="error"><p>加载失败: ' + error.message + '</p></div>';
+      }
+    }
+
+    // Navigate to a file path
+    function navigateTo(path) {
+      if (path.endsWith('.md') || isCodeFile(path)) {
+        window.location.href = '/markdown?file=' + encodeURIComponent(path);
+      } else {
+        window.location.href = path;
+      }
+    }
+
+    // Go back
+    function goBack() {
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = '/home';
+      }
+    }
+
+    // Initialize
+    loadFile();
+  </script>
+</body>
+</html>

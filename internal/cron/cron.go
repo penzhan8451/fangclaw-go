@@ -20,6 +20,23 @@ const (
 	MAX_CONSECUTIVE_ERRORS = 5
 )
 
+var (
+	globalScheduler *CronScheduler
+	schedulerMu     sync.RWMutex
+)
+
+func SetGlobalScheduler(s *CronScheduler) {
+	schedulerMu.Lock()
+	defer schedulerMu.Unlock()
+	globalScheduler = s
+}
+
+func GetGlobalScheduler() *CronScheduler {
+	schedulerMu.RLock()
+	defer schedulerMu.RUnlock()
+	return globalScheduler
+}
+
 type JobMeta struct {
 	Job               types.CronJob `json:"job"`
 	OneShot           bool          `json:"one_shot"`
@@ -72,12 +89,20 @@ func (cs *CronScheduler) Load() (int, error) {
 
 	data, err := os.ReadFile(cs.persistPath)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read cron jobs: %w", err)
+		log.Warn().Err(err).Msg("Failed to read cron jobs file, starting with empty")
+		return 0, nil
 	}
 
 	var metas []JobMeta
 	if err := json.Unmarshal(data, &metas); err != nil {
-		return 0, fmt.Errorf("failed to parse cron jobs: %w", err)
+		log.Warn().Err(err).Msg("Failed to parse cron jobs file, backing up and starting fresh")
+		backupPath := cs.persistPath + ".corrupted." + time.Now().Format("20060102-150405")
+		if err := os.Rename(cs.persistPath, backupPath); err != nil {
+			log.Warn().Err(err).Str("backup_path", backupPath).Msg("Failed to backup corrupted cron jobs file")
+		} else {
+			log.Info().Str("backup_path", backupPath).Msg("Backed up corrupted cron jobs file")
+		}
+		return 0, nil
 	}
 
 	newJobs := make(map[types.CronJobID]JobMeta)
@@ -103,19 +128,22 @@ func (cs *CronScheduler) Persist() error {
 
 	data, err := json.MarshalIndent(metas, "", "  ")
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to serialize cron jobs")
 		return fmt.Errorf("failed to serialize cron jobs: %w", err)
 	}
 
-	tmpPath := cs.persistPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write cron jobs temp file: %w", err)
+	dir := filepath.Dir(cs.persistPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Error().Err(err).Str("dir", dir).Msg("Failed to create directory for cron jobs")
+		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	if err := os.Rename(tmpPath, cs.persistPath); err != nil {
-		return fmt.Errorf("failed to rename cron jobs file: %w", err)
+	if err := os.WriteFile(cs.persistPath, data, 0644); err != nil {
+		log.Error().Err(err).Str("path", cs.persistPath).Msg("Failed to write cron jobs file")
+		return fmt.Errorf("failed to write cron jobs file: %w", err)
 	}
 
-	log.Debug().Int("count", len(metas)).Msg("Persisted cron jobs")
+	log.Info().Int("count", len(metas)).Str("path", cs.persistPath).Msg("Persisted cron jobs successfully")
 	return nil
 }
 
@@ -288,6 +316,47 @@ func (cs *CronScheduler) ListJobs(agentID types.AgentID) []types.CronJob {
 		}
 	}
 	return jobs
+}
+
+func (cs *CronScheduler) TakeAgentJobs(agentID types.AgentID) []types.CronJob {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	var jobs []types.CronJob
+	for id, meta := range cs.jobs {
+		if meta.Job.AgentID == agentID {
+			jobs = append(jobs, meta.Job)
+			delete(cs.jobs, id)
+		}
+	}
+	return jobs
+}
+
+func (cs *CronScheduler) SetAgentJobsEnabled(agentID types.AgentID, enabled bool) int {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	count := 0
+	for id, meta := range cs.jobs {
+		if meta.Job.AgentID == agentID {
+			if meta.Job.Enabled != enabled {
+				meta.Job.Enabled = enabled
+				if enabled {
+					meta.ConsecutiveErrors = 0
+					nextRun := ComputeNextRun(&meta.Job.Schedule)
+					meta.Job.NextRun = &nextRun
+				}
+				cs.jobs[id] = meta
+				count++
+			}
+		}
+	}
+	if count > 0 {
+		if err := cs.Persist(); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist after setting agent jobs enabled")
+		}
+	}
+	return count
 }
 
 func (cs *CronScheduler) ListAllJobs() []types.CronJob {

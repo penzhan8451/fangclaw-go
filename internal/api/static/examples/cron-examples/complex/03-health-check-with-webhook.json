@@ -1,0 +1,20 @@
+{
+  "agent_id": "YOUR-AGENT-ID-HERE",
+  "name": "health-check-monitor",
+  "enabled": true,
+  "schedule": {
+    "kind": "every",
+    "every_secs": 300
+  },
+  "action": {
+    "kind": "execute_shell",
+    "command": "curl",
+    "args": ["-s", "-o", "/dev/null", "-w", "%{http_code}", "https://your-service.com/health"],
+    "timeout_secs": 30
+  },
+  "delivery": {
+    "kind": "webhook",
+    "url": "https://your-alert-system.com/health-status"
+  },
+  "one_shot": false
+}

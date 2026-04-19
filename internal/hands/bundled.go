@@ -49,6 +49,13 @@ func loadBundledHands() {
 			hand.SkillContent = string(skillData)
 		}
 
+		if hand.Agent.CronRules != "" {
+			if hand.Agent.SystemPrompt != "" {
+				hand.Agent.SystemPrompt += "\n\n"
+			}
+			hand.Agent.SystemPrompt += "## Schedule Management\n" + hand.Agent.CronRules
+		}
+
 		bundledHands = append(bundledHands, &hand)
 	}
 }

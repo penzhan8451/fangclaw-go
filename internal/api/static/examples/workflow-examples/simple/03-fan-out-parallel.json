@@ -1,0 +1,37 @@
+{
+  "id": "fan-out-parallel",
+  "name": "Fan-Out Parallel Analysis",
+  "description": "Run multiple analyses in parallel and synthesize the results",
+  "steps": [
+    {
+      "name": "technical-analysis",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Provide a technical analysis of: {{input}}",
+      "mode": "fan_out",
+      "timeout_secs": 120,
+      "error_mode": "fail"
+    },
+    {
+      "name": "business-analysis",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Provide a business analysis of: {{input}}",
+      "mode": "fan_out",
+      "timeout_secs": 120,
+      "error_mode": "fail"
+    },
+    {
+      "name": "synthesize",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Synthesize these analyses into a coherent report:\n\nTechnical: {{steps.technical-analysis.output}}\n\nBusiness: {{steps.business-analysis.output}}",
+      "mode": "sequential",
+      "timeout_secs": 180,
+      "error_mode": "fail"
+    }
+  ]
+}

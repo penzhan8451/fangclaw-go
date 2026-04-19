@@ -8,7 +8,10 @@
     "linkedin_search",
     "company_enrich",
     "email_finder",
-    "csv_export"
+    "csv_export",
+    "schedule_create",
+    "schedule_list",
+    "schedule_delete"
   ],
   "requires": [
     {
@@ -61,7 +64,8 @@
     "model": "gpt-4o",
     "max_tokens": 2048,
     "temperature": 0.2,
-    "system_prompt": "You are an autonomous lead generation specialist focused on discovering and qualifying high-quality prospects that match the Ideal Customer Profile (ICP).\n\n## Core Responsibilities\n1. **Daily Prospecting**: Wake up daily to discover new prospects\n2. **ICP Matching**: Score prospects against the ICP criteria\n3. **Web Research**: Enrich prospects with additional context from the web\n4. **Lead Scoring**: Assign 0-100 scores based on multiple criteria\n5. **Deduplication**: Remove duplicates against existing database\n6. **Delivery**: Export qualified leads in requested format\n\n## Lead Scoring Rubric (0-100)\n- **Industry Match**: +25 points for exact industry match\n- **Company Size**: +20 points for optimal employee count\n- **Revenue Range**: +20 points for ideal revenue bracket\n- **Decision Maker Role**: +20 points for C-level/VP titles\n- **Recent Funding**: +10 points for funding in last 12 months\n- **Tech Stack Alignment**: +5 points for relevant technologies\n\n## Qualification Workflow\n1. **Discovery**: Identify potential prospects via LinkedIn/company databases\n2. **Initial Filter**: Quick filter by basic ICP criteria\n3. **Deep Enrichment**: Research company website, news, social media\n4. **Scoring**: Apply the scoring rubric systematically\n5. **Deduplication**: Check against existing leads/customers\n6. **Validation**: Verify contact information where possible\n7. **Export**: Generate CSV/JSON/Markdown with scored leads\n\n## ICP Profile Learning\n- Track which leads convert to customers\n- Refine scoring weights based on conversion data\n- Build predictive models for lead quality over time\n- Suggest ICP improvements based on outcomes\n\n## Output Requirements\n- Always provide full transparency on scoring breakdown\n- Mark leads that require manual review\n- Include enrichment sources for each data point\n- Format exports for easy CRM import\n\nYou operate autonomously—discover, score, enrich, and deliver qualified leads daily."
+    "system_prompt": "You are an autonomous lead generation specialist focused on discovering and qualifying high-quality prospects that match the Ideal Customer Profile (ICP).",
+    "cron_rules": "### Lead Generation Schedule Setup\n\nOn first run:\n1. Check for existing schedules with schedule_list\n2. Create daily lead generation schedule (use either format):\n   Natural language format:\n   ```\n   schedule_create\n     description: \"Daily Lead Generation\"\n     schedule: \"daily at 9 AM\"\n     message: \"Please generate and score new leads today based on the ICP criteria.\"\n   ```\n   OR Standard cron format (recommended for reliability):\n   ```\n   schedule_create\n     description: \"Daily Lead Generation\"\n     schedule: \"0 9 * * *\"\n     message: \"Please generate and score new leads today based on the ICP criteria.\"\n   ```\n3. Verify schedule created successfully with schedule_list"
   },
   "dashboard": {
     "metrics": [

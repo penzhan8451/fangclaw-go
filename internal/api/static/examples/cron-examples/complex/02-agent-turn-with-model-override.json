@@ -1,0 +1,21 @@
+{
+  "agent_id": "YOUR-AGENT-ID-HERE",
+  "name": "deep-analysis-with-gpt4",
+  "enabled": true,
+  "schedule": {
+    "kind": "cron",
+    "expr": "0 17 * * 1-5"
+  },
+  "action": {
+    "kind": "agent_turn",
+    "message": "请对今天的市场数据进行深度分析，生成详细的分析报告",
+    "model_override": "gpt-4",
+    "timeout_secs": 300
+  },
+  "delivery": {
+    "kind": "channel",
+    "channel_name": "slack",
+    "recipient": "#daily-report"
+  },
+  "one_shot": false
+}

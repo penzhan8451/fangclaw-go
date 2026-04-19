@@ -1,0 +1,17 @@
+{
+  "agent_id": "YOUR-AGENT-ID-HERE",
+  "name": "weekly-report",
+  "enabled": true,
+  "schedule": {
+    "kind": "cron",
+    "expr": "0 18 * * 5"
+  },
+  "action": {
+    "kind": "agent_turn",
+    "message": "请帮我生成本周的工作总结报告"
+  },
+  "delivery": {
+    "kind": "none"
+  },
+  "one_shot": false
+}

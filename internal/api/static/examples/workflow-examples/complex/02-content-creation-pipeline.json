@@ -1,0 +1,85 @@
+{
+  "id": "content-creation-pipeline",
+  "name": "Content Creation Pipeline",
+  "description": "End-to-end content creation: research, outline, draft, review, and finalize",
+  "steps": [
+    {
+      "name": "topic-research",
+      "agent": {
+        "name": "researcher"
+      },
+      "prompt_template": "Conduct comprehensive research on this topic. Find key facts, statistics, expert opinions, and latest developments:\n\nTopic: {{input}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "research"
+    },
+    {
+      "name": "create-outline",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Create a detailed outline for an article based on this research:\n\n{{research}}",
+      "mode": "sequential",
+      "timeout_secs": 180,
+      "error_mode": "fail",
+      "output_var": "outline"
+    },
+    {
+      "name": "write-draft",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Write a complete first draft following this outline:\n\n{{outline}}\n\nResearch: {{research}}",
+      "mode": "sequential",
+      "timeout_secs": 600,
+      "error_mode": "fail",
+      "output_var": "draft"
+    },
+    {
+      "name": "content-review",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Review this draft for clarity, flow, grammar, and engagement. Identify areas for improvement:\n\n{{draft}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail",
+      "output_var": "review"
+    },
+    {
+      "name": "needs-revision-check",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Analyze this review and respond with 'NEEDS_REVISION' if significant improvements are recommended, otherwise 'OK':\n\n{{review}}",
+      "mode": "sequential",
+      "timeout_secs": 60,
+      "error_mode": "fail"
+    },
+    {
+      "name": "revise-content",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Revise the draft based on the review feedback:\n\nOriginal Draft:\n{{draft}}\n\nReview:\n{{review}}",
+      "mode": {
+        "type": "conditional",
+        "condition": "NEEDS_REVISION"
+      },
+      "timeout_secs": 600,
+      "error_mode": "fail",
+      "output_var": "revised"
+    },
+    {
+      "name": "finalize",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Finalize the content. If revised, use the revised version; otherwise use the draft. Format it nicely with proper headings and structure:\n\n{{#if steps.revise-content.output}}{{steps.revise-content.output}}{{else}}{{steps.write-draft.output}}{{/if}}",
+      "mode": "sequential",
+      "timeout_secs": 300,
+      "error_mode": "fail"
+    }
+  ]
+}

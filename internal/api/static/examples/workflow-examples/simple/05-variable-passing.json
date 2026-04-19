@@ -1,0 +1,39 @@
+{
+  "id": "variable-passing",
+  "name": "Variable Passing",
+  "description": "Demonstrate passing variables between steps using output_var",
+  "steps": [
+    {
+      "name": "extract-topics",
+      "agent": {
+        "name": "analyst"
+      },
+      "prompt_template": "Extract the main topics from this content: {{input}}",
+      "mode": "sequential",
+      "timeout_secs": 60,
+      "error_mode": "fail",
+      "output_var": "topics"
+    },
+    {
+      "name": "research-topics",
+      "agent": {
+        "name": "researcher"
+      },
+      "prompt_template": "Research these topics in depth: {{topics}}",
+      "mode": "sequential",
+      "timeout_secs": 180,
+      "error_mode": "fail",
+      "output_var": "research"
+    },
+    {
+      "name": "write-report",
+      "agent": {
+        "name": "writer"
+      },
+      "prompt_template": "Write a comprehensive report based on this research: {{research}}",
+      "mode": "sequential",
+      "timeout_secs": 180,
+      "error_mode": "fail"
+    }
+  ]
+}

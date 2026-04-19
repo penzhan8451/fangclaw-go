@@ -155,6 +155,7 @@ type HandAgentConfig struct {
 	MaxTokens     int     `json:"max_tokens"`
 	Temperature   float32 `json:"temperature"`
 	SystemPrompt  string  `json:"system_prompt"`
+	CronRules     string  `json:"cron_rules,omitempty"`
 	MaxIterations *int    `json:"max_iterations,omitempty"`
 }
 

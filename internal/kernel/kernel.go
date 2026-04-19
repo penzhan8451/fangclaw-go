@@ -207,6 +207,10 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 
 	cronPersistDir := dataDir
 	cronScheduler := cron.NewCronScheduler(cronPersistDir, 100)
+	// If this is the global kernel (no username), set it as the global scheduler
+	if kernelConfig.Username == "" {
+		cron.SetGlobalScheduler(cronScheduler)
+	}
 	// qouta trace and check
 	agentScheduler := scheduler.NewAgentScheduler()
 
@@ -355,6 +359,11 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 
 	// Register all built-in tools to AgentRuntime
 	tools.RegisterAllTools(agentRuntime)
+
+	// Register schedule tools with this kernel's scheduler
+	agentRuntime.RegisterTool(tools.NewScheduleCreateTool(cronScheduler))
+	agentRuntime.RegisterTool(tools.NewScheduleListTool(cronScheduler))
+	agentRuntime.RegisterTool(tools.NewScheduleDeleteTool(cronScheduler))
 
 	// Register skill_manage tool with skill loader
 	skillManageTool := tools.NewSkillManageTool(skillLoader)
@@ -855,6 +864,7 @@ func (k *Kernel) EventBus() *eventbus.EventBus {
 func (k *Kernel) Scheduler() *Scheduler {
 	return k.scheduler
 }
+
 // agent quota
 func (k *Kernel) AgentScheduler() *scheduler.AgentScheduler {
 	return k.agentScheduler
@@ -1380,6 +1390,21 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 
 	agentID := types.NewAgentID()
 
+	var savedCrons []types.CronJob
+	var oldAgentID types.AgentID
+
+	existingAgent := k.agentRegistry.FindByName(def.Agent.Name)
+	if existingAgent != nil {
+		oldAgentID = existingAgent.ID
+		savedCrons = k.cronScheduler.TakeAgentJobs(oldAgentID)
+		log.Info().Str("old_agent", oldAgentID.String()).Int("saved_crons", len(savedCrons)).Msg("Saved cron jobs before reactivating hand")
+
+		if _, err := k.agentRegistry.Remove(oldAgentID); err != nil {
+			log.Warn().Err(err).Str("old_agent", oldAgentID.String()).Msg("Failed to remove old agent")
+		}
+		k.agentRuntime.DeleteAgent(oldAgentID.String())
+	}
+
 	// Load config file to get default model configuration
 	cfg, err := config.Load("")
 	if err != nil {
@@ -1445,6 +1470,25 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 
 	k.mu.Unlock()
 
+	if len(savedCrons) > 0 {
+		restoredCount := 0
+		for _, job := range savedCrons {
+			job.AgentID = agentID
+			job.NextRun = nil
+			job.LastRun = nil
+			job.Enabled = true
+			if _, err := k.cronScheduler.AddJob(job, false); err == nil {
+				restoredCount++
+			} else {
+				log.Warn().Err(err).Str("job_id", job.ID.String()).Msg("Failed to restore cron job")
+			}
+		}
+		log.Info().Str("agent", agentID.String()).Int("restored", restoredCount).Msg("Restored cron jobs after hand reactivation")
+		if err := k.cronScheduler.Persist(); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist cron jobs after restoration")
+		}
+	}
+
 	apiKey := k.GetSecret(agentAPIKeyEnv)
 	if apiKey == "" {
 		return nil, fmt.Errorf("API key not set for agent %s: %s", agentName, agentAPIKeyEnv)
@@ -1472,6 +1516,17 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to register agent in runtime: %w", err)
 	}
+	// Send initialization message to agent for schedule setup
+	go func() {
+		time.Sleep(2 * time.Second)
+		initMessage := "Please initialize by setting up any scheduled tasks according to the Schedule Management instructions in your system prompt. Use schedule_list first to check for existing schedules, then create any new schedules as needed."
+		ctx := context.Background()
+		if _, err := k.SendMessage(ctx, agentID.String(), initMessage); err != nil {
+			log.Warn().Err(err).Str("agent", agentID.String()).Msg("Failed to send initialization message to agent")
+		} else {
+			log.Info().Str("agent", agentID.String()).Msg("Sent initialization message to agent for schedule setup")
+		}
+	}()
 
 	k.mu.Lock()
 	updatedInstance, _ := k.handRegistry.GetInstance(instance.InstanceID)
@@ -1483,25 +1538,41 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 // DeactivateHand deactivates a hand and kills the agent.
 func (k *Kernel) DeactivateHand(instanceID string) error {
 	k.mu.Lock()
-	defer k.mu.Unlock()
 
 	instance, ok := k.handRegistry.GetInstance(instanceID)
 	if !ok {
+		k.mu.Unlock()
 		return fmt.Errorf("hand instance not found: %s", instanceID)
 	}
 
 	if err := k.handRegistry.DeactivateInstance(instanceID); err != nil {
+		k.mu.Unlock()
 		return err
 	}
 
+	var agentID types.AgentID
+	var hasAgent bool
 	if instance.AgentID != "" {
-		agentID, err := types.ParseAgentID(instance.AgentID)
-		if err == nil {
-			if _, err := k.agentRegistry.Remove(agentID); err != nil {
-				return err
-			}
+		if id, err := types.ParseAgentID(instance.AgentID); err == nil {
+			agentID = id
+			hasAgent = true
 		}
-		// Also delete agent from AgentRuntime
+	}
+
+	k.mu.Unlock()
+
+	if hasAgent {
+		disabledCount := k.cronScheduler.SetAgentJobsEnabled(agentID, false)
+		log.Info().Str("agent", agentID.String()).Int("disabled", disabledCount).Msg("Disabled cron jobs for deactivated hand")
+	}
+
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	if hasAgent {
+		if _, err := k.agentRegistry.Remove(agentID); err != nil {
+			log.Warn().Err(err).Str("agent", agentID.String()).Msg("Failed to remove agent")
+		}
 		k.agentRuntime.DeleteAgent(instance.AgentID)
 	}
 
@@ -1511,17 +1582,69 @@ func (k *Kernel) DeactivateHand(instanceID string) error {
 // PauseHand pauses a hand instance.
 func (k *Kernel) PauseHand(instanceID string) error {
 	k.mu.Lock()
-	defer k.mu.Unlock()
 
-	return k.handRegistry.PauseInstance(instanceID)
+	instance, ok := k.handRegistry.GetInstance(instanceID)
+	if !ok {
+		k.mu.Unlock()
+		return fmt.Errorf("hand instance not found: %s", instanceID)
+	}
+
+	if err := k.handRegistry.PauseInstance(instanceID); err != nil {
+		k.mu.Unlock()
+		return err
+	}
+
+	var agentID types.AgentID
+	var hasAgent bool
+	if instance.AgentID != "" {
+		if id, err := types.ParseAgentID(instance.AgentID); err == nil {
+			agentID = id
+			hasAgent = true
+		}
+	}
+
+	k.mu.Unlock()
+
+	if hasAgent {
+		disabledCount := k.cronScheduler.SetAgentJobsEnabled(agentID, false)
+		log.Info().Str("agent", agentID.String()).Int("disabled", disabledCount).Msg("Disabled cron jobs for paused hand")
+	}
+
+	return nil
 }
 
 // ResumeHand resumes a paused hand instance.
 func (k *Kernel) ResumeHand(instanceID string) error {
 	k.mu.Lock()
-	defer k.mu.Unlock()
 
-	return k.handRegistry.ResumeInstance(instanceID)
+	instance, ok := k.handRegistry.GetInstance(instanceID)
+	if !ok {
+		k.mu.Unlock()
+		return fmt.Errorf("hand instance not found: %s", instanceID)
+	}
+
+	if err := k.handRegistry.ResumeInstance(instanceID); err != nil {
+		k.mu.Unlock()
+		return err
+	}
+
+	var agentID types.AgentID
+	var hasAgent bool
+	if instance.AgentID != "" {
+		if id, err := types.ParseAgentID(instance.AgentID); err == nil {
+			agentID = id
+			hasAgent = true
+		}
+	}
+
+	k.mu.Unlock()
+
+	if hasAgent {
+		enabledCount := k.cronScheduler.SetAgentJobsEnabled(agentID, true)
+		log.Info().Str("agent", agentID.String()).Int("enabled", enabledCount).Msg("Enabled cron jobs for resumed hand")
+	}
+
+	return nil
 }
 
 // expandPath expands a path with ~ to the user's home directory.

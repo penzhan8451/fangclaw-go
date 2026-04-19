@@ -155,8 +155,6 @@ func (s *MultiTenantServer) createHandler(mux *http.ServeMux) http.HandlerFunc {
 		if token != "" {
 			user, err := s.authManager.ValidateToken(token)
 			if err == nil {
-				log.Debug().Str("user", user.Username).Str("path", r.URL.Path).Msg("Token validated")
-
 				userKernel, err := s.kernelManager.GetOrCreateKernel(user.ID, user.Username, user.Role)
 				if err != nil {
 					log.Error().Err(err).Str("user", user.Username).Msg("Failed to get/create user kernel")
@@ -166,12 +164,11 @@ func (s *MultiTenantServer) createHandler(mux *http.ServeMux) http.HandlerFunc {
 					ctx = context.WithValue(ctx, "user_kernel", userKernel)
 					ctx = context.WithValue(ctx, "username", user.Username)
 					ctx = context.WithValue(ctx, UserKey, user)
-
-					log.Debug().Str("user", user.Username).Str("kernelDataDir", userKernel.Config().DataDir).Msg("Set user kernel in context")
-
 					mux.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
+			} else {
+				log.Error().Err(err).Msg("Failed to validate token")
 			}
 		}
 
@@ -241,6 +238,7 @@ func (s *MultiTenantServer) isPublicRoute(path string) bool {
 		"/home",
 		"/index",
 		"/index.html",
+		"/markdown",
 	}
 	for _, route := range publicRoutes {
 		if path == route {
@@ -251,6 +249,22 @@ func (s *MultiTenantServer) isPublicRoute(path string) bool {
 		}
 	}
 	if path == "/" {
+		return true
+	}
+	// Allow markdown files and code files to be accessed publicly
+	if strings.HasSuffix(path, ".md") ||
+		strings.HasSuffix(path, ".go") ||
+		strings.HasSuffix(path, ".json") ||
+		strings.HasSuffix(path, ".js") ||
+		strings.HasSuffix(path, ".ts") ||
+		strings.HasSuffix(path, ".py") ||
+		strings.HasSuffix(path, ".yaml") ||
+		strings.HasSuffix(path, ".yml") ||
+		strings.HasSuffix(path, ".toml") ||
+		strings.HasSuffix(path, ".sh") ||
+		strings.HasSuffix(path, ".bash") ||
+		strings.HasSuffix(path, ".html") ||
+		strings.HasSuffix(path, ".css") {
 		return true
 	}
 	return false
@@ -265,6 +279,8 @@ func (s *MultiTenantServer) isStaticRoute(path string) bool {
 		"/fonts/",
 		"/static/",
 		"/locales/",
+		"/docs/",
+		"/examples/",
 	}
 	for _, prefix := range staticPrefixes {
 		if len(path) >= len(prefix) && path[:len(prefix)] == prefix {
@@ -300,16 +316,18 @@ func (s *MultiTenantServer) setupStaticFiles(mux *http.ServeMux) {
 	staticDir := findStaticDir()
 	fs := http.FileServer(http.Dir(staticDir))
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	// Markdown viewer route
+	mux.HandleFunc("/markdown", func(w http.ResponseWriter, r *http.Request) {
+		viewerPath := staticDir + "/markdown-viewer.html"
+		http.ServeFile(w, r, viewerPath)
+	})
 
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/index.html":
 			http.Redirect(w, r, "/index", http.StatusFound)
 			return
 		case "/", "/home":
-			// indexPath := staticDir + "/index.html"
-			// http.ServeFile(w, r, indexPath)
-			// return
 			http.Redirect(w, r, "/home", http.StatusFound)
 			return
 		}

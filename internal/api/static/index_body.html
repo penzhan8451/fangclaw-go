@@ -946,8 +946,15 @@
           <!-- Quick-start templates — spawn + chat in one click -->
           <div>
             <div class="text-sm font-bold mb-2" style="color:var(--text-dim);letter-spacing:0.5px;font-size:11px;text-transform:uppercase" x-text="agents.length ? 'Or Start a New Agent' : 'Start Chatting'"></div>
+            <!-- Category tabs -->
+            <div class="tabs mb-4">
+              <template x-for="cat in categories" :key="cat">
+                <div class="tab" :class="{ active: selectedCategory === cat }" @click="selectedCategory = cat" x-text="cat"></div>
+              </template>
+            </div>
+            <!-- Templates grid for selected category -->
             <div class="card-grid">
-              <template x-for="t in builtinTemplates" :key="t.name">
+              <template x-for="t in filteredBuiltins" :key="t.name">
                 <div class="card" style="cursor:pointer" @click="spawnBuiltin(t)">
                   <div class="flex justify-between items-center mb-1">
                     <div class="card-header" style="margin:0;font-size:14px;font-weight:600" x-text="t.name"></div>
@@ -956,6 +963,11 @@
                   <div class="text-sm" style="line-height:1.5;color:var(--text-dim)" x-text="t.description"></div>
                 </div>
               </template>
+            </div>
+            <!-- Empty state when no templates in category -->
+            <div x-show="filteredBuiltins.length === 0" class="empty-state">
+              <h3>No templates in this category</h3>
+              <p class="hint">Try selecting another category.</p>
             </div>
           </div>
 

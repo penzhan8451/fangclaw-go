@@ -1109,9 +1109,13 @@ func (r *Runtime) executeTool(ctx context.Context, agentCtx *AgentContext, name 
 
 	// First, try to find a built-in tool
 	if tool, ok := r.tools.Get(name); ok {
-		// Create a timeout context
+		// Create a timeout context with agent_id
 		toolCtx, cancel := context.WithTimeout(ctx, TOOL_TIMEOUT_SECS*time.Second)
 		defer cancel()
+		// Add agent_id to context
+		if agentCtx != nil {
+			toolCtx = context.WithValue(toolCtx, "agent_id", agentCtx.AgentID.String())
+		}
 		return tool.Execute(toolCtx, args)
 	}
 

@@ -1,0 +1,19 @@
+{
+  "agent_id": "YOUR-AGENT-ID-HERE",
+  "name": "midnight-cleanup",
+  "enabled": true,
+  "schedule": {
+    "kind": "cron",
+    "expr": "0 0 * * *"
+  },
+  "action": {
+    "kind": "execute_shell",
+    "command": "find",
+    "args": ["/tmp", "-type", "f", "-mtime", "+7", "-delete"],
+    "timeout_secs": 1800
+  },
+  "delivery": {
+    "kind": "none"
+  },
+  "one_shot": false
+}
