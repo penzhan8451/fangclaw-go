@@ -196,6 +196,7 @@ type AgentContext struct {
 }
 
 func NewAgentContext(id, name, provider, model, systemPrompt string, tools []string, skills []string, skillPromptContext string, files map[string]string) *AgentContext {
+	agentID, _ := types.ParseAgentID(id) // 把字符串id解析为types.AgentID
 	return &AgentContext{
 		ID:                 id,
 		Name:               name,
@@ -208,7 +209,7 @@ func NewAgentContext(id, name, provider, model, systemPrompt string, tools []str
 		Messages:           make([]types.Message, 0),
 		Config:             types.LoopConfig{MaxIterations: 10, MaxTokens: 4096, Temperature: 0.7, TopP: 0.9},
 		SessionID:          types.NewSessionID(),
-		AgentID:            types.NewAgentID(),
+		AgentID:            agentID, // 使用解析后的agentID，而不是自己生成一个新的！
 		Files:              files,
 	}
 }

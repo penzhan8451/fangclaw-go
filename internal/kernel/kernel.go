@@ -1426,10 +1426,19 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 		agentAPIKeyEnv = def.Agent.APIKeyEnv
 	}
 
+	// Resolve hand settings into prompt block
+	resolved := hands.ResolveSettings(def.Settings, handConfig)
+
+	// Build the system prompt
+	systemPrompt := def.Agent.SystemPrompt
+	if resolved.PromptBlock != "" {
+		systemPrompt = fmt.Sprintf("%s\n\n---\n\n%s", systemPrompt, resolved.PromptBlock)
+	}
+
 	manifest := types.AgentManifest{
 		Name:         def.Agent.Name,
 		Description:  def.Agent.Description,
-		SystemPrompt: def.Agent.SystemPrompt,
+		SystemPrompt: systemPrompt,
 		Model: types.ModelConfig{
 			Provider:  agentProvider,
 			Model:     agentModel,
@@ -1460,7 +1469,7 @@ func (k *Kernel) ActivateHand(handID string, handConfig map[string]interface{}) 
 	}
 
 	agentName := def.Agent.Name
-	agentSystemPrompt := def.Agent.SystemPrompt
+	agentSystemPrompt := systemPrompt // Use the system prompt with user config
 	agentTools := def.Tools
 	agentSkillPromptContext := ""
 
@@ -1560,10 +1569,9 @@ func (k *Kernel) DeactivateHand(instanceID string) error {
 	}
 
 	k.mu.Unlock()
-
 	if hasAgent {
-		disabledCount := k.cronScheduler.SetAgentJobsEnabled(agentID, false)
-		log.Info().Str("agent", agentID.String()).Int("disabled", disabledCount).Msg("Disabled cron jobs for deactivated hand")
+		removedCount := k.cronScheduler.RemoveAgentJobs(agentID)
+		log.Info().Str("agent", agentID.String()).Int("removed", removedCount).Msg("Removed cron jobs for deactivated hand")
 	}
 
 	k.mu.Lock()

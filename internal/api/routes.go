@@ -4209,10 +4209,15 @@ func (r *Router) handleGetHand(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleActivateHand(w http.ResponseWriter, req *http.Request) {
 	handID := req.PathValue("id")
 
-	var config map[string]interface{}
+	var body map[string]interface{}
+	config := make(map[string]interface{})
 	if req.Body != http.NoBody {
-		if err := json.NewDecoder(req.Body).Decode(&config); err != nil {
-			config = make(map[string]interface{})
+		if err := json.NewDecoder(req.Body).Decode(&body); err == nil {
+			if c, ok := body["config"]; ok {
+				if configMap, ok := c.(map[string]interface{}); ok {
+					config = configMap
+				}
+			}
 		}
 		defer req.Body.Close()
 	}

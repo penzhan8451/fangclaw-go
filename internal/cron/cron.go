@@ -150,7 +150,7 @@ func (cs *CronScheduler) Persist() error {
 func (cs *CronScheduler) AddJob(job types.CronJob, oneShot bool) (types.CronJobID, error) {
 	cs.mu.Lock()
 
-	log.Info().Str("job_name", job.Name).Str("agent_id", job.AgentID.String()).Msg("Cron: adding new job")
+	log.Info().Str("job_name", job.Name).Str("agent_id", job.AgentID.String()).Msg("[AddJob]-Cron: adding new job")
 
 	maxJobs := cs.maxTotalJobs.Load()
 	if uint32(len(cs.jobs)) >= maxJobs {
@@ -332,9 +332,32 @@ func (cs *CronScheduler) TakeAgentJobs(agentID types.AgentID) []types.CronJob {
 	return jobs
 }
 
+func (cs *CronScheduler) RemoveAgentJobs(agentID types.AgentID) int {
+	cs.mu.Lock()
+	count := 0
+	for id, meta := range cs.jobs {
+
+		if meta.Job.AgentID == agentID {
+			log.Info().Str("job_id", id.String()).Msg("Cron: removing job")
+			delete(cs.jobs, id)
+			count++
+		}
+	}
+
+	// 先释放写锁，再调用 Persist
+	cs.mu.Unlock()
+
+	if count > 0 {
+		log.Info().Str("agent", agentID.String()).Int("count", count).Msg("Cron: removed jobs for agent")
+		if err := cs.Persist(); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist after removing agent jobs")
+		}
+	}
+	return count
+}
+
 func (cs *CronScheduler) SetAgentJobsEnabled(agentID types.AgentID, enabled bool) int {
 	cs.mu.Lock()
-	defer cs.mu.Unlock()
 
 	count := 0
 	for id, meta := range cs.jobs {
@@ -351,6 +374,10 @@ func (cs *CronScheduler) SetAgentJobsEnabled(agentID types.AgentID, enabled bool
 			}
 		}
 	}
+
+	// 先释放写锁，再调用 Persist
+	cs.mu.Unlock()
+
 	if count > 0 {
 		if err := cs.Persist(); err != nil {
 			log.Warn().Err(err).Msg("Failed to persist after setting agent jobs enabled")
