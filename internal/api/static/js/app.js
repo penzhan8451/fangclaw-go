@@ -267,22 +267,22 @@ document.addEventListener('alpine:init', function() {
       window.location.href = '/';
     },
 
-    async deleteAccount() {
-      var self = this;
-      FangClawGoToast.confirm(
-        'Delete Account',
-        'Are you sure you want to delete your account? This action cannot be undone and all your data will be lost.',
-        async function() {
-          try {
-            await FangClawGoAPI.delete('/api/auth/me');
-            FangClawGoToast.success('Account deleted successfully');
-            self.logout();
-          } catch(e) {
-            FangClawGoToast.error('Failed to delete account: ' + (e.message || 'Unknown error'));
-          }
-        }
-      );
-    },
+    // async deleteAccount() {
+    //   var self = this;
+    //   FangClawGoToast.confirm(
+    //     'Delete Account',
+    //     'Are you sure you want to delete your account? This action cannot be undone and all your data will be lost.',
+    //     async function() {
+    //       try {
+    //         await FangClawGoAPI.delete('/api/auth/me');
+    //         FangClawGoToast.success('Account deleted successfully');
+    //         self.logout();
+    //       } catch(e) {
+    //         FangClawGoToast.error('Failed to delete account: ' + (e.message || 'Unknown error'));
+    //       }
+    //     }
+    //   );
+    // },
     
     submitApiKey(key) {
       if (!key || !key.trim()) return;

@@ -392,7 +392,8 @@
     "network": "网络",
     "budget": "预算",
     "system": "系统",
-    "migration": "迁移"
+    "migration": "迁移",
+    "account": "账号"
   },
   "logs": {
     "title": "日志",

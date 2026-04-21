@@ -392,7 +392,8 @@
     "network": "Network",
     "budget": "Budget",
     "system": "System",
-    "migration": "Migration"
+    "migration": "Migration",
+    "account": "Account"
   },
   "logs": {
     "title": "Logs",
