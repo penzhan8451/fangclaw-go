@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/penzhan8451/fangclaw-go/internal/auth"
+	"github.com/penzhan8451/fangclaw-go/internal/userdir"
 )
 
 type AuthHandler struct {
@@ -378,6 +379,16 @@ func (h *AuthHandler) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 删除用户目录（跳过 owner 用户，因为 owner 的目录是全局的）
+	if targetUser.Username != "owner" {
+		mgr, err := userdir.GetDefaultManager()
+		if err == nil {
+			if err := mgr.DeleteUserDir(targetUser.Username); err != nil {
+				fmt.Printf("Warning: failed to delete user directory for %s: %v\n", targetUser.Username, err)
+			}
+		}
+	}
+
 	respondJSON(w, http.StatusOK, map[string]string{"message": "user deleted"})
 }
 
@@ -388,9 +399,27 @@ func (h *AuthHandler) HandleDeleteCurrentUser(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// 获取用户信息以便删除用户目录
+	user, err := h.authManager.GetUserByID(userID.(string))
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get user info")
+		return
+	}
+
+	// delete current user
 	if err := h.authManager.DeleteUser(userID.(string)); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	// delete current user directory (except owner)
+	if user.Username != "owner" {
+		mgr, err := userdir.GetDefaultManager()
+		if err == nil {
+			if err := mgr.DeleteUserDir(user.Username); err != nil {
+				fmt.Printf("Warning: failed to delete user directory for %s: %v\n", user.Username, err)
+			}
+		}
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "account deleted successfully"})

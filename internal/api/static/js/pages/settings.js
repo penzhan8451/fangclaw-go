@@ -754,6 +754,10 @@ function settingsPage() {
 
     async deleteAccount() {
       var self = this;
+      if (Alpine.store('app').currentUser.role === 'owner') {
+        FangClawGoToast.error('Owner account cannot be deleted');
+        return;
+      }
       FangClawGoToast.confirm(
         'Delete Account',
         'Are you sure you want to delete your account? This action cannot be undone and all your data will be lost.',

@@ -480,8 +480,18 @@ body {
         font-size: 18px;
     }
     
-    .nav-actions .btn-nav {
-        display: none;
+    .nav-actions {
+        gap: 8px;
+    }
+    
+    .btn-nav {
+        padding: 6px 10px;
+        font-size: 13px;
+    }
+    
+    .btn-primary {
+        padding: 8px 16px;
+        font-size: 13px;
     }
     
     .container {
