@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -55,6 +57,7 @@ type UserResponse struct {
 type UpdateUserRequest struct {
 	Email           string                 `json:"email,omitempty"`
 	Password        string                 `json:"password,omitempty"`
+	CurrentPassword string                 `json:"current_password,omitempty"`
 	Role            string                 `json:"role,omitempty"`
 	Disabled        *bool                  `json:"disabled,omitempty"`
 	IsVIP           *bool                  `json:"is_vip,omitempty"`
@@ -178,6 +181,32 @@ func (h *AuthHandler) HandleUpdateCurrentUser(w http.ResponseWriter, r *http.Req
 			respondError(w, http.StatusBadRequest, "password must be at least 6 characters")
 			return
 		}
+
+		// Verify current password before updating
+		user, err := h.authManager.GetUserByID(userID.(string))
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to get user")
+			return
+		}
+
+		// Only require current password if user has a password set (not GitHub user)
+		if user.PasswordHash != "" {
+			if req.CurrentPassword == "" {
+				respondError(w, http.StatusBadRequest, "current password is required")
+				return
+			}
+
+			// Verify current password
+			salt := "fangclaw-go-auth-salt-2024"
+			hash := sha256.Sum256([]byte(salt + req.CurrentPassword))
+			currentPasswordHash := hex.EncodeToString(hash[:])
+
+			if user.PasswordHash != currentPasswordHash {
+				respondError(w, http.StatusUnauthorized, "current password is incorrect")
+				return
+			}
+		}
+
 		updates["password"] = req.Password
 	}
 	if req.Settings != nil {
@@ -344,17 +373,27 @@ func (h *AuthHandler) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if actor.ID == userID {
-		respondError(w, http.StatusBadRequest, "cannot delete yourself")
-		return
-	}
-
 	if err := h.authManager.DeleteUser(userID); err != nil {
 		respondError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "user deleted"})
+}
+
+func (h *AuthHandler) HandleDeleteCurrentUser(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("user_id")
+	if userID == nil {
+		respondError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	if err := h.authManager.DeleteUser(userID.(string)); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "account deleted successfully"})
 }
 
 func (h *AuthHandler) HandleCreateAPIKey(w http.ResponseWriter, r *http.Request) {

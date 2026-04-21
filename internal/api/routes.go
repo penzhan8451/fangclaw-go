@@ -505,6 +505,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/register", r.handleAuthRegister)
 	mux.HandleFunc("GET /api/auth/me", r.handleAuthGetCurrentUser)
 	mux.HandleFunc("PUT /api/auth/me", r.handleAuthUpdateCurrentUser)
+	mux.HandleFunc("DELETE /api/auth/me", r.handleAuthDeleteCurrentUser)
 	mux.HandleFunc("POST /api/auth/api-keys", r.handleAuthCreateAPIKey)
 	mux.HandleFunc("GET /api/auth/github", r.handleGitHubLogin)
 	mux.HandleFunc("GET /api/auth/github/callback", r.handleGitHubCallback)
@@ -6409,6 +6410,14 @@ func (r *Router) handleAuthUpdateUser(w http.ResponseWriter, req *http.Request) 
 func (r *Router) handleAuthDeleteUser(w http.ResponseWriter, req *http.Request) {
 	if r.authHandler != nil {
 		r.authHandler.HandleDeleteUser(w, req)
+		return
+	}
+	respondError(w, http.StatusNotImplemented, "authentication not enabled")
+}
+
+func (r *Router) handleAuthDeleteCurrentUser(w http.ResponseWriter, req *http.Request) {
+	if r.authHandler != nil {
+		r.authHandler.HandleDeleteCurrentUser(w, req)
 		return
 	}
 	respondError(w, http.StatusNotImplemented, "authentication not enabled")

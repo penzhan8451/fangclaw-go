@@ -29,6 +29,13 @@ function settingsPage() {
     loading: true,
     loadError: '',
     initialized: false,
+    // Account management
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+    passwordError: '',
+    passwordSuccess: '',
+    changingPassword: false,
     
     // -- Approval Policy state --
     approvalPolicy: {},
@@ -717,6 +724,49 @@ function settingsPage() {
       } else {
         this.approvalPolicy.require_approval.splice(idx, 1);
       }
+    },
+
+    // Account management methods
+    isGitHubUser() {
+      return $store.app.currentUser?.settings?.github_login;
+    },
+
+    async changePassword() {
+      if (this.newPassword !== this.confirmPassword) {
+        this.passwordError = 'New password and confirm password do not match';
+        return;
+      }
+      this.changingPassword = true;
+      this.passwordError = '';
+      this.passwordSuccess = '';
+      try {
+        await FangClawGoAPI.put('/api/auth/me', { password: this.newPassword, current_password: this.currentPassword });
+        this.passwordSuccess = 'Password changed successfully';
+        this.currentPassword = '';
+        this.newPassword = '';
+        this.confirmPassword = '';
+      } catch (e) {
+        this.passwordError = e.message || 'Failed to change password';
+      } finally {
+        this.changingPassword = false;
+      }
+    },
+
+    async deleteAccount() {
+      var self = this;
+      FangClawGoToast.confirm(
+        'Delete Account',
+        'Are you sure you want to delete your account? This action cannot be undone and all your data will be lost.',
+        async function() {
+          try {
+            await FangClawGoAPI.delete('/api/auth/me');
+            FangClawGoToast.success('Account deleted successfully');
+            Alpine.store('app').logout();
+          } catch (e) {
+            FangClawGoToast.error('Failed to delete account: ' + (e.message || 'Unknown error'));
+          }
+        }
+      );
     },
 
     destroy() {
