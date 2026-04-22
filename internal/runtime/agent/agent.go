@@ -112,6 +112,7 @@ type Runtime struct {
 	knowledge       *memory.KnowledgeStore
 	usage           *memory.UsageStore
 	skills          *skills.Loader
+	fileStore       *memory.FileStore
 	embeddingDriver *embedding.EmbeddingDriver
 	modelCatalog    *model_catalog.ModelCatalog
 	getMcpTools     func() []types.ToolDefinition
@@ -127,7 +128,7 @@ type McpCallbacks struct {
 	CallMcpTool func(ctx context.Context, toolName string, args map[string]interface{}) (string, error)
 }
 
-func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader, embeddingDriver *embedding.EmbeddingDriver, modelCatalog *model_catalog.ModelCatalog, mcpCallbacks *McpCallbacks, approvalMgr *approvals.ApprovalManager, agentScheduler *scheduler.AgentScheduler) *Runtime {
+func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, knowledge *memory.KnowledgeStore, usage *memory.UsageStore, skills *skills.Loader, dataDir string, embeddingDriver *embedding.EmbeddingDriver, modelCatalog *model_catalog.ModelCatalog, mcpCallbacks *McpCallbacks, approvalMgr *approvals.ApprovalManager, agentScheduler *scheduler.AgentScheduler) *Runtime {
 	r := &Runtime{
 		drivers:         make(map[string]llm.Driver),
 		tools:           NewToolRegistry(),
@@ -145,6 +146,17 @@ func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, k
 	if mcpCallbacks != nil {
 		r.getMcpTools = mcpCallbacks.GetMcpTools
 		r.callMcpTool = mcpCallbacks.CallMcpTool
+	}
+	// Initialize file store
+	fileStore, err := memory.NewFileStore(dataDir)
+	if err != nil {
+		// If file store fails to initialize, we'll log and continue
+		// This ensures runtime remains functional even without file store
+	}
+	r.fileStore = fileStore
+	// Register memory_manage tool if fileStore is initialized
+	if r.fileStore != nil {
+		r.RegisterTool(tools.NewMemoryManageTool(r.fileStore))
 	}
 	return r
 }
@@ -757,36 +769,62 @@ func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFr
 	prompt := basePrompt
 
 	// Add agent files following openfang's pattern
-	if files != nil {
-		var filesSection strings.Builder
+	var filesSection strings.Builder
 
-		// AGENTS.md - Agent Behavioral Guidelines
+	// AGENTS.md - Agent Behavioral Guidelines
+	if files != nil {
 		if content, ok := files["AGENTS.md"]; ok && content != "" {
 			filesSection.WriteString("\n\n## Agent Behavioral Guidelines\n")
 			filesSection.WriteString(content)
 		}
+	}
 
-		// Identity / Persona files
-		var personaParts []string
-		if content, ok := files["IDENTITY.md"]; ok && content != "" {
-			personaParts = append(personaParts, fmt.Sprintf("## Identity\n%s", content))
-		}
-		if content, ok := files["SOUL.md"]; ok && content != "" {
-			personaParts = append(personaParts, fmt.Sprintf("## Soul\n%s", content))
-		}
-		if content, ok := files["USER.md"]; ok && content != "" {
-			personaParts = append(personaParts, fmt.Sprintf("## User Profile\n%s", content))
-		}
-		if content, ok := files["MEMORY.md"]; ok && content != "" {
-			personaParts = append(personaParts, fmt.Sprintf("## Long-term Memory\n%s", content))
-		}
+	// Identity / Persona files
+	var personaParts []string
 
-		if len(personaParts) > 0 {
-			filesSection.WriteString("\n\n## Persona\n")
-			filesSection.WriteString(strings.Join(personaParts, "\n\n"))
+	// Try to get content from files map first, then from FileStore
+	getFileContent := func(filename string) string {
+		if files != nil {
+			if content, ok := files[filename]; ok && content != "" {
+				return content
+			}
 		}
+		if r.fileStore != nil {
+			var target string
+			if filename == "MEMORY.md" {
+				target = "memory"
+			} else if filename == "USER.md" {
+				target = "user"
+			} else {
+				return ""
+			}
+			if content, err := r.fileStore.Read(target); err == nil && content != "" {
+				return content
+			}
+		}
+		return ""
+	}
 
-		// HEARTBEAT.md - Heartbeat Checklist (for autonomous agents)
+	if content := getFileContent("IDENTITY.md"); content != "" {
+		personaParts = append(personaParts, fmt.Sprintf("## Identity\n%s", content))
+	}
+	if content := getFileContent("SOUL.md"); content != "" {
+		personaParts = append(personaParts, fmt.Sprintf("## Soul\n%s", content))
+	}
+	if content := getFileContent("USER.md"); content != "" {
+		personaParts = append(personaParts, fmt.Sprintf("## User Profile\n%s", content))
+	}
+	if content := getFileContent("MEMORY.md"); content != "" {
+		personaParts = append(personaParts, fmt.Sprintf("## Long-term Memory\n%s", content))
+	}
+
+	if len(personaParts) > 0 {
+		filesSection.WriteString("\n\n## Persona\n")
+		filesSection.WriteString(strings.Join(personaParts, "\n\n"))
+	}
+
+	// HEARTBEAT.md - Heartbeat Checklist (for autonomous agents)
+	if files != nil {
 		if content, ok := files["HEARTBEAT.md"]; ok && content != "" {
 			filesSection.WriteString("\n\n## Heartbeat Checklist\n")
 			filesSection.WriteString(content)
@@ -797,10 +835,10 @@ func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFr
 			filesSection.WriteString("\n\n## First-Run Protocol\n")
 			filesSection.WriteString(content)
 		}
+	}
 
-		if filesSection.Len() > 0 {
-			prompt += filesSection.String()
-		}
+	if filesSection.Len() > 0 {
+		prompt += filesSection.String()
 	}
 
 	// Add bundled hand skill prompt context
@@ -1318,6 +1356,19 @@ func (r *Runtime) UpdateAgentSkills(id string, skills []string) {
 		agentCtx.Skills = skills
 		log.Printf("Updated agent %s skills: %v", id, skills)
 	}
+}
+
+func (r *Runtime) UpdateAgentTools(id string, tools []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if agentCtx, ok := r.agents[id]; ok {
+		agentCtx.Tools = tools
+		log.Printf("Updated agent %s tools: %v", id, tools)
+	}
+}
+
+func (r *Runtime) ListTools() []tools.Tool {
+	return r.tools.List()
 }
 
 func (r *Runtime) UpdateAgentSystemPrompt(id string, systemPrompt string) {

@@ -14,7 +14,8 @@
     "search",
     "fetch",
     "shell",
-    "json"
+    "json",
+    "memory_manage"
   ],
   "skills": [
     "code-reviewer"

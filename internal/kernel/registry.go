@@ -263,6 +263,21 @@ func (r *AgentRegistry) UpdateSkills(id types.AgentID, skills []string) error {
 	return nil
 }
 
+func (r *AgentRegistry) UpdateTools(id types.AgentID, tools []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entry, exists := r.agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	entry.Manifest.Tools = tools
+	entry.LastActive = time.Now()
+	r.saveToDisk()
+	return nil
+}
+
 func (r *AgentRegistry) AppendSkills(id types.AgentID, newSkills []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

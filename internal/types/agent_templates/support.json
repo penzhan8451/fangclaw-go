@@ -12,7 +12,8 @@
     "read_file",
     "search",
     "fetch",
-    "datetime"
+    "datetime",
+    "memory_manage"
   ],
   "skills": [],
   "mcp_servers": []

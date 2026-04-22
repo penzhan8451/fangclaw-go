@@ -16,7 +16,8 @@
     "shell_exec",
     "search",
     "fetch",
-    "json"
+    "json",
+    "memory_manage"
   ],
   "skills": [
     "opencode-coder"

@@ -673,6 +673,8 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/agents/{id}/model", r.handleUpdateAgentModel)
 	mux.HandleFunc("PUT /api/agents/{id}/skills", r.handleUpdateAgentSkills)
 	mux.HandleFunc("PUT /api/v1/agents/{id}/skills", r.handleUpdateAgentSkills)
+	mux.HandleFunc("PUT /api/agents/{id}/tools", r.handleUpdateAgentTools)
+	mux.HandleFunc("PUT /api/v1/agents/{id}/tools", r.handleUpdateAgentTools)
 	mux.HandleFunc("PATCH /api/agents/{id}/system-prompt/append", r.handleAppendAgentSystemPrompt)
 	mux.HandleFunc("PATCH /api/agents/{id}/skills/append", r.handleAppendAgentSkills)
 
@@ -979,6 +981,7 @@ func (r *Router) handleListAgents(w http.ResponseWriter, req *http.Request) {
 			"last_active":    agent.LastActive,
 			"model_provider": agent.Manifest.Model.Provider,
 			"model_name":     agent.Manifest.Model.Model,
+			"manifest":       agent.Manifest,
 		})
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -1122,6 +1125,33 @@ func (r *Router) handleUpdateAgentSkills(w http.ResponseWriter, req *http.Reques
 
 	agent := k.AgentRegistry().Get(id)
 	k.UpdateAgentRuntimeSkills(id.String(), agent.Manifest.Skills)
+	respondJSON(w, http.StatusOK, agent)
+}
+
+func (r *Router) handleUpdateAgentTools(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
+	idStr := req.PathValue("id")
+	id, err := types.ParseAgentID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent id")
+		return
+	}
+
+	var reqBody struct {
+		Tools []string `json:"tools"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := k.AgentRegistry().UpdateTools(id, reqBody.Tools); err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	agent := k.AgentRegistry().Get(id)
+	k.UpdateAgentRuntimeTools(id.String(), agent.Manifest.Tools)
 	respondJSON(w, http.StatusOK, agent)
 }
 
@@ -3451,38 +3481,9 @@ func (r *Router) handleDeleteAgentAlias(w http.ResponseWriter, req *http.Request
 func (r *Router) handleTools(w http.ResponseWriter, req *http.Request) {
 	var tools []map[string]interface{}
 
-	// 默认内置工具
-	builtinTools := []struct {
-		name        string
-		description string
-	}{
-		{"shell", "Execute shell commands"},
-		{"shell_exec", "Execute shell commands"},
-		{"write_file", "Write content to files"},
-		{"file_write", "Write content to files"},
-		{"read_file", "Read file contents"},
-		{"file_read", "Read file contents"},
-		{"list_dir", "List directory contents"},
-		{"file_list", "List directory contents"},
-		{"delete", "Delete files or directories"},
-		{"exec", "Execute external programs"},
-		{"browser", "Control web browser"},
-		{"purchase", "Make purchases"},
-		{"send_message", "Send messages"},
-		{"agent_send", "Send messages to other agents"},
-		{"agent_list", "List available agents"},
-		{"memory_store", "Store data in memory"},
-		{"memory_recall", "Recall data from memory"},
-		{"fetch", "Fetch content from URLs"},
-		{"search", "Search the web"},
-	}
-
-	for _, t := range builtinTools {
-		tools = append(tools, map[string]interface{}{
-			"name":        t.name,
-			"description": t.description,
-		})
-	}
+	// 从 agentRuntime 获取所有内置工具
+	builtinTools := r.getKernel(req).ListTools()
+	tools = append(tools, builtinTools...)
 
 	// 添加 MCP 工具
 	mcpTools := r.getKernel(req).GetMcpTools()

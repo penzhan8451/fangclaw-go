@@ -322,7 +322,7 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 		CallMcpTool: k.CallMcpTool,
 	}
 
-	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, mcpCallbacks, approvalMgr, agentScheduler)
+	agentRuntime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, dataDir, embeddingDriver, modelCatalog, mcpCallbacks, approvalMgr, agentScheduler)
 
 	kernelConfig.DataDir = dataDir
 	k.config = kernelConfig
@@ -940,6 +940,22 @@ func (k *Kernel) AgentRegistry() *AgentRegistry {
 
 func (k *Kernel) UpdateAgentRuntimeSkills(agentID string, skills []string) {
 	k.agentRuntime.UpdateAgentSkills(agentID, skills)
+}
+
+func (k *Kernel) UpdateAgentRuntimeTools(agentID string, tools []string) {
+	k.agentRuntime.UpdateAgentTools(agentID, tools)
+}
+
+func (k *Kernel) ListTools() []map[string]interface{} {
+	agentTools := k.agentRuntime.ListTools()
+	result := make([]map[string]interface{}, 0, len(agentTools))
+	for _, t := range agentTools {
+		result = append(result, map[string]interface{}{
+			"name":        t.Name(),
+			"description": t.Description(),
+		})
+	}
+	return result
 }
 
 func (k *Kernel) UpdateAgentRuntimeSystemPrompt(agentID string, systemPrompt string) {

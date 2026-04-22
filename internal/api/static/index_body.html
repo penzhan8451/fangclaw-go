@@ -989,6 +989,7 @@
               <div class="tabs" style="margin-bottom:16px">
                 <div class="tab" :class="{ active: detailTab === 'info' }" @click="detailTab = 'info'">Info</div>
                 <div class="tab" :class="{ active: detailTab === 'files' }" @click="detailTab = 'files'; loadAgentFiles()">Files</div>
+                <div class="tab" :class="{ active: detailTab === 'tools' }" @click="detailTab = 'tools'; loadDetailAvailableTools()">Tools</div>
                 <div class="tab" :class="{ active: detailTab === 'skills' }" @click="detailTab = 'skills'; loadDetailAvailableSkills()">Skills</div>
                 <div class="tab" :class="{ active: detailTab === 'config' }" @click="detailTab = 'config'">Config</div>
               </div>
@@ -1048,6 +1049,36 @@
                     <button class="btn btn-primary btn-sm" @click="saveFile()" :disabled="fileSaving"><span x-show="!fileSaving">Save</span><span x-show="fileSaving">Saving...</span></button>
                     <button class="btn btn-ghost btn-sm" @click="closeFileEditor()">Cancel</button>
                   </div>
+                </div>
+              </div>
+
+              <!-- Tab: Tools -->
+              <div x-show="detailTab === 'tools'">
+                <div style="margin-bottom:16px">
+                  <div x-show="detailOriginalTools.length>0" style="margin-top:8px">
+                    <span style="font-size:12px;color:var(--text-dim)">Enabled Tools:</span>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+                      <template x-for="tool in detailOriginalTools" :key="tool">
+                        <span style="font-size:12px;padding:4px 8px;background:var(--bg-ghost);border-radius:4px" x-text="tool"></span>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+                <div x-show="detailToolsLoading" class="text-center text-dim" style="padding:24px">Loading tools...</div>
+                <div x-show="!detailToolsLoading">
+                  <template x-for="tool in detailAvailableTools" :key="tool.name">
+                    <div class="detail-row" style="padding:8px 0;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;gap:8px">
+                      <input type="checkbox" :checked="detailTools.includes(tool.name)" @change="toggleDetailTool(tool.name)">
+                      <div style="flex:1">
+                        <div style="font-weight:500" x-text="tool.name"></div>
+                        <div style="font-size:11px;color:var(--text-dim)" x-text="tool.description"></div>
+                      </div>
+                    </div>
+                  </template>
+                  <div x-show="!detailAvailableTools.length && !detailToolsLoading" class="text-center text-dim" style="padding:24px">No tools available</div>
+                  <button class="btn btn-primary mt-4" @click="saveDetailTools()" :disabled="detailToolsSaving">
+                    <span x-show="!detailToolsSaving">Save Tools</span><span x-show="detailToolsSaving">Saving...</span>
+                  </button>
                 </div>
               </div>
 

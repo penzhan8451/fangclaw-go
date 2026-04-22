@@ -5064,6 +5064,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
               <div class="tabs" style="margin-bottom:16px">
                 <div class="tab" :class="{ active: detailTab === 'info' }" @click="detailTab = 'info'">Info</div>
                 <div class="tab" :class="{ active: detailTab === 'files' }" @click="detailTab = 'files'; loadAgentFiles()">Files</div>
+                <div class="tab" :class="{ active: detailTab === 'tools' }" @click="detailTab = 'tools'; loadDetailAvailableTools()">Tools</div>
                 <div class="tab" :class="{ active: detailTab === 'skills' }" @click="detailTab = 'skills'; loadDetailAvailableSkills()">Skills</div>
                 <div class="tab" :class="{ active: detailTab === 'config' }" @click="detailTab = 'config'">Config</div>
               </div>
@@ -5123,6 +5124,36 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                     <button class="btn btn-primary btn-sm" @click="saveFile()" :disabled="fileSaving"><span x-show="!fileSaving">Save</span><span x-show="fileSaving">Saving...</span></button>
                     <button class="btn btn-ghost btn-sm" @click="closeFileEditor()">Cancel</button>
                   </div>
+                </div>
+              </div>
+
+              <!-- Tab: Tools -->
+              <div x-show="detailTab === 'tools'">
+                <div style="margin-bottom:16px">
+                  <div x-show="detailOriginalTools.length>0" style="margin-top:8px">
+                    <span style="font-size:12px;color:var(--text-dim)">Enabled Tools:</span>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+                      <template x-for="tool in detailOriginalTools" :key="tool">
+                        <span style="font-size:12px;padding:4px 8px;background:var(--bg-ghost);border-radius:4px" x-text="tool"></span>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+                <div x-show="detailToolsLoading" class="text-center text-dim" style="padding:24px">Loading tools...</div>
+                <div x-show="!detailToolsLoading">
+                  <template x-for="tool in detailAvailableTools" :key="tool.name">
+                    <div class="detail-row" style="padding:8px 0;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;gap:8px">
+                      <input type="checkbox" :checked="detailTools.includes(tool.name)" @change="toggleDetailTool(tool.name)">
+                      <div style="flex:1">
+                        <div style="font-weight:500" x-text="tool.name"></div>
+                        <div style="font-size:11px;color:var(--text-dim)" x-text="tool.description"></div>
+                      </div>
+                    </div>
+                  </template>
+                  <div x-show="!detailAvailableTools.length && !detailToolsLoading" class="text-center text-dim" style="padding:24px">No tools available</div>
+                  <button class="btn btn-primary mt-4" @click="saveDetailTools()" :disabled="detailToolsSaving">
+                    <span x-show="!detailToolsSaving">Save Tools</span><span x-show="detailToolsSaving">Saving...</span>
+                  </button>
                 </div>
               </div>
 
@@ -13698,6 +13729,11 @@ function agentsPage() {
     detailAvailableSkills: [],
     detailSkillsLoading: false,
     detailSkillsSaving: false,
+    // Tools tab
+    detailTools: [],
+    detailAvailableTools: [],
+    detailToolsLoading: false,
+    detailToolsSaving: false,
 
     // -- Templates state --
     tplTemplates: [],
@@ -13881,7 +13917,7 @@ function agentsPage() {
       FangClawGoAPI.wsDisconnect();
     },
 
-    showDetail(agent) {
+    async showDetail(agent) {
       this.detailAgent = agent;
       this.detailTab = 'info';
       this.agentFiles = [];
@@ -13898,7 +13934,32 @@ function agentsPage() {
       this.detailSkills = (agent.manifest && agent.manifest.skills) || [];
       this.detailOriginalSkills = [...this.detailSkills];
       this.detailAvailableSkills = [];
+      this.detailTools = (agent.manifest && agent.manifest.tools) || [];
+      this.detailOriginalTools = [...this.detailTools];
+      this.detailAvailableTools = [];
       this.showDetailModal = true;
+
+      // Fetch full agent data to get complete manifest
+      // try {
+      //   var fullAgent = await FangClawGoAPI.get('/api/agents/' + agent.id);
+      //   if (fullAgent) {
+      //     this.detailAgent = fullAgent;
+      //     // Update skills with full data
+      //     this.detailSkills = (fullAgent.manifest && fullAgent.manifest.skills) || [];
+      //     this.detailOriginalSkills = [...this.detailSkills];
+      //     // Update tools with full data
+      //     this.detailTools = (fullAgent.manifest && fullAgent.manifest.tools) || [];
+      //     this.detailOriginalTools = [...this.detailTools];
+      //     // Update config form with full data
+      //     this.configForm.name = fullAgent.name || '';
+      //     this.configForm.emoji = (fullAgent.identity && fullAgent.identity.emoji) || '';
+      //     this.configForm.color = (fullAgent.identity && fullAgent.identity.color) || '#FF5C00';
+      //     this.configForm.archetype = (fullAgent.identity && fullAgent.identity.archetype) || '';
+      //     this.configForm.vibe = (fullAgent.identity && fullAgent.identity.vibe) || '';
+      //   }
+      // } catch (e) {
+      //   console.error('Failed to fetch full agent data:', e);
+      // }
     },
 
     killAgent(agent) {
@@ -14351,6 +14412,41 @@ function agentsPage() {
         FangClawGoToast.error('Failed to update skills: ' + e.message);
       }
       this.detailSkillsSaving = false;
+    },
+
+    async loadDetailAvailableTools() {
+      if (this.detailAvailableTools.length > 0 || this.detailToolsLoading) return;
+      this.detailToolsLoading = true;
+      try {
+        var data = await FangClawGoAPI.get('/api/tools');
+        this.detailAvailableTools = data.tools || [];
+      } catch(e) {
+        this.detailAvailableTools = [];
+      }
+      this.detailToolsLoading = false;
+    },
+
+    toggleDetailTool(toolName) {
+      var idx = this.detailTools.indexOf(toolName);
+      if (idx >= 0) {
+        this.detailTools.splice(idx, 1);
+      } else {
+        this.detailTools.push(toolName);
+      }
+    },
+
+    async saveDetailTools() {
+      if (!this.detailAgent) return;
+      this.detailToolsSaving = true;
+      try {
+        await FangClawGoAPI.put('/api/agents/' + this.detailAgent.id + '/tools', { tools: this.detailTools });
+        FangClawGoToast.success('Tools updated');
+        await Alpine.store('app').refreshAgents();
+        this.detailOriginalTools = [...this.detailTools];
+      } catch(e) {
+        FangClawGoToast.error('Failed to update tools: ' + e.message);
+      }
+      this.detailToolsSaving = false;
     },
 
     async spawnBuiltin(t) {

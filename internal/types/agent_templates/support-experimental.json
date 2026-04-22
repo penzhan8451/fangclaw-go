@@ -14,7 +14,8 @@
     "fetch",
     "datetime",
     "web_search",
-    "skill_manage"
+    "skill_manage",
+    "memory_manage"
   ],
   "skills": [],
   "mcp_servers": []

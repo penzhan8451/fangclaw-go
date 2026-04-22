@@ -17,7 +17,8 @@
     "search",
     "fetch",
     "json",
-    "calculator"
+    "calculator",
+    "memory_manage"
   ],
   "skills": [],
   "mcp_servers": []

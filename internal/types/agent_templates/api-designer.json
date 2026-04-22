@@ -14,7 +14,8 @@
     "search",
     "fetch",
     "json",
-    "url_parse"
+    "url_parse",
+    "memory_manage"
   ],
   "skills": [],
   "mcp_servers": []

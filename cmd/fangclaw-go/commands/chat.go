@@ -184,7 +184,7 @@ func runChatLocal(agentID string) error {
 
 	// 3. Create Agent Runtime
 	agentScheduler := scheduler.NewAgentScheduler()
-	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, embeddingDriver, modelCatalog, nil, approvalMgr, agentScheduler)
+	runtime := agent.NewRuntime(semanticStore, sessionStore, knowledgeStore, usageStore, skillLoader, dbDir, embeddingDriver, modelCatalog, nil, approvalMgr, agentScheduler)
 
 	// 4. Get LLM driver
 	driver, err := getLLMDriver()

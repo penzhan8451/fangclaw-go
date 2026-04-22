@@ -13,7 +13,8 @@
     "search",
     "fetch",
     "datetime",
-    "calculator"
+    "calculator",
+    "memory_manage"
   ],
   "skills": [],
   "mcp_servers": []

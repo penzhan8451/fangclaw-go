@@ -12,7 +12,8 @@
     "read_file",
     "write_file",
     "search",
-    "datetime"
+    "datetime",
+    "memory_manage"
   ],
   "skills": [
     "meeting-notes"

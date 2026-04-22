@@ -12,7 +12,8 @@
     "read_file",
     "write_file",
     "search",
-    "fetch"
+    "fetch",
+    "memory_manage"
   ],
   "skills": [],
   "mcp_servers": []

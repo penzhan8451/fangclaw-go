@@ -74,6 +74,11 @@ function agentsPage() {
     detailAvailableSkills: [],
     detailSkillsLoading: false,
     detailSkillsSaving: false,
+    // Tools tab
+    detailTools: [],
+    detailAvailableTools: [],
+    detailToolsLoading: false,
+    detailToolsSaving: false,
 
     // -- Templates state --
     tplTemplates: [],
@@ -257,7 +262,7 @@ function agentsPage() {
       FangClawGoAPI.wsDisconnect();
     },
 
-    showDetail(agent) {
+    async showDetail(agent) {
       this.detailAgent = agent;
       this.detailTab = 'info';
       this.agentFiles = [];
@@ -274,7 +279,32 @@ function agentsPage() {
       this.detailSkills = (agent.manifest && agent.manifest.skills) || [];
       this.detailOriginalSkills = [...this.detailSkills];
       this.detailAvailableSkills = [];
+      this.detailTools = (agent.manifest && agent.manifest.tools) || [];
+      this.detailOriginalTools = [...this.detailTools];
+      this.detailAvailableTools = [];
       this.showDetailModal = true;
+
+      // Fetch full agent data to get complete manifest
+      // try {
+      //   var fullAgent = await FangClawGoAPI.get('/api/agents/' + agent.id);
+      //   if (fullAgent) {
+      //     this.detailAgent = fullAgent;
+      //     // Update skills with full data
+      //     this.detailSkills = (fullAgent.manifest && fullAgent.manifest.skills) || [];
+      //     this.detailOriginalSkills = [...this.detailSkills];
+      //     // Update tools with full data
+      //     this.detailTools = (fullAgent.manifest && fullAgent.manifest.tools) || [];
+      //     this.detailOriginalTools = [...this.detailTools];
+      //     // Update config form with full data
+      //     this.configForm.name = fullAgent.name || '';
+      //     this.configForm.emoji = (fullAgent.identity && fullAgent.identity.emoji) || '';
+      //     this.configForm.color = (fullAgent.identity && fullAgent.identity.color) || '#FF5C00';
+      //     this.configForm.archetype = (fullAgent.identity && fullAgent.identity.archetype) || '';
+      //     this.configForm.vibe = (fullAgent.identity && fullAgent.identity.vibe) || '';
+      //   }
+      // } catch (e) {
+      //   console.error('Failed to fetch full agent data:', e);
+      // }
     },
 
     killAgent(agent) {
@@ -727,6 +757,41 @@ function agentsPage() {
         FangClawGoToast.error('Failed to update skills: ' + e.message);
       }
       this.detailSkillsSaving = false;
+    },
+
+    async loadDetailAvailableTools() {
+      if (this.detailAvailableTools.length > 0 || this.detailToolsLoading) return;
+      this.detailToolsLoading = true;
+      try {
+        var data = await FangClawGoAPI.get('/api/tools');
+        this.detailAvailableTools = data.tools || [];
+      } catch(e) {
+        this.detailAvailableTools = [];
+      }
+      this.detailToolsLoading = false;
+    },
+
+    toggleDetailTool(toolName) {
+      var idx = this.detailTools.indexOf(toolName);
+      if (idx >= 0) {
+        this.detailTools.splice(idx, 1);
+      } else {
+        this.detailTools.push(toolName);
+      }
+    },
+
+    async saveDetailTools() {
+      if (!this.detailAgent) return;
+      this.detailToolsSaving = true;
+      try {
+        await FangClawGoAPI.put('/api/agents/' + this.detailAgent.id + '/tools', { tools: this.detailTools });
+        FangClawGoToast.success('Tools updated');
+        await Alpine.store('app').refreshAgents();
+        this.detailOriginalTools = [...this.detailTools];
+      } catch(e) {
+        FangClawGoToast.error('Failed to update tools: ' + e.message);
+      }
+      this.detailToolsSaving = false;
     },
 
     async spawnBuiltin(t) {
