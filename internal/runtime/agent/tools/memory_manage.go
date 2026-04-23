@@ -21,7 +21,7 @@ func (t *MemoryManageTool) Name() string {
 }
 
 func (t *MemoryManageTool) Description() string {
-	return "Manage memory: read, write, replace, remove, clear, and snapshot memory files (MEMORY.md and USER.md)"
+	return "Manage memory: read, write, replace, remove, clear, and snapshot memory files (MEMORY.md and USER.md). Use proactively to remember user preferences, environment details, and lessons learned."
 }
 
 func (t *MemoryManageTool) Schema() map[string]interface{} {
@@ -29,7 +29,7 @@ func (t *MemoryManageTool) Schema() map[string]interface{} {
 		"type": "function",
 		"function": map[string]interface{}{
 			"name":        "memory_manage",
-			"description": "Read, write, replace, remove, clear, and snapshot memory files (MEMORY.md and USER.md)",
+			"description": "Read, write, replace, remove, clear, and snapshot memory files (MEMORY.md and USER.md).\n\nWHEN TO SAVE (do this proactively, don't wait to be asked):\n- User corrects you or says \"remember this\" / \"don't do that again\"\n- User shares a preference, habit, or personal detail (name, role, timezone, coding style)\n- You discover something about the environment (OS, installed tools, project structure)\n- You learn a convention, API quirk, or workflow specific to this user's setup\n- You identify a stable fact that will be useful again in future sessions\n\nPRIORITY: User preferences and corrections > environment facts > procedural knowledge. The most valuable memory prevents the user from having to repeat themselves.\n\nDo NOT save task progress, session outcomes, completed-work logs, or temporary TODO state to memory.\n\nTWO TARGETS:\n- 'user': who the user is -- name, role, preferences, communication style, pet peeves\n- 'memory': your notes -- environment facts, project conventions, tool quirks, lessons learned\n\nACTIONS: read, write, replace, remove, clear, snapshot.\n\nSKIP: trivial/obvious info, things easily re-discovered, raw data dumps, and temporary task state.",
 			"parameters": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

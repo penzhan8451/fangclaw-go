@@ -115,6 +115,7 @@ name: "%s"
 description: "%s"
 version: "1.0.0"
 author: "agent-created"
+category: "agent-created"
 tags: ["agent-created"]
 runtime:
   runtime_type: "prompt_only"
@@ -212,6 +213,7 @@ func parseSKILLMD(data []byte) (types.SkillManifest, error) {
 		Description  string                 `yaml:"description"`
 		Version      string                 `yaml:"version"`
 		Author       string                 `yaml:"author"`
+		Category     string                 `yaml:"category,omitempty"`
 		Tags         []string               `yaml:"tags,omitempty"`
 		Runtime      map[string]interface{} `yaml:"runtime,omitempty"`
 		Tools        map[string]interface{} `yaml:"tools,omitempty"`
@@ -232,6 +234,7 @@ func parseSKILLMD(data []byte) (types.SkillManifest, error) {
 		Name:          fm.Name,
 		Description:   fm.Description,
 		Author:        fm.Author,
+		Category:      fm.Category,
 		Tags:          fm.Tags,
 		Runtime:       types.SkillRuntime{RuntimeType: types.SkillRuntimePrompt},
 		Tools:         types.SkillTools{Provided: []types.SkillToolDefinition{}},
@@ -821,4 +824,69 @@ func copyDir(src, dst string) error {
 	}
 
 	return nil
+}
+
+// ListSkillsGrouped lists skills grouped by category.
+func (l *Loader) ListSkillsGrouped() (map[string][]*types.Skill, error) {
+	skills, err := l.ListSkills()
+	if err != nil {
+		return nil, err
+	}
+
+	grouped := make(map[string][]*types.Skill)
+	for _, skill := range skills {
+		category := skill.Manifest.Category
+		if category == "" {
+			category = "uncategorized"
+		}
+		grouped[category] = append(grouped[category], skill)
+	}
+
+	return grouped, nil
+}
+
+// ListSkillFiles lists all files in a skill directory, including subdirectories.
+func (l *Loader) ListSkillFiles(skillID string) ([]string, error) {
+	skill, err := l.LoadSkill(skillID)
+	if err != nil {
+		return nil, err
+	}
+
+	var files []string
+	err = filepath.WalkDir(skill.InstallPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			relPath, err := filepath.Rel(skill.InstallPath, path)
+			if err != nil {
+				return err
+			}
+			files = append(files, relPath)
+		}
+		return nil
+	})
+	return files, err
+}
+
+// ViewSkillFile reads a specific file from a skill directory (supports references/, templates/, etc.).
+func (l *Loader) ViewSkillFile(skillID, filePath string) (string, error) {
+	skill, err := l.LoadSkill(skillID)
+	if err != nil {
+		return "", err
+	}
+
+	// Security: ensure the path is within the skill directory (no escaping)
+	fullPath := filepath.Join(skill.InstallPath, filePath)
+	cleanPath := filepath.Clean(fullPath)
+	if !strings.HasPrefix(cleanPath, skill.InstallPath) {
+		return "", fmt.Errorf("invalid path: access denied")
+	}
+
+	data, err := os.ReadFile(cleanPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+
+	return string(data), nil
 }

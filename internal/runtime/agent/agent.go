@@ -113,6 +113,8 @@ type Runtime struct {
 	usage           *memory.UsageStore
 	skills          *skills.Loader
 	fileStore       *memory.FileStore
+	memoryManager   *memory.MemoryManager
+	reviewManager   *memory.ReviewManager
 	embeddingDriver *embedding.EmbeddingDriver
 	modelCatalog    *model_catalog.ModelCatalog
 	getMcpTools     func() []types.ToolDefinition
@@ -138,6 +140,8 @@ func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, k
 		knowledge:       knowledge,
 		usage:           usage,
 		skills:          skills,
+		memoryManager:   memory.NewMemoryManager(),
+		reviewManager:   memory.NewReviewManager(),
 		embeddingDriver: embeddingDriver,
 		modelCatalog:    modelCatalog,
 		approvalMgr:     approvalMgr,
@@ -154,9 +158,27 @@ func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, k
 		// This ensures runtime remains functional even without file store
 	}
 	r.fileStore = fileStore
+	// Add FileMemoryProvider
+	if r.fileStore != nil {
+		fileProvider := memory.NewFileMemoryProvider(r.fileStore)
+		r.memoryManager.AddProvider(fileProvider)
+	}
+	// Add SemanticMemoryProvider
+	if r.semantic != nil {
+		semanticProvider := memory.NewSemanticMemoryProvider(r.semantic)
+		r.memoryManager.AddProvider(semanticProvider)
+	}
 	// Register memory_manage tool if fileStore is initialized
 	if r.fileStore != nil {
 		r.RegisterTool(tools.NewMemoryManageTool(r.fileStore))
+	}
+	// Add and start memory review task
+	if r.reviewManager != nil {
+		memoryReviewTask := memory.NewMemoryReviewTask(r.semantic, r.fileStore)
+		if err := r.reviewManager.AddTask(memoryReviewTask); err != nil {
+			log.Printf("Failed to add memory review task: %v", err)
+		}
+		r.reviewManager.Start()
 	}
 	return r
 }
@@ -243,6 +265,7 @@ func (c *AgentContext) GetMessages() []types.Message {
 func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPhase PhaseCallback, streamCb StreamCallback) (*AgentLoopResult, error) {
 	// Check quota before executing
 	agentID := agentCtx.AgentID.String()
+	sessionID := agentCtx.SessionID.String()
 	if r.agentScheduler != nil {
 	quotaCheckLoop:
 		if err := r.agentScheduler.CheckQuota(agentID); err != nil {
@@ -251,7 +274,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 				approvalMsg := fmt.Sprintf("⚠️ Quota exceeded for agent '%s': %v", agentCtx.Name, err)
 				req := approvals.NewApprovalRequest(agentID, "quota_check", approvalMsg, "Quota Exceeded", "deny", approvalMsg, approvals.RiskLevelMedium)
 				req.AgentName = agentCtx.Name
-				req.SessionID = agentCtx.SessionID.String()
+				req.SessionID = sessionID
 				req.ModelProvider = agentCtx.Provider
 				req.ModelName = agentCtx.Model
 				decisionCh, err := r.approvalMgr.RequestApproval(req)
@@ -278,6 +301,34 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 		}
 	}
 
+	// Initialize MemoryManager providers for this session
+	if r.memoryManager != nil {
+		mmCtx := map[string]interface{}{
+			"agent_id":   agentID,
+			"agent_name": agentCtx.Name,
+		}
+		r.memoryManager.InitializeAll(sessionID, mmCtx)
+	}
+
+	// Defer MemoryManager cleanup
+	var sessionMessages []map[string]interface{}
+	defer func() {
+		if r.memoryManager != nil {
+			// Convert messages for OnSessionEnd
+			msgs := agentCtx.GetMessages()
+			sessionMessages = make([]map[string]interface{}, len(msgs))
+			for i, msg := range msgs {
+				sessionMessages[i] = map[string]interface{}{
+					"role":      msg.Role,
+					"content":   msg.Content,
+					"timestamp": msg.Timestamp,
+				}
+			}
+			r.memoryManager.OnSessionEnd(sessionMessages)
+			r.memoryManager.ShutdownAll()
+		}
+	}()
+
 	// Get LLM driver for the agent's provider
 	driver, err := r.GetDriver(agentCtx.Provider)
 	if err != nil {
@@ -290,10 +341,6 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 		log.Printf("Warning: failed to recall memories: %v", err)
 	}
 
-	// Build system prompt with memories and skills
-	fmt.Printf("\n------------ Current Agent [%s] Skills: %s---------------\n", agentCtx.Name, agentCtx.Skills)
-	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills, agentCtx.SkillPromptContext, agentCtx.Files, agentCtx.Name)
-
 	// Find user message from context
 	var userMessage string
 	for _, msg := range agentCtx.GetMessages() {
@@ -302,6 +349,16 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			break
 		}
 	}
+
+	// Prefetch memory using MemoryManager
+	var memoryPrefetch string
+	if r.memoryManager != nil && userMessage != "" {
+		memoryPrefetch = r.memoryManager.PrefetchAll(userMessage, sessionID)
+	}
+
+	// Build system prompt with memories, skills, and MemoryManager contributions
+	fmt.Printf("\n------------ Current Agent [%s] Skills: %s---------------\n", agentCtx.Name, agentCtx.Skills)
+	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills, agentCtx.SkillPromptContext, agentCtx.Files, agentCtx.Name, memoryPrefetch)
 
 	if userMessage == "" {
 		return nil, fmt.Errorf("no user message found")
@@ -375,9 +432,19 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 	}
 
 	// Main agent loop - iterate up to maxIterations
+	turnNumber := 0
 	for iteration := 0; iteration < maxIterations; iteration++ {
+		turnNumber++
 		if onPhase != nil {
 			onPhase(PhaseThinking)
+		}
+
+		// Call OnTurnStart hook
+		if r.memoryManager != nil {
+			turnCtx := map[string]interface{}{
+				"iteration": iteration,
+			}
+			r.memoryManager.OnTurnStart(turnNumber, userMessage, turnCtx)
 		}
 
 		// Build messages for LLM including system prompt and history
@@ -441,6 +508,12 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 				}
 			}
 
+			// Sync this turn and queue next prefetch
+			if r.memoryManager != nil {
+				r.memoryManager.SyncAll(userMessage, resp.Content, sessionID)
+				r.memoryManager.QueuePrefetchAll(strings.Join(toolResults, "\n\n"), sessionID)
+			}
+
 			// Add tool results as user message
 			toolResultMsg := types.Message{
 				ID:        fmt.Sprintf("msg_%d", len(agentCtx.GetMessages())),
@@ -458,6 +531,11 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 		case "stop", "end_turn", "":
 			// LLM is done
 			finalResponse = resp.Content
+
+			// Sync this turn with MemoryManager
+			if r.memoryManager != nil {
+				r.memoryManager.SyncAll(userMessage, finalResponse, sessionID)
+			}
 
 			// Save session
 			if err := r.saveSession(ctx, agentCtx); err != nil {
@@ -765,8 +843,17 @@ func (r *Runtime) recallMemories(ctx context.Context, agentCtx *AgentContext) ([
 }
 
 // buildSystemPrompt builds the system prompt with memories and skills.
-func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFragment, skillIDs []string, skillPromptContext string, files map[string]string, agentName string) string {
+func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFragment, skillIDs []string, skillPromptContext string, files map[string]string, agentName string, memoryPrefetch ...string) string {
 	prompt := basePrompt
+
+	// Add MemoryManager system prompt block
+	if r.memoryManager != nil {
+		mmPrompt := r.memoryManager.BuildSystemPrompt()
+		if mmPrompt != "" {
+			prompt += "\n\n## Memory System"
+			prompt += mmPrompt
+		}
+	}
 
 	// Add agent files following openfang's pattern
 	var filesSection strings.Builder
@@ -839,6 +926,12 @@ func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFr
 
 	if filesSection.Len() > 0 {
 		prompt += filesSection.String()
+	}
+
+	// Add memory prefetch content
+	if len(memoryPrefetch) > 0 && memoryPrefetch[0] != "" {
+		prompt += "\n\n## Prefetched Context\n"
+		prompt += memoryPrefetch[0]
 	}
 
 	// Add bundled hand skill prompt context
