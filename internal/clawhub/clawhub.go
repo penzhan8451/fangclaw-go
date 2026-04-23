@@ -201,40 +201,55 @@ func (c *ClawHubClient) Browse(sort ClawHubSort, limit uint32, cursor *string) (
 		return cached.(*ClawHubBrowseResponse), nil
 	}
 
-	u := fmt.Sprintf("%s/skills?limit=%d&sort=%s", c.baseURL, limit, sort)
+	trySort := func(s ClawHubSort) (*ClawHubBrowseResponse, error) {
+		u := fmt.Sprintf("%s/skills?limit=%d&sort=%s", c.baseURL, limit, s)
+		if cursor != nil {
+			u = fmt.Sprintf("%s&cursor=%s", u, url.QueryEscape(*cursor))
+		}
 
-	if cursor != nil {
-		u = fmt.Sprintf("%s&cursor=%s", u, url.QueryEscape(*cursor))
+		fmt.Println("[ClawHub]Requesting url:", u)
+		req, err := http.NewRequest("GET", u, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", "FangClawGo/0.1")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			fmt.Println("[ClawHub]Request failed:", err)
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("status %d", resp.StatusCode)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		var result ClawHubBrowseResponse
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, err
+		}
+		return &result, nil
 	}
 
-	req, err := http.NewRequest("GET", u, nil)
+	result, err := trySort(sort)
+	if err != nil && sort != ClawHubSortTrending {
+		result, err = trySort(ClawHubSortTrending)
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("User-Agent", "FangClawGo/0.1")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("ClawHub browse failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ClawHub browse returned %d", resp.StatusCode)
+		return &ClawHubBrowseResponse{
+			Items: []ClawHubBrowseEntry{},
+		}, nil
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	var result ClawHubBrowseResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse ClawHub browse: %w", err)
-	}
-
-	c.setCache(cacheKey, &result)
-	return &result, nil
+	c.setCache(cacheKey, result)
+	return result, nil
 }
 
 func (c *ClawHubClient) GetSkill(slug string) (*ClawHubSkillDetail, error) {

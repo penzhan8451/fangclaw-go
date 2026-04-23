@@ -576,6 +576,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/skills/create", r.handleCreateSkill)
 	mux.HandleFunc("DELETE /api/skills/{id}", r.handleUninstallSkill)
 	mux.HandleFunc("POST /api/skills/uninstall", r.handleUninstallSkillByName)
+	mux.HandleFunc("GET /api/skills/{id}/content", r.handleGetSkillContent)
 	// ClawHub endpoints
 	mux.HandleFunc("GET /api/clawhub/search", r.handleClawhubSearch)
 	mux.HandleFunc("GET /api/clawhub/browse", r.handleClawhubBrowse)
@@ -1647,6 +1648,20 @@ func (r *Router) handleUninstallSkillByName(w http.ResponseWriter, req *http.Req
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"status": "uninstalled",
 		"id":     target,
+	})
+}
+
+func (r *Router) handleGetSkillContent(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
+	id := req.PathValue("id")
+	content, err := k.SkillLoader().GetSkillContent(id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"id":      id,
+		"content": content,
 	})
 }
 

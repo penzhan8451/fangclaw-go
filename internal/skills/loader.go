@@ -807,6 +807,24 @@ func (l *Loader) UninstallSkill(skillID string) error {
 	return nil
 }
 
+// GetSkillContent gets the content of SKILL.md for a skill.
+func (l *Loader) GetSkillContent(skillID string) (string, error) {
+	// First check root skills directory
+	skillPath := filepath.Join(l.skillsPath, skillID, "SKILL.md")
+	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
+		// If not found, check agent-created subdirectory
+		skillPath = filepath.Join(l.skillsPath, "agent-created", skillID, "SKILL.md")
+		if _, err := os.Stat(skillPath); os.IsNotExist(err) {
+			return "", fmt.Errorf("skill not found: %s", skillID)
+		}
+	}
+	content, err := os.ReadFile(skillPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read SKILL.md: %w", err)
+	}
+	return string(content), nil
+}
+
 // InstallEmbeddedSkill installs an embedded skill
 func (l *Loader) InstallEmbeddedSkill(skillID string) (*types.Skill, error) {
 	destPath := filepath.Join(l.skillsPath, skillID)

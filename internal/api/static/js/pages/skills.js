@@ -24,6 +24,10 @@ function skillsPage() {
     skillDetail: null,
     detailLoading: false,
 
+    // Installed skill content modal
+    skillContent: null,
+    skillContentLoading: false,
+
     // MCP servers
     mcpServers: [],
     mcpLoading: false,
@@ -160,6 +164,7 @@ function skillsPage() {
         if (data.error) this.clawhubError = data.error;
       } catch(e) {
         this.clawhubBrowseResults = [];
+        console.log("ClawHub browse failed:", e);
         this.clawhubError = e.message || 'Browse failed';
       }
       this.clawhubLoading = false;
@@ -229,7 +234,7 @@ function skillsPage() {
     },
 
     // Uninstall
-    uninstallSkill: function(id, name) {
+    async uninstallSkill(id, name) {
       var self = this;
       FangClawGoToast.confirm('Uninstall Skill', 'Uninstall skill "' + name + '"? This cannot be undone.', async function() {
         try {
@@ -240,6 +245,28 @@ function skillsPage() {
           FangClawGoToast.error('Failed to uninstall skill: ' + e.message);
         }
       });
+    },
+
+    // Show skill content
+    async showSkillContent(skill) {
+      this.skillContentLoading = true;
+      this.skillContent = null;
+      try {
+        var data = await FangClawGoAPI.get('/api/skills/' + encodeURIComponent(skill.id) + '/content');
+        this.skillContent = {
+          skill: skill,
+          content: data.content
+        };
+      } catch(e) {
+        FangClawGoToast.error('Failed to load skill content: ' + e.message);
+      }
+      this.skillContentLoading = false;
+    },
+
+    // Close skill content
+    closeSkillContent() {
+      this.skillContent = null;
+      this.skillContentLoading = false;
     },
 
     // Create prompt-only skill

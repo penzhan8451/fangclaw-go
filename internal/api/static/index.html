@@ -6622,21 +6622,21 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
             </div>
             <div class="tab" :class="{ active: tab === 'clawhub' }" @click="tab = 'clawhub'; if (!clawhubBrowseResults.length && !clawhubSearch) browseClawHub('trending')">ClawHub</div>
             <div class="tab" :class="{ active: tab === 'mcp' }" @click="tab = 'mcp'; loadMcpServers()">MCP Servers</div>
-            <div class="tab" :class="{ active: tab === 'create' }" @click="tab = 'create'">Quick Start</div>
+            <!--comment out by owner <div class="tab" :class="{ active: tab === 'create' }" @click="tab = 'create'">Quick Start</div> -->
           </div>
 
           <!-- TAB: Installed Skills -->
           <div x-show="tab === 'installed'">
             <div class="card-grid" x-show="skills.length">
               <template x-for="skill in skills" :key="skill.name">
-                <div class="card">
+                <div class="card" style="cursor:pointer" @click="showSkillContent(skill)">
                   <div class="flex justify-between items-center mb-2">
                     <div class="flex items-center gap-2">
                       <div class="card-header" style="margin:0" x-text="skill.name"></div>
                       <span class="runtime-badge" :class="runtimeBadge(skill.runtime).cls" x-text="runtimeBadge(skill.runtime).text"></span>
                       <span class="badge" :class="sourceBadge(skill.source).cls" x-text="sourceBadge(skill.source).text" style="font-size:0.65rem"></span>
                     </div>
-                    <div class="toggle" :class="{ active: skill.enabled }" @click="skill.enabled = !skill.enabled"></div>
+                    <div class="toggle" :class="{ active: skill.enabled }" @click.stop="skill.enabled = !skill.enabled"></div>
                   </div>
                   <div class="card-meta" x-text="skill.description"></div>
                   <div class="flex justify-between items-center mt-2">
@@ -6645,7 +6645,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                       <span class="text-xs text-dim" x-show="skill.version" x-text="'v' + skill.version"></span>
                       <span class="text-xs text-dim" x-show="skill.has_prompt_context">(prompt context)</span>
                     </div>
-                    <button class="btn btn-danger btn-sm" @click="uninstallSkill(skill.id, skill.name)">Uninstall</button>
+                    <button class="btn btn-danger btn-sm" @click.stop="uninstallSkill(skill.id, skill.name)">Uninstall</button>
                   </div>
                 </div>
               </template>
@@ -6902,6 +6902,28 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                       <button class="btn btn-primary btn-block" @click="installFromClawHub(skillDetail.slug)" :disabled="installingSlug === skillDetail.slug || skillDetail.installed || isSkillInstalled(skillDetail.slug)" x-text="skillDetail.installed || isSkillInstalled(skillDetail.slug) ? 'Already Installed' : installingSlug === skillDetail.slug ? 'Installing...' : 'Install from ClawHub'"></button>
                     </div>
                     <div class="text-xs text-dim mt-2 text-center">Skills are security-scanned before installation. Prompt injection and malware patterns are blocked.</div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- Installed Skill Content Modal -->
+          <template x-if="skillContent || skillContentLoading">
+            <div class="modal-overlay" @click.self="closeSkillContent()" @keydown.escape.window="closeSkillContent()">
+              <div class="modal" style="max-width:800px;max-height:80vh;">
+                <!-- Loading state -->
+                <div x-show="skillContentLoading" class="loading-state" style="padding:40px 0"><div class="spinner"></div><span>Loading skill content...</span></div>
+                <!-- Loaded content -->
+                <template x-if="skillContent">
+                  <div style="display:flex;flex-direction:column;height:100%">
+                    <div class="modal-header">
+                      <h3 x-text="skillContent.skill.name"></h3>
+                      <button class="modal-close" @click="closeSkillContent()">&times;</button>
+                    </div>
+                    <div style="flex:1;overflow:auto;padding:0 1.5rem 1.5rem">
+                      <pre class="text-sm" style="background:var(--bg-2);padding:1rem;border-radius:8px;white-space:pre-wrap;word-wrap:break-word;max-height:60vh;overflow:auto" x-text="skillContent.content"></pre>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -15672,6 +15694,10 @@ function skillsPage() {
     skillDetail: null,
     detailLoading: false,
 
+    // Installed skill content modal
+    skillContent: null,
+    skillContentLoading: false,
+
     // MCP servers
     mcpServers: [],
     mcpLoading: false,
@@ -15808,6 +15834,7 @@ function skillsPage() {
         if (data.error) this.clawhubError = data.error;
       } catch(e) {
         this.clawhubBrowseResults = [];
+        console.log("ClawHub browse failed:", e);
         this.clawhubError = e.message || 'Browse failed';
       }
       this.clawhubLoading = false;
@@ -15877,7 +15904,7 @@ function skillsPage() {
     },
 
     // Uninstall
-    uninstallSkill: function(id, name) {
+    async uninstallSkill(id, name) {
       var self = this;
       FangClawGoToast.confirm('Uninstall Skill', 'Uninstall skill "' + name + '"? This cannot be undone.', async function() {
         try {
@@ -15888,6 +15915,28 @@ function skillsPage() {
           FangClawGoToast.error('Failed to uninstall skill: ' + e.message);
         }
       });
+    },
+
+    // Show skill content
+    async showSkillContent(skill) {
+      this.skillContentLoading = true;
+      this.skillContent = null;
+      try {
+        var data = await FangClawGoAPI.get('/api/skills/' + encodeURIComponent(skill.id) + '/content');
+        this.skillContent = {
+          skill: skill,
+          content: data.content
+        };
+      } catch(e) {
+        FangClawGoToast.error('Failed to load skill content: ' + e.message);
+      }
+      this.skillContentLoading = false;
+    },
+
+    // Close skill content
+    closeSkillContent() {
+      this.skillContent = null;
+      this.skillContentLoading = false;
     },
 
     // Create prompt-only skill
