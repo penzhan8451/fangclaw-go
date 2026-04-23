@@ -204,113 +204,157 @@ func parseSKILLMD(data []byte) (types.SkillManifest, error) {
 	// fmt.Println("[DEBUG] parseSKILLMD frontmatter length:", len(frontmatter))
 	// fmt.Println("[DEBUG] parseSKILLMD body length:", len(body))
 
-	if frontmatter == "" {
-		return types.SkillManifest{}, fmt.Errorf("invalid SKILL.md format: missing frontmatter")
-	}
-
-	type FrontMatter struct {
-		Name         string                 `yaml:"name"`
-		Description  string                 `yaml:"description"`
-		Version      string                 `yaml:"version"`
-		Author       string                 `yaml:"author"`
-		Category     string                 `yaml:"category,omitempty"`
-		Tags         []string               `yaml:"tags,omitempty"`
-		Runtime      map[string]interface{} `yaml:"runtime,omitempty"`
-		Tools        map[string]interface{} `yaml:"tools,omitempty"`
-		Requirements map[string]interface{} `yaml:"requirements,omitempty"`
-	}
-
-	var fm FrontMatter
-	if err := yaml.Unmarshal([]byte(frontmatter), &fm); err != nil {
-		return types.SkillManifest{}, fmt.Errorf("failed to parse frontmatter: %w", err)
-	}
-
-	if fm.Version == "" {
-		fm.Version = "1.0.0"
-	}
-
 	manifest := types.SkillManifest{
-		Version:       fm.Version,
-		Name:          fm.Name,
-		Description:   fm.Description,
-		Author:        fm.Author,
-		Category:      fm.Category,
-		Tags:          fm.Tags,
+		Version:       "1.0.0",
+		Name:          "Skill",
+		Description:   "A skill",
+		Author:        "",
+		Category:      "uncategorized",
+		Tags:          []string{},
 		Runtime:       types.SkillRuntime{RuntimeType: types.SkillRuntimePrompt},
 		Tools:         types.SkillTools{Provided: []types.SkillToolDefinition{}},
 		Requirements:  types.SkillRequirements{},
 		Metadata:      make(map[string]string),
-		PromptContext: strings.TrimSpace(body),
+		PromptContext: strings.TrimSpace(content),
 	}
 
-	if len(fm.Tags) > 0 {
-		manifest.Metadata["tags"] = strings.Join(fm.Tags, ",")
-	}
+	if frontmatter != "" {
+		type FrontMatter struct {
+			Name         string                 `yaml:"name"`
+			Description  string                 `yaml:"description"`
+			Version      string                 `yaml:"version"`
+			Author       string                 `yaml:"author"`
+			Category     string                 `yaml:"category,omitempty"`
+			Tags         []string               `yaml:"tags,omitempty"`
+			Runtime      map[string]interface{} `yaml:"runtime,omitempty"`
+			Tools        map[string]interface{} `yaml:"tools,omitempty"`
+			Requirements map[string]interface{} `yaml:"requirements,omitempty"`
+		}
 
-	if fm.Runtime != nil {
-		if rt, ok := fm.Runtime["runtime_type"].(string); ok {
-			manifest.Runtime.RuntimeType = types.SkillRuntimeType(rt)
-		}
-		if entry, ok := fm.Runtime["entry"].(string); ok {
-			manifest.Runtime.Entry = entry
-		}
-		if version, ok := fm.Runtime["version"].(string); ok {
-			manifest.Runtime.Version = version
-		}
-	}
+		var fm FrontMatter
+		if err := yaml.Unmarshal([]byte(frontmatter), &fm); err == nil {
+			if fm.Version != "" {
+				manifest.Version = fm.Version
+			}
+			if fm.Name != "" {
+				manifest.Name = fm.Name
+			}
+			if fm.Description != "" {
+				manifest.Description = fm.Description
+			}
+			if fm.Author != "" {
+				manifest.Author = fm.Author
+			}
+			if fm.Category != "" {
+				manifest.Category = fm.Category
+			}
+			if len(fm.Tags) > 0 {
+				manifest.Tags = fm.Tags
+				manifest.Metadata["tags"] = strings.Join(fm.Tags, ",")
+			}
+			if body != "" {
+				manifest.PromptContext = strings.TrimSpace(body)
+			}
 
-	if fm.Tools != nil {
-		if provided, ok := fm.Tools["provided"].([]interface{}); ok {
-			for _, p := range provided {
-				if toolMap, ok := p.(map[string]interface{}); ok {
-					tool := types.SkillToolDefinition{}
-					if name, ok := toolMap["name"].(string); ok {
-						tool.Name = name
+			if fm.Runtime != nil {
+				if rt, ok := fm.Runtime["runtime_type"].(string); ok {
+					manifest.Runtime.RuntimeType = types.SkillRuntimeType(rt)
+				}
+				if entry, ok := fm.Runtime["entry"].(string); ok {
+					manifest.Runtime.Entry = entry
+				}
+				if version, ok := fm.Runtime["version"].(string); ok {
+					manifest.Runtime.Version = version
+				}
+			}
+
+			if fm.Tools != nil {
+				if provided, ok := fm.Tools["provided"].([]interface{}); ok {
+					for _, p := range provided {
+						if toolMap, ok := p.(map[string]interface{}); ok {
+							tool := types.SkillToolDefinition{}
+							if name, ok := toolMap["name"].(string); ok {
+								tool.Name = name
+							}
+							if desc, ok := toolMap["description"].(string); ok {
+								tool.Description = desc
+							}
+							if params, ok := toolMap["parameters"].(map[string]interface{}); ok {
+								tool.Parameters = params
+							}
+							manifest.Tools.Provided = append(manifest.Tools.Provided, tool)
+						}
 					}
-					if desc, ok := toolMap["description"].(string); ok {
-						tool.Description = desc
+				}
+			}
+
+			if fm.Requirements != nil {
+				if python, ok := fm.Requirements["python"].([]interface{}); ok {
+					for _, p := range python {
+						if s, ok := p.(string); ok {
+							manifest.Requirements.Python = append(manifest.Requirements.Python, s)
+						}
 					}
-					if params, ok := toolMap["parameters"].(map[string]interface{}); ok {
-						tool.Parameters = params
+				}
+				if node, ok := fm.Requirements["node"].([]interface{}); ok {
+					for _, n := range node {
+						if s, ok := n.(string); ok {
+							manifest.Requirements.Node = append(manifest.Requirements.Node, s)
+						}
 					}
-					manifest.Tools.Provided = append(manifest.Tools.Provided, tool)
+				}
+				if system, ok := fm.Requirements["system"].([]interface{}); ok {
+					for _, s := range system {
+						if str, ok := s.(string); ok {
+							manifest.Requirements.System = append(manifest.Requirements.System, str)
+						}
+					}
 				}
 			}
 		}
 	}
 
-	if fm.Requirements != nil {
-		if python, ok := fm.Requirements["python"].([]interface{}); ok {
-			for _, p := range python {
-				if s, ok := p.(string); ok {
-					manifest.Requirements.Python = append(manifest.Requirements.Python, s)
-				}
+	// Try to extract name from first heading if frontmatter is empty
+	if frontmatter == "" || manifest.Name == "Skill" {
+		lines := strings.Split(strings.TrimSpace(content), "\n")
+		for _, line := range lines {
+			trimmedLine := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmedLine, "# ") {
+				manifest.Name = strings.TrimSpace(trimmedLine[2:])
+				break
+			} else if strings.HasPrefix(trimmedLine, "## ") {
+				manifest.Name = strings.TrimSpace(trimmedLine[3:])
+				break
+			} else if len(trimmedLine) > 0 && !strings.HasPrefix(trimmedLine, "---") {
+				manifest.Name = trimmedLine
+				break
 			}
 		}
-		if node, ok := fm.Requirements["node"].([]interface{}); ok {
-			for _, n := range node {
-				if s, ok := n.(string); ok {
-					manifest.Requirements.Node = append(manifest.Requirements.Node, s)
+	}
+
+	// Try to extract description from first paragraph
+	if manifest.Description == "A skill" {
+		lines := strings.Split(strings.TrimSpace(content), "\n")
+		var descriptionLines []string
+		for _, line := range lines {
+			trimmedLine := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmedLine, "#") || strings.HasPrefix(trimmedLine, "---") || trimmedLine == "" {
+				if len(descriptionLines) > 0 {
+					break
 				}
+				continue
+			}
+			descriptionLines = append(descriptionLines, trimmedLine)
+			if len(descriptionLines) >= 3 {
+				break
 			}
 		}
-		if system, ok := fm.Requirements["system"].([]interface{}); ok {
-			for _, s := range system {
-				if str, ok := s.(string); ok {
-					manifest.Requirements.System = append(manifest.Requirements.System, str)
-				}
-			}
+		if len(descriptionLines) > 0 {
+			manifest.Description = strings.Join(descriptionLines, " ")
 		}
 	}
 
 	return manifest, nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // ExecuteTool executes a skill tool.

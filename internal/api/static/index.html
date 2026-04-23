@@ -6645,7 +6645,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                       <span class="text-xs text-dim" x-show="skill.version" x-text="'v' + skill.version"></span>
                       <span class="text-xs text-dim" x-show="skill.has_prompt_context">(prompt context)</span>
                     </div>
-                    <button class="btn btn-danger btn-sm" @click="uninstallSkill(skill.name)">Uninstall</button>
+                    <button class="btn btn-danger btn-sm" @click="uninstallSkill(skill.id, skill.name)">Uninstall</button>
                   </div>
                 </div>
               </template>
@@ -15731,6 +15731,7 @@ function skillsPage() {
         var data = await FangClawGoAPI.get('/api/skills');
         this.skills = (data.skills || []).map(function(s) {
           return {
+            id: s.id,
             name: s.name,
             description: s.description || '',
             version: s.version || '',
@@ -15876,11 +15877,11 @@ function skillsPage() {
     },
 
     // Uninstall
-    uninstallSkill: function(name) {
+    uninstallSkill: function(id, name) {
       var self = this;
       FangClawGoToast.confirm('Uninstall Skill', 'Uninstall skill "' + name + '"? This cannot be undone.', async function() {
         try {
-          await FangClawGoAPI.post('/api/skills/uninstall', { name: name });
+          await FangClawGoAPI.post('/api/skills/uninstall', { id: id });
           FangClawGoToast.success('Skill "' + name + '" uninstalled');
           await self.loadSkills();
         } catch(e) {

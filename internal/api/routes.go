@@ -568,12 +568,14 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/skills", r.handleInstallSkill)
 	mux.HandleFunc("POST /api/v1/skills/create", r.handleCreateSkill)
 	mux.HandleFunc("DELETE /api/v1/skills/{id}", r.handleUninstallSkill)
+	mux.HandleFunc("POST /api/v1/skills/uninstall", r.handleUninstallSkillByName)
 
 	// Skill endpoints (aliases)
 	mux.HandleFunc("GET /api/skills", r.handleListSkills)
 	mux.HandleFunc("POST /api/skills", r.handleInstallSkill)
 	mux.HandleFunc("POST /api/skills/create", r.handleCreateSkill)
 	mux.HandleFunc("DELETE /api/skills/{id}", r.handleUninstallSkill)
+	mux.HandleFunc("POST /api/skills/uninstall", r.handleUninstallSkillByName)
 	// ClawHub endpoints
 	mux.HandleFunc("GET /api/clawhub/search", r.handleClawhubSearch)
 	mux.HandleFunc("GET /api/clawhub/browse", r.handleClawhubBrowse)
@@ -1559,6 +1561,7 @@ func (r *Router) handleListSkills(w http.ResponseWriter, req *http.Request) {
 		}
 
 		skillsResult = append(skillsResult, map[string]interface{}{
+			"id":                 skill.ID,
 			"name":               skill.Manifest.Name,
 			"description":        skill.Manifest.Description,
 			"version":            skill.Manifest.Version,
@@ -1610,6 +1613,41 @@ func (r *Router) handleUninstallSkill(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	respondJSON(w, http.StatusNoContent, nil)
+}
+
+func (r *Router) handleUninstallSkillByName(w http.ResponseWriter, req *http.Request) {
+	type UninstallRequest struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	var reqBody UninstallRequest
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	k := r.getKernel(req)
+	target := reqBody.ID
+	if target == "" {
+		target = reqBody.Name
+	}
+	if target == "" {
+		respondError(w, http.StatusBadRequest, "id or name required")
+		return
+	}
+
+	if err := k.SkillLoader().UninstallSkill(target); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			respondError(w, http.StatusNotFound, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "uninstalled",
+		"id":     target,
+	})
 }
 
 func (r *Router) handleCreateSkill(w http.ResponseWriter, req *http.Request) {

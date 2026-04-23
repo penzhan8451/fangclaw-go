@@ -1,6 +1,8 @@
 package clawhub
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -332,7 +335,7 @@ func (c *ClawHubClient) Install(slug string, targetDir string) (*ClawHubInstallR
 	// fmt.Println("[DEBUG] ClawHub.Install called with slug:", slug)
 	// fmt.Println("[DEBUG] Target directory:", targetDir)
 
-	var bytes []byte
+	var data []byte
 	var err error
 
 	downloadURL := fmt.Sprintf("%s/download?slug=%s", c.baseURL, url.QueryEscape(slug))
@@ -348,9 +351,9 @@ func (c *ClawHubClient) Install(slug string, targetDir string) (*ClawHubInstallR
 			defer resp.Body.Close()
 			// fmt.Println("[DEBUG] Download response status:", resp.Status)
 			if resp.StatusCode == http.StatusOK {
-				bytes, err = io.ReadAll(resp.Body)
-				if err == nil && len(bytes) > 0 {
-					// fmt.Println("[DEBUG] Successfully downloaded via /download endpoint, read", len(bytes), "bytes")
+				data, err = io.ReadAll(resp.Body)
+				if err == nil && len(data) > 0 {
+					// fmt.Println("[DEBUG] Successfully downloaded via /download endpoint, read", len(data), "bytes")
 				} else {
 					// fmt.Println("[DEBUG] /download endpoint returned empty or failed to read, falling back")
 					err = fmt.Errorf("empty response")
@@ -371,8 +374,8 @@ func (c *ClawHubClient) Install(slug string, targetDir string) (*ClawHubInstallR
 			// fmt.Println("[DEBUG] /file endpoint also failed:", fileErr)
 			return nil, fmt.Errorf("both /download and /file endpoints failed: %w", fileErr)
 		}
-		bytes = []byte(fileContent)
-		// fmt.Println("[DEBUG] Successfully downloaded via /file endpoint, read", len(bytes), "bytes")
+		data = []byte(fileContent)
+		// fmt.Println("[DEBUG] Successfully downloaded via /file endpoint, read", len(data), "bytes")
 	}
 
 	skillDir := filepath.Join(targetDir, slug)
@@ -382,11 +385,63 @@ func (c *ClawHubClient) Install(slug string, targetDir string) (*ClawHubInstallR
 		return nil, fmt.Errorf("failed to create skill directory: %w", err)
 	}
 
-	skillMDPath := filepath.Join(skillDir, "SKILL.md")
-	// fmt.Println("[DEBUG] Writing SKILL.md to:", skillMDPath)
-	if err := os.WriteFile(skillMDPath, bytes, 0644); err != nil {
-		// fmt.Println("[DEBUG] Failed to write SKILL.md:", err)
-		return nil, fmt.Errorf("failed to write SKILL.md: %w", err)
+	// Check if data are a zip archive
+	zipReader, zipErr := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if zipErr == nil {
+		// It's a zip file! Extract all contents
+		// fmt.Println("[DEBUG] Detected zip archive, extracting contents")
+		for _, file := range zipReader.File {
+			destPath := filepath.Join(skillDir, file.Name)
+			// Ensure dest path is within skill dir to prevent path traversal
+			destPath = filepath.Clean(destPath)
+			if !strings.HasPrefix(destPath, filepath.Clean(skillDir)+string(os.PathSeparator)) && destPath != filepath.Clean(skillDir) {
+				return nil, fmt.Errorf("invalid file path in zip: %s", file.Name)
+			}
+
+			if file.FileInfo().IsDir() {
+				// Create directory
+				if err := os.MkdirAll(destPath, file.Mode()); err != nil {
+					return nil, fmt.Errorf("failed to create directory from zip: %w", err)
+				}
+				continue
+			}
+
+			// Create parent directory
+			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+				return nil, fmt.Errorf("failed to create parent directory: %w", err)
+			}
+
+			// Open file inside zip
+			srcFile, err := file.Open()
+			if err != nil {
+				return nil, fmt.Errorf("failed to open zip entry: %w", err)
+			}
+
+			// Create dest file
+			destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.Mode())
+			if err != nil {
+				srcFile.Close()
+				return nil, fmt.Errorf("failed to create dest file: %w", err)
+			}
+
+			// Copy content
+			if _, err := io.Copy(destFile, srcFile); err != nil {
+				srcFile.Close()
+				destFile.Close()
+				return nil, fmt.Errorf("failed to copy zip file content: %w", err)
+			}
+
+			srcFile.Close()
+			destFile.Close()
+		}
+	} else {
+		// Not a zip, just write as SKILL.md
+		skillMDPath := filepath.Join(skillDir, "SKILL.md")
+		// fmt.Println("[DEBUG] Writing SKILL.md to:", skillMDPath)
+		if err := os.WriteFile(skillMDPath, data, 0644); err != nil {
+			// fmt.Println("[DEBUG] Failed to write SKILL.md:", err)
+			return nil, fmt.Errorf("failed to write SKILL.md: %w", err)
+		}
 	}
 
 	// fmt.Println("[DEBUG] Installation complete")

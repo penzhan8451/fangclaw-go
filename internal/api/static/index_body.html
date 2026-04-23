@@ -2570,7 +2570,7 @@
                       <span class="text-xs text-dim" x-show="skill.version" x-text="'v' + skill.version"></span>
                       <span class="text-xs text-dim" x-show="skill.has_prompt_context">(prompt context)</span>
                     </div>
-                    <button class="btn btn-danger btn-sm" @click="uninstallSkill(skill.name)">Uninstall</button>
+                    <button class="btn btn-danger btn-sm" @click="uninstallSkill(skill.id, skill.name)">Uninstall</button>
                   </div>
                 </div>
               </template>

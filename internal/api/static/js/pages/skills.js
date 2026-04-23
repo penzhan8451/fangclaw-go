@@ -83,6 +83,7 @@ function skillsPage() {
         var data = await FangClawGoAPI.get('/api/skills');
         this.skills = (data.skills || []).map(function(s) {
           return {
+            id: s.id,
             name: s.name,
             description: s.description || '',
             version: s.version || '',
@@ -228,11 +229,11 @@ function skillsPage() {
     },
 
     // Uninstall
-    uninstallSkill: function(name) {
+    uninstallSkill: function(id, name) {
       var self = this;
       FangClawGoToast.confirm('Uninstall Skill', 'Uninstall skill "' + name + '"? This cannot be undone.', async function() {
         try {
-          await FangClawGoAPI.post('/api/skills/uninstall', { name: name });
+          await FangClawGoAPI.post('/api/skills/uninstall', { id: id });
           FangClawGoToast.success('Skill "' + name + '" uninstalled');
           await self.loadSkills();
         } catch(e) {
