@@ -2547,6 +2547,7 @@
             </div>
             <div class="tab" :class="{ active: tab === 'clawhub' }" @click="tab = 'clawhub'; if (!clawhubBrowseResults.length && !clawhubSearch) browseClawHub('trending')">ClawHub</div>
             <div class="tab" :class="{ active: tab === 'mcp' }" @click="tab = 'mcp'; loadMcpServers()">MCP Servers</div>
+            <div class="tab" :class="{ active: tab === 'upload' }" @click="tab = 'upload'; selectedFile = null; newSkillId = ''">Upload</div>
             <!--comment out by owner <div class="tab" :class="{ active: tab === 'create' }" @click="tab = 'create'">Quick Start</div> -->
           </div>
 
@@ -2754,6 +2755,38 @@ type = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 <p class="hint mt-2" style="font-size:0.75rem">FangClaw-go supports all OpenClaw-compatible MCP servers.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB: Upload Skill -->
+          <div x-show="tab === 'upload'">
+            <div class="info-card">
+              <h4>Upload Custom Skill</h4>
+              <p>Upload your own skill as a ZIP file or single SKILL.md file.</p>
+              <ul>
+                <li><strong>Single file</strong> &mdash; upload a <code>SKILL.md</code> with frontmatter (prompt-only)</li>
+                <li><strong>ZIP file</strong> &mdash; compress your entire skill directory (auto-detects root dir)</li>
+              </ul>
+            </div>
+            <div class="card" style="max-width:600px;margin:0 auto">
+              <div class="mb-3">
+                <label class="form-label">Skill ID (directory name)</label>
+                <input class="form-input" type="text" x-model="newSkillId"
+                       placeholder="e.g. my-custom-skill (only letters, numbers, -, _)"
+                       pattern="[a-zA-Z0-9-_]+">
+                <p class="hint" style="font-size:0.75rem">Skill ID becomes the directory name. Keep it short and descriptive.</p>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Upload file</label>
+                <input type="file" class="file-input" @change="onFileSelect" accept=".zip,.md">
+                <p class="hint" style="font-size:0.75rem">Accepts .zip or .md files (max 10MB)</p>
+              </div>
+              <div class="mb-3" x-show="selectedFile !== null">
+                <button class="btn btn-primary" @click="uploadSkill($event)" :disabled="uploading">
+                  <span x-show="uploading">Uploading...</span>
+                  <span x-show="!uploading">Upload Skill</span>
+                </button>
               </div>
             </div>
           </div>

@@ -567,6 +567,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/skills", r.handleListSkills)
 	mux.HandleFunc("POST /api/v1/skills", r.handleInstallSkill)
 	mux.HandleFunc("POST /api/v1/skills/create", r.handleCreateSkill)
+	mux.HandleFunc("POST /api/v1/skills/upload", r.handleUploadSkill)
 	mux.HandleFunc("DELETE /api/v1/skills/{id}", r.handleUninstallSkill)
 	mux.HandleFunc("POST /api/v1/skills/uninstall", r.handleUninstallSkillByName)
 
@@ -574,6 +575,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/skills", r.handleListSkills)
 	mux.HandleFunc("POST /api/skills", r.handleInstallSkill)
 	mux.HandleFunc("POST /api/skills/create", r.handleCreateSkill)
+	mux.HandleFunc("POST /api/skills/upload", r.handleUploadSkill)
 	mux.HandleFunc("DELETE /api/skills/{id}", r.handleUninstallSkill)
 	mux.HandleFunc("POST /api/skills/uninstall", r.handleUninstallSkillByName)
 	mux.HandleFunc("GET /api/skills/{id}/content", r.handleGetSkillContent)
@@ -1600,6 +1602,53 @@ func (r *Router) handleInstallSkill(w http.ResponseWriter, req *http.Request) {
 	skill, err := k.SkillLoader().InstallSkill(reqBody.SourcePath, reqBody.SkillID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, skill)
+}
+
+func (r *Router) handleUploadSkill(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
+
+	// Parse multipart form (10 MB max)
+	if err := req.ParseMultipartForm(10 << 20); err != nil {
+		respondError(w, http.StatusBadRequest, "failed to parse form")
+		return
+	}
+
+	// Get skill ID
+	skillID := req.FormValue("skill_id")
+	if skillID == "" {
+		respondError(w, http.StatusBadRequest, "skill_id is required")
+		return
+	}
+
+	// Get file
+	file, _, err := req.FormFile("file")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer file.Close()
+
+	// Read file data
+	data, err := io.ReadAll(file)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to read file")
+		return
+	}
+
+	// Install
+	if err := k.SkillLoader().InstallFromData(skillID, data); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Load the installed skill to return
+	skill, err := k.SkillLoader().LoadSkill(skillID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to load installed skill")
 		return
 	}
 

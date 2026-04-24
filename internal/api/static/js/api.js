@@ -215,6 +215,56 @@ var FangClawGoAPI = (function() {
   function patch(path, body) { return request('PATCH', path, body); }
   function del(path) { return request('DELETE', path); }
 
+  function postForm(path, formData) {
+    var opts = { method: 'POST', body: formData };
+    if (_authToken) {
+      opts.headers = { 'Authorization': 'Bearer ' + _authToken };
+    }
+    return fetch(BASE + path, opts).then(function(r) {
+      if (_connectionState !== 'connected') setConnectionState('connected');
+      
+      if (r.status === 401) {
+        if (_authErrorHandler) {
+          _authErrorHandler();
+        }
+        return r.text().then(function(text) {
+          var msg = '';
+          try {
+            var json = JSON.parse(text);
+            msg = json.error || r.statusText;
+          } catch(e) {
+            msg = r.statusText;
+          }
+          throw new Error(friendlyError(r.status, msg));
+        });
+      }
+      
+      if (!r.ok) {
+        return r.text().then(function(text) {
+          var msg = '';
+          try {
+            var json = JSON.parse(text);
+            msg = json.error || r.statusText;
+          } catch(e) {
+            msg = r.statusText;
+          }
+          throw new Error(friendlyError(r.status, msg));
+        });
+      }
+      var ct = r.headers.get('content-type') || '';
+      if (ct.indexOf('application/json') >= 0) return r.json();
+      return r.text().then(function(t) {
+        try { return JSON.parse(t); } catch(e) { return { text: t }; }
+      });
+    }).catch(function(e) {
+      if (e.name === 'TypeError' && e.message.includes('Failed to fetch')) {
+        setConnectionState('disconnected');
+        throw new Error('Cannot connect to daemon — is fangclaw-go running?');
+      }
+      throw e;
+    });
+  }
+
   // WebSocket manager with auto-reconnect
   var _ws = null;
   var _wsCallbacks = {};
@@ -392,6 +442,7 @@ var FangClawGoAPI = (function() {
     patch: patch,
     del: del,
     delete: del,
+    postForm: postForm,
     upload: upload,
     wsConnect: wsConnect,
     wsDisconnect: wsDisconnect,

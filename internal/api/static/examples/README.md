@@ -7,6 +7,7 @@
 - [定时任务示例](#定时任务示例)
 - [工作流示例](#工作流示例)
 - [事件总线处理器示例](#事件总线处理器示例)
+- [技能示例](#技能示例)
 
 ## 定时任务示例
 
@@ -68,6 +69,22 @@
 - [eventbus-handlers/real-world/03-webhook-integrator.go](eventbus-handlers/real-world/03-webhook-integrator.go) - Webhook 集成
 - [eventbus-handlers/real-world/04-audit-logger.go](eventbus-handlers/real-world/04-audit-logger.go) - 审计记录器
 
+## 技能示例
+
+在 [skill-examples/](skill-examples/README.md) 目录下，包含了各种类型的技能开发示例。
+
+### 提示词技能（无需代码）
+
+- [skill-examples/01-prompt-only-skill/](skill-examples/01-prompt-only-skill/SKILL.md) - 代码审查专家示例，只使用提示词上下文，无需写任何代码
+
+### Python 技能
+
+- [skill-examples/02-python-skill/](skill-examples/02-python-skill/SKILL.md) - 文件处理工具示例，提供读写文件的工具
+
+### Node.js 技能
+
+- [skill-examples/03-nodejs-skill/](skill-examples/03-nodejs-skill/SKILL.md) - JSON 处理工具示例，提供 JSON 格式化和验证工具
+
 ## 如何使用
 
 ### 定时任务和工作流
@@ -77,6 +94,15 @@ JSON 配置文件可以通过 API 加载到系统中。详细请参考 [workflow
 ### 事件总线处理器
 
 Go 代码示例展示了如何编写自定义的事件处理器。详细请参考相关文档。
+
+### 技能
+
+如果是owner角色，你可以将技能目录复制到你的技能目录（通常是 `~/.fangclaw-go/skills/`）即可使用：
+- **Owner 角色**：`~/.fangclaw-go/skills/{skill目录名}`
+如果是user角色，你可以登录到dashboard->Skills页面，上传技能。
+- **User 角色**：`~/.fangclaw-go/users/{user}/skills/{skill目录名}`
+
+详细请参考 [skill-examples/README.md](skill-examples/README.md)。
 
 ---
 

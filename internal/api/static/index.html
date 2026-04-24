@@ -6622,6 +6622,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
             </div>
             <div class="tab" :class="{ active: tab === 'clawhub' }" @click="tab = 'clawhub'; if (!clawhubBrowseResults.length && !clawhubSearch) browseClawHub('trending')">ClawHub</div>
             <div class="tab" :class="{ active: tab === 'mcp' }" @click="tab = 'mcp'; loadMcpServers()">MCP Servers</div>
+            <div class="tab" :class="{ active: tab === 'upload' }" @click="tab = 'upload'; selectedFile = null; newSkillId = ''">Upload</div>
             <!--comment out by owner <div class="tab" :class="{ active: tab === 'create' }" @click="tab = 'create'">Quick Start</div> -->
           </div>
 
@@ -6829,6 +6830,38 @@ type = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 <p class="hint mt-2" style="font-size:0.75rem">FangClaw-go supports all OpenClaw-compatible MCP servers.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB: Upload Skill -->
+          <div x-show="tab === 'upload'">
+            <div class="info-card">
+              <h4>Upload Custom Skill</h4>
+              <p>Upload your own skill as a ZIP file or single SKILL.md file.</p>
+              <ul>
+                <li><strong>Single file</strong> &mdash; upload a <code>SKILL.md</code> with frontmatter (prompt-only)</li>
+                <li><strong>ZIP file</strong> &mdash; compress your entire skill directory (auto-detects root dir)</li>
+              </ul>
+            </div>
+            <div class="card" style="max-width:600px;margin:0 auto">
+              <div class="mb-3">
+                <label class="form-label">Skill ID (directory name)</label>
+                <input class="form-input" type="text" x-model="newSkillId"
+                       placeholder="e.g. my-custom-skill (only letters, numbers, -, _)"
+                       pattern="[a-zA-Z0-9-_]+">
+                <p class="hint" style="font-size:0.75rem">Skill ID becomes the directory name. Keep it short and descriptive.</p>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Upload file</label>
+                <input type="file" class="file-input" @change="onFileSelect" accept=".zip,.md">
+                <p class="hint" style="font-size:0.75rem">Accepts .zip or .md files (max 10MB)</p>
+              </div>
+              <div class="mb-3" x-show="selectedFile !== null">
+                <button class="btn btn-primary" @click="uploadSkill($event)" :disabled="uploading">
+                  <span x-show="uploading">Uploading...</span>
+                  <span x-show="!uploading">Upload Skill</span>
+                </button>
               </div>
             </div>
           </div>
@@ -11411,6 +11444,56 @@ var FangClawGoAPI = (function() {
   function patch(path, body) { return request('PATCH', path, body); }
   function del(path) { return request('DELETE', path); }
 
+  function postForm(path, formData) {
+    var opts = { method: 'POST', body: formData };
+    if (_authToken) {
+      opts.headers = { 'Authorization': 'Bearer ' + _authToken };
+    }
+    return fetch(BASE + path, opts).then(function(r) {
+      if (_connectionState !== 'connected') setConnectionState('connected');
+      
+      if (r.status === 401) {
+        if (_authErrorHandler) {
+          _authErrorHandler();
+        }
+        return r.text().then(function(text) {
+          var msg = '';
+          try {
+            var json = JSON.parse(text);
+            msg = json.error || r.statusText;
+          } catch(e) {
+            msg = r.statusText;
+          }
+          throw new Error(friendlyError(r.status, msg));
+        });
+      }
+      
+      if (!r.ok) {
+        return r.text().then(function(text) {
+          var msg = '';
+          try {
+            var json = JSON.parse(text);
+            msg = json.error || r.statusText;
+          } catch(e) {
+            msg = r.statusText;
+          }
+          throw new Error(friendlyError(r.status, msg));
+        });
+      }
+      var ct = r.headers.get('content-type') || '';
+      if (ct.indexOf('application/json') >= 0) return r.json();
+      return r.text().then(function(t) {
+        try { return JSON.parse(t); } catch(e) { return { text: t }; }
+      });
+    }).catch(function(e) {
+      if (e.name === 'TypeError' && e.message.includes('Failed to fetch')) {
+        setConnectionState('disconnected');
+        throw new Error('Cannot connect to daemon — is fangclaw-go running?');
+      }
+      throw e;
+    });
+  }
+
   // WebSocket manager with auto-reconnect
   var _ws = null;
   var _wsCallbacks = {};
@@ -11588,6 +11671,7 @@ var FangClawGoAPI = (function() {
     patch: patch,
     del: del,
     delete: del,
+    postForm: postForm,
     upload: upload,
     wsConnect: wsConnect,
     wsDisconnect: wsDisconnect,
@@ -15702,6 +15786,11 @@ function skillsPage() {
     mcpServers: [],
     mcpLoading: false,
 
+    // Upload state
+    uploading: false,
+    newSkillId: '',
+    selectedFile: null,
+
     // Category definitions from the OpenClaw ecosystem
     categories: [
       { id: 'coding', name: 'Coding & IDEs' },
@@ -15937,6 +16026,61 @@ function skillsPage() {
     closeSkillContent() {
       this.skillContent = null;
       this.skillContentLoading = false;
+    },
+
+    // Handle file selection (pre-fill skill ID)
+    onFileSelect(event) {
+      var file = event.target.files[0];
+      if (!file) {
+        this.selectedFile = null;
+        this.newSkillId = '';
+        return;
+      }
+
+      this.selectedFile = file;
+
+      // Pre-fill skill ID
+      if (file.name.toLowerCase() === 'skill.md') {
+        // If filename is SKILL.md, generate a unique ID with timestamp
+        this.newSkillId = 'skill-' + Date.now().toString(36);
+      } else {
+        // Otherwise use filename (without extension)
+        this.newSkillId = file.name.replace(/\.(zip|md)$/i, '').replace(/[^a-zA-Z0-9-_]/g, '-');
+      }
+    },
+
+    // Upload skill
+    async uploadSkill(event) {
+      var self = this;
+      var file = this.selectedFile;
+      if (!file) {
+        FangClawGoToast.error('Please select a file first');
+        return;
+      }
+
+      if (!this.newSkillId) {
+        FangClawGoToast.error('Please enter a skill ID');
+        return;
+      }
+
+      this.uploading = true;
+      try {
+        var formData = new FormData();
+        formData.append('file', file);
+        formData.append('skill_id', this.newSkillId);
+
+        await FangClawGoAPI.postForm('/api/skills/upload', formData);
+        FangClawGoToast.success('Skill uploaded successfully');
+        this.tab = 'installed';
+        await this.loadSkills();
+        
+        // Reset upload state
+        this.selectedFile = null;
+        this.newSkillId = '';
+      } catch(e) {
+        FangClawGoToast.error('Failed to upload skill: ' + e.message);
+      }
+      this.uploading = false;
     },
 
     // Create prompt-only skill

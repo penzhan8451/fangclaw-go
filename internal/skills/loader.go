@@ -2,9 +2,11 @@
 package skills
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -951,4 +953,151 @@ func (l *Loader) ViewSkillFile(skillID, filePath string) (string, error) {
 	}
 
 	return string(data), nil
+}
+
+// InstallFromData installs a skill from raw data (can be SKILL.md or ZIP)
+// skillID: directory name to install to
+// data: raw bytes (SKILL.md content or ZIP file)
+func (l *Loader) InstallFromData(skillID string, data []byte) error {
+	// Validate skillID
+	if !isValidSkillID(skillID) {
+		return fmt.Errorf("invalid skill ID: only letters, numbers, hyphens, and underscores are allowed")
+	}
+
+	skillDir := filepath.Join(l.skillsPath, skillID)
+
+	// Check if already exists
+	if _, err := os.Stat(skillDir); err == nil {
+		return fmt.Errorf("skill already exists: %s", skillID)
+	}
+
+	// Create skill directory
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		return fmt.Errorf("failed to create skill directory: %w", err)
+	}
+
+	// Check if it's a ZIP file
+	zipReader, zipErr := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if zipErr == nil {
+		// It's a ZIP! Check if it has a single root directory
+		var hasRootDir bool
+		var rootDirName string
+		allFiles := make(map[string]bool)
+
+		for _, file := range zipReader.File {
+			allFiles[file.Name] = true
+		}
+
+		// Detect if there's a single root directory containing all files
+		if len(allFiles) > 0 {
+			firstFile := ""
+			for name := range allFiles {
+				firstFile = name
+				break
+			}
+			parts := strings.SplitN(firstFile, "/", 2)
+			if len(parts) > 1 {
+				potentialRoot := parts[0] + "/"
+				allInRoot := true
+				for name := range allFiles {
+					if !strings.HasPrefix(name, potentialRoot) {
+						allInRoot = false
+						break
+					}
+				}
+				if allInRoot {
+					hasRootDir = true
+					rootDirName = parts[0]
+				}
+			}
+		}
+
+		// Extract files
+		for _, file := range zipReader.File {
+			destRelPath := file.Name
+			// If has root dir, strip it
+			if hasRootDir {
+				destRelPath = strings.TrimPrefix(destRelPath, rootDirName+"/")
+				if destRelPath == "" {
+					continue // skip root dir itself
+				}
+			}
+
+			destPath := filepath.Join(skillDir, destRelPath)
+			destPath = filepath.Clean(destPath)
+			if !strings.HasPrefix(destPath, filepath.Clean(skillDir)+string(os.PathSeparator)) && destPath != filepath.Clean(skillDir) {
+				os.RemoveAll(skillDir)
+				return fmt.Errorf("invalid file path in zip: %s", file.Name)
+			}
+
+			if file.FileInfo().IsDir() {
+				if err := os.MkdirAll(destPath, file.Mode()); err != nil {
+					os.RemoveAll(skillDir)
+					return fmt.Errorf("failed to create directory from zip: %w", err)
+				}
+				continue
+			}
+
+			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+				os.RemoveAll(skillDir)
+				return fmt.Errorf("failed to create parent directory: %w", err)
+			}
+
+			srcFile, err := file.Open()
+			if err != nil {
+				os.RemoveAll(skillDir)
+				return fmt.Errorf("failed to open zip entry: %w", err)
+			}
+
+			destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.Mode())
+			if err != nil {
+				srcFile.Close()
+				os.RemoveAll(skillDir)
+				return fmt.Errorf("failed to create dest file: %w", err)
+			}
+
+			if _, err := io.Copy(destFile, srcFile); err != nil {
+				srcFile.Close()
+				destFile.Close()
+				os.RemoveAll(skillDir)
+				return fmt.Errorf("failed to copy zip file content: %w", err)
+			}
+			srcFile.Close()
+			destFile.Close()
+		}
+	} else {
+		// Not a ZIP, assume it's SKILL.md content
+		skillMDPath := filepath.Join(skillDir, "SKILL.md")
+		if err := os.WriteFile(skillMDPath, data, 0644); err != nil {
+			os.RemoveAll(skillDir)
+			return fmt.Errorf("failed to write SKILL.md: %w", err)
+		}
+	}
+
+	// Verify SKILL.md exists after install
+	skillMDPath := filepath.Join(skillDir, "SKILL.md")
+	if _, err := os.Stat(skillMDPath); os.IsNotExist(err) {
+		os.RemoveAll(skillDir)
+		return fmt.Errorf("invalid skill: SKILL.md not found")
+	}
+
+	// Load it to verify it's valid
+	if _, err := l.LoadSkill(skillID); err != nil {
+		os.RemoveAll(skillDir)
+		return fmt.Errorf("invalid skill format: %w", err)
+	}
+
+	return nil
+}
+
+func isValidSkillID(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, c := range id {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+			return false
+		}
+	}
+	return true
 }

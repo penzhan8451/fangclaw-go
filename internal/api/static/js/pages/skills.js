@@ -32,6 +32,11 @@ function skillsPage() {
     mcpServers: [],
     mcpLoading: false,
 
+    // Upload state
+    uploading: false,
+    newSkillId: '',
+    selectedFile: null,
+
     // Category definitions from the OpenClaw ecosystem
     categories: [
       { id: 'coding', name: 'Coding & IDEs' },
@@ -267,6 +272,61 @@ function skillsPage() {
     closeSkillContent() {
       this.skillContent = null;
       this.skillContentLoading = false;
+    },
+
+    // Handle file selection (pre-fill skill ID)
+    onFileSelect(event) {
+      var file = event.target.files[0];
+      if (!file) {
+        this.selectedFile = null;
+        this.newSkillId = '';
+        return;
+      }
+
+      this.selectedFile = file;
+
+      // Pre-fill skill ID
+      if (file.name.toLowerCase() === 'skill.md') {
+        // If filename is SKILL.md, generate a unique ID with timestamp
+        this.newSkillId = 'skill-' + Date.now().toString(36);
+      } else {
+        // Otherwise use filename (without extension)
+        this.newSkillId = file.name.replace(/\.(zip|md)$/i, '').replace(/[^a-zA-Z0-9-_]/g, '-');
+      }
+    },
+
+    // Upload skill
+    async uploadSkill(event) {
+      var self = this;
+      var file = this.selectedFile;
+      if (!file) {
+        FangClawGoToast.error('Please select a file first');
+        return;
+      }
+
+      if (!this.newSkillId) {
+        FangClawGoToast.error('Please enter a skill ID');
+        return;
+      }
+
+      this.uploading = true;
+      try {
+        var formData = new FormData();
+        formData.append('file', file);
+        formData.append('skill_id', this.newSkillId);
+
+        await FangClawGoAPI.postForm('/api/skills/upload', formData);
+        FangClawGoToast.success('Skill uploaded successfully');
+        this.tab = 'installed';
+        await this.loadSkills();
+        
+        // Reset upload state
+        this.selectedFile = null;
+        this.newSkillId = '';
+      } catch(e) {
+        FangClawGoToast.error('Failed to upload skill: ' + e.message);
+      }
+      this.uploading = false;
     },
 
     // Create prompt-only skill
