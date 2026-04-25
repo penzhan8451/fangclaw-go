@@ -19,6 +19,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
+	"github.com/penzhan8451/fangclaw-go/internal/types"
 )
 
 func findStaticDir() string {
@@ -945,6 +946,10 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 
 				// Handle different message types
 				switch msg.Type {
+				case "command":
+					// Process slash command
+					handleCommand(client, msg, k, agentID)
+
 				case "chat":
 					fallthrough
 				case "message":
@@ -1163,6 +1168,186 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 		// Wait for disconnect
 		<-client.Done
 	}
+}
+
+// CommandData represents a command message from client
+type CommandData struct {
+	Command string `json:"command"`
+	Args    string `json:"args"`
+}
+
+// handleCommand handles slash commands from the client
+func handleCommand(client *WSClient, msg WSMessage, k *kernel.Kernel, agentID string) {
+	var cmdData CommandData
+	if err := json.Unmarshal(msg.Data, &cmdData); err != nil {
+		sendError(client, "Invalid command data")
+		return
+	}
+
+	command := cmdData.Command
+	var responseText string
+
+	switch command {
+	case "/context":
+		responseText = generateContextReport(agentID, k)
+
+	case "/usage":
+		responseText = generateUsageReport(agentID, k)
+
+	case "/queue":
+		responseText = generateQueueReport(agentID, k)
+
+	case "/verbose":
+		responseText = "Verbose mode: " + handleVerboseMode(cmdData.Args)
+
+	case "/new", "/reset":
+		responseText = handleNewSession(agentID, k)
+
+	case "/compact":
+		responseText = "Context compaction not yet implemented"
+
+	case "/stop":
+		responseText = "Stop not yet implemented"
+
+	default:
+		responseText = "Unknown command: " + command
+	}
+
+	// Send response
+	type CommandResponseData struct {
+		Content string `json:"content"`
+	}
+	respData := CommandResponseData{Content: responseText}
+	respDataBytes, _ := json.Marshal(respData)
+	respMsg := WSMessage{Type: "command_response", Data: respDataBytes}
+	respBytes, _ := json.Marshal(respMsg)
+	client.Send <- respBytes
+}
+
+func sendError(client *WSClient, errMsg string) {
+	errorData := map[string]string{"content": "Error: " + errMsg}
+	errorDataBytes, _ := json.Marshal(errorData)
+	errorResp := WSMessage{Type: "error", Data: errorDataBytes}
+	errorRespBytes, _ := json.Marshal(errorResp)
+	client.Send <- errorRespBytes
+}
+
+// generateContextReport generates context report for the agent
+func generateContextReport(agentID string, k *kernel.Kernel) string {
+	report := "📊 Context Report\n\n"
+	report += "- Agent: " + agentID + "\n"
+
+	// Parse agent ID
+	aID, err := types.ParseAgentID(agentID)
+	if err != nil {
+		report += "- Status: Invalid agent ID\n"
+		return report
+	}
+
+	// Get session store
+	sessionStore := k.SessionStore()
+	// List sessions for this agent
+	sessions, err := sessionStore.ListAgentSessions(aID)
+	if err != nil {
+		report += fmt.Sprintf("- Error listing sessions: %v\n", err)
+		return report
+	}
+
+	report += fmt.Sprintf("- Total sessions: %d\n", len(sessions))
+
+	// Get usage store
+	usageStore := k.UsageStore()
+	// Get usage summary for this agent
+	summary, err := usageStore.GetUsageSummary(&aID, nil, nil)
+	if err != nil {
+		report += fmt.Sprintf("- Error getting usage: %v\n", err)
+		return report
+	}
+
+	report += fmt.Sprintf("- Total tokens: %d\n", summary.TotalTokens)
+	report += fmt.Sprintf("- Input tokens: %d\n", summary.TotalPromptTokens)
+	report += fmt.Sprintf("- Output tokens: %d\n", summary.TotalCompletionTokens)
+	report += fmt.Sprintf("- Total cost: $%.4f\n", summary.TotalCostUSD)
+
+	return report
+}
+
+// generateUsageReport generates usage report for the agent
+func generateUsageReport(agentID string, k *kernel.Kernel) string {
+	report := "💸 Usage Report\n\n"
+	report += "- Agent: " + agentID + "\n"
+
+	// Parse agent ID
+	aID, err := types.ParseAgentID(agentID)
+	if err != nil {
+		report += "- Invalid agent ID\n"
+		return report
+	}
+
+	usageStore := k.UsageStore()
+
+	// Get overall usage summary
+	overallSummary, err := usageStore.GetUsageSummary(nil, nil, nil)
+	if err != nil {
+		report += fmt.Sprintf("- Error getting overall usage: %v\n", err)
+	} else {
+		report += "\n📈 Overall Usage\n"
+		report += fmt.Sprintf("- Total cost: $%.4f\n", overallSummary.TotalCostUSD)
+		report += fmt.Sprintf("- Total tokens: %d\n", overallSummary.TotalTokens)
+		report += fmt.Sprintf("- Input tokens: %d\n", overallSummary.TotalPromptTokens)
+		report += fmt.Sprintf("- Output tokens: %d\n", overallSummary.TotalCompletionTokens)
+		report += fmt.Sprintf("- API calls: %d\n", overallSummary.CallCount)
+	}
+
+	// Get agent-specific usage
+	agentSummary, err := usageStore.GetUsageSummary(&aID, nil, nil)
+	if err != nil {
+		report += fmt.Sprintf("- Error getting agent usage: %v\n", err)
+	} else {
+		report += "\n🧑‍💻 This Agent's Usage\n"
+		report += fmt.Sprintf("- Cost: $%.4f\n", agentSummary.TotalCostUSD)
+		report += fmt.Sprintf("- Total tokens: %d\n", agentSummary.TotalTokens)
+		report += fmt.Sprintf("- Input: %d\n", agentSummary.TotalPromptTokens)
+		report += fmt.Sprintf("- Output: %d\n", agentSummary.TotalCompletionTokens)
+		report += fmt.Sprintf("- Calls: %d\n", agentSummary.CallCount)
+	}
+
+	// Get usage by model
+	modelUsage, err := usageStore.GetUsageByModel()
+	if err == nil && len(modelUsage) > 0 {
+		report += "\n📊 Usage by Model\n"
+		for i, mu := range modelUsage {
+			if i >= 5 {
+				break
+			}
+			report += fmt.Sprintf("- %s: $%.4f (%d in, %d out, %d calls)\n",
+				mu.Model, mu.TotalCostUSD, mu.TotalInputTokens, mu.TotalOutputTokens, mu.CallCount)
+		}
+	}
+
+	return report
+}
+
+// generateQueueReport generates queue report
+func generateQueueReport(agentID string, k *kernel.Kernel) string {
+	report := "📋 Queue Report\n\n"
+	report += "- Agent: " + agentID + "\n"
+
+	report += "- Queue: Feature coming soon!"
+
+	return report
+}
+
+func handleVerboseMode(args string) string {
+	if args == "on" || args == "off" || args == "toggle" {
+		return "Verbose mode set to: " + args
+	}
+	return "Usage: /verbose [on|off|toggle]"
+}
+
+func handleNewSession(agentID string, k *kernel.Kernel) string {
+	// TODO: Replace with real session reset
+	return "🆕 New session started for agent: " + agentID
 }
 
 // RegisterStreamRoutes registers SSE and WebSocket routes.

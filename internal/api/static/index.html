@@ -12863,6 +12863,18 @@ function chatPage() {
       this.inputText = '';
       var self = this;
       cmdArgs = cmdArgs || '';
+      
+      // 尝试通过 WebSocket 发送命令到后端
+      var trySendCommandWs = function(command, args) {
+        if (self.currentAgent && FangClawGoAPI.isWsConnected()) {
+          var wsPayload = { type: 'command', data: { command: command, args: args || '' } };
+          if (FangClawGoAPI.wsSend(wsPayload)) {
+            return true;
+          }
+        }
+        return false;
+      };
+      
       switch (cmd) {
         case '/help':
           self.messages.push({ id: ++msgId, role: 'system', text: self.slashCommands.map(function(c) { return '`' + c.cmd + '` — ' + c.desc; }).join('\n'), meta: '', tools: [] });
@@ -12872,36 +12884,77 @@ function chatPage() {
           location.hash = 'agents';
           break;
         case '/new':
-          if (self.currentAgent) {
-            FangClawGoAPI.post('/api/agents/' + self.currentAgent.id + '/session/reset', {}).then(function() {
-              self.messages = [];
-              FangClawGoToast.success('Session reset');
-            }).catch(function(e) { FangClawGoToast.error('Reset failed: ' + e.message); });
+        case '/reset':
+          if (!trySendCommandWs(cmd, cmdArgs)) {
+            if (self.currentAgent) {
+              FangClawGoAPI.post('/api/agents/' + self.currentAgent.id + '/session/reset', {}).then(function() {
+                self.messages = [];
+                FangClawGoToast.success('Session reset');
+              }).catch(function(e) { FangClawGoToast.error('Reset failed: ' + e.message); });
+            }
           }
           break;
         case '/compact':
-          if (self.currentAgent) {
-            self.messages.push({ id: ++msgId, role: 'system', text: 'Compacting session...', meta: '', tools: [] });
-            FangClawGoAPI.post('/api/agents/' + self.currentAgent.id + '/session/compact', {}).then(function(res) {
-              self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Compaction complete', meta: '', tools: [] });
-              self.scrollToBottom();
-            }).catch(function(e) { FangClawGoToast.error('Compaction failed: ' + e.message); });
+          if (!trySendCommandWs(cmd, cmdArgs)) {
+            if (self.currentAgent) {
+              self.messages.push({ id: ++msgId, role: 'system', text: 'Compacting session...', meta: '', tools: [] });
+              FangClawGoAPI.post('/api/agents/' + self.currentAgent.id + '/session/compact', {}).then(function(res) {
+                self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Compaction complete', meta: '', tools: [] });
+                self.scrollToBottom();
+              }).catch(function(e) { FangClawGoToast.error('Compaction failed: ' + e.message); });
+            }
           }
           break;
         case '/stop':
-          if (self.currentAgent) {
-            FangClawGoAPI.post('/api/agents/' + self.currentAgent.id + '/stop', {}).then(function(res) {
-              self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Run cancelled', meta: '', tools: [] });
-              self.sending = false;
-              self.scrollToBottom();
-            }).catch(function(e) { FangClawGoToast.error('Stop failed: ' + e.message); });
+          if (!trySendCommandWs(cmd, cmdArgs)) {
+            if (self.currentAgent) {
+              FangClawGoAPI.post('/api/agents/' + self.currentAgent.id + '/stop', {}).then(function(res) {
+                self.messages.push({ id: ++msgId, role: 'system', text: res.message || 'Run cancelled', meta: '', tools: [] });
+                self.sending = false;
+                self.scrollToBottom();
+              }).catch(function(e) { FangClawGoToast.error('Stop failed: ' + e.message); });
+            }
           }
           break;
         case '/usage':
-          if (self.currentAgent) {
-            var approxTokens = self.messages.reduce(function(sum, m) { return sum + Math.round((m.text || '').length / 4); }, 0);
-            self.messages.push({ id: ++msgId, role: 'system', text: '**Session Usage**\n- Messages: ' + self.messages.length + '\n- Approx tokens: ~' + approxTokens, meta: '', tools: [] });
-            self.scrollToBottom();
+        case '/context':
+        case '/queue':
+        case '/verbose':
+          if (!trySendCommandWs(cmd, cmdArgs)) {
+            // 回退到原有的本地处理
+            if (self.currentAgent) {
+              var approxTokens = self.messages.reduce(function(sum, m) { return sum + Math.round((m.text || '').length / 4); }, 0);
+              var fallbackText = '';
+              if (cmd === '/usage') {
+                fallbackText = '**Session Usage**\n- Messages: ' + self.messages.length + '\n- Approx tokens: ~' + approxTokens;
+              } else if (cmd === '/context') {
+                fallbackText = '**Context Window**\n- Messages: ' + self.messages.length + '\n- Approx tokens: ~' + approxTokens + '\n- Queue size: ' + self.messageQueue.length;
+              } else if (cmd === '/queue') {
+                fallbackText = '**Queue Status**\n- Sending: ' + (self.sending ? 'Yes' : 'No') + '\n- Pending messages: ' + self.messageQueue.length;
+              } else if (cmd === '/verbose') {
+                if (!self.verboseMode) self.verboseMode = 'off';
+                if (cmdArgs === 'off') {
+                  self.verboseMode = 'off';
+                } else if (cmdArgs === 'on') {
+                  self.verboseMode = 'on';
+                } else if (cmdArgs === 'full') {
+                  self.verboseMode = 'full';
+                } else {
+                  if (self.verboseMode === 'off') {
+                    self.verboseMode = 'on';
+                  } else if (self.verboseMode === 'on') {
+                    self.verboseMode = 'full';
+                  } else {
+                    self.verboseMode = 'off';
+                  }
+                }
+                fallbackText = 'Verbose mode **' + self.verboseMode + '**.';
+              }
+              if (fallbackText) {
+                self.messages.push({ id: ++msgId, role: 'system', text: fallbackText, meta: '', tools: [] });
+                self.scrollToBottom();
+              }
+            }
           }
           break;
         case '/think':
@@ -12923,31 +12976,6 @@ function chatPage() {
              self.thinkingMode === 'on' ? 'The agent will show its reasoning when supported by the model.' :
              'Normal response mode.'), meta: '', tools: [] });
           self.scrollToBottom();
-          break;
-        case '/context':
-          // Send via WS command
-          if (self.currentAgent && FangClawGoAPI.isWsConnected()) {
-            FangClawGoAPI.wsSend({ type: 'command', command: 'context', args: '' });
-          } else {
-            self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected. Connect to an agent first.', meta: '', tools: [] });
-            self.scrollToBottom();
-          }
-          break;
-        case '/verbose':
-          if (self.currentAgent && FangClawGoAPI.isWsConnected()) {
-            FangClawGoAPI.wsSend({ type: 'command', command: 'verbose', args: cmdArgs });
-          } else {
-            self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected. Connect to an agent first.', meta: '', tools: [] });
-            self.scrollToBottom();
-          }
-          break;
-        case '/queue':
-          if (self.currentAgent && FangClawGoAPI.isWsConnected()) {
-            FangClawGoAPI.wsSend({ type: 'command', command: 'queue', args: '' });
-          } else {
-            self.messages.push({ id: ++msgId, role: 'system', text: 'Not connected.', meta: '', tools: [] });
-            self.scrollToBottom();
-          }
           break;
         case '/status':
           FangClawGoAPI.get('/api/status').then(function(s) {
@@ -13373,12 +13401,13 @@ function chatPage() {
           }
           break;
 
+        case 'command_response':
         case 'command_result':
           // Update context pressure if included in command result
           if (data.context_pressure) {
             this.contextPressure = data.context_pressure;
           }
-          this.messages.push({ id: ++msgId, role: 'system', text: data.message || 'Command executed.', meta: '', tools: [] });
+          this.messages.push({ id: ++msgId, role: 'system', text: data.data?.content || data.message || 'Command executed.', meta: '', tools: [] });
           this.scrollToBottom();
           break;
 
