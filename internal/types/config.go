@@ -277,5 +277,16 @@ func DefaultConfig() KernelConfig {
 			AlertThreshold:             0.8,
 			DefaultMaxLLMTokensPerHour: 0,
 		},
+		Auth: AuthConfig{
+			Enabled:    true,
+			DBPath:     "",
+			SessionTTL: "24h",
+			GitHub: GitHubOAuthConfig{
+				ClientID:     "",
+				ClientSecret: "",
+				Enabled:      false,
+				RedirectURL:  "",
+			},
+		},
 	}
 }

@@ -127,7 +127,15 @@ func DefaultConfig() *Config {
 			Level: "info",
 		},
 		Auth: types.AuthConfig{
-			Enabled: false,
+			Enabled:    true,
+			DBPath:     "",
+			SessionTTL: "24h",
+			GitHub: types.GitHubOAuthConfig{
+				ClientID:     "",
+				ClientSecret: "",
+				Enabled:      false,
+				RedirectURL:  "",
+			},
 		},
 		Approvals: approvals.DefaultApprovalPolicy(),
 	}
