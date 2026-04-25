@@ -32,6 +32,7 @@ type KernelConfig struct {
 	Include           []string                `toml:"include,omitempty" json:"include,omitempty"`
 	Auth              AuthConfig              `toml:"auth" json:"auth"`
 	Quotas            QuotasConfig            `toml:"quotas" json:"quotas"`
+	Budget            BudgetConfig            `toml:"budget" json:"budget"`
 	UserID            string                  `toml:"-" json:"user_id,omitempty"`
 	Username          string                  `toml:"-" json:"username,omitempty"`
 }
@@ -156,6 +157,15 @@ type ResourceQuota struct {
 	MaxCostPerHourUSD   float64 `toml:"max_cost_per_hour_usd" json:"max_cost_per_hour_usd"`
 }
 
+// BudgetConfig defines global budget limits.
+type BudgetConfig struct {
+	MaxHourlyUSD               float64 `toml:"max_hourly_usd" json:"max_hourly_usd"`
+	MaxDailyUSD                float64 `toml:"max_daily_usd" json:"max_daily_usd"`
+	MaxMonthlyUSD              float64 `toml:"max_monthly_usd" json:"max_monthly_usd"`
+	AlertThreshold             float64 `toml:"alert_threshold" json:"alert_threshold"`
+	DefaultMaxLLMTokensPerHour uint64  `toml:"default_max_llm_tokens_per_hour" json:"default_max_llm_tokens_per_hour"`
+}
+
 // DefaultConfig returns the default kernel configuration.
 func DefaultConfig() KernelConfig {
 	return KernelConfig{
@@ -259,6 +269,13 @@ func DefaultConfig() KernelConfig {
 				MaxCostPerHourUSD:   10.0,
 			},
 			Agents: map[string]ResourceQuota{},
+		},
+		Budget: BudgetConfig{
+			MaxHourlyUSD:               0.0,
+			MaxDailyUSD:                0.0,
+			MaxMonthlyUSD:              0.0,
+			AlertThreshold:             0.8,
+			DefaultMaxLLMTokensPerHour: 0,
 		},
 	}
 }

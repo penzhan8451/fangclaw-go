@@ -483,7 +483,7 @@ function chatPage() {
         await this.loadSessions(this.currentAgent.id);
         // Reconnect WebSocket for new session
         this._wsAgent = null;
-        this.connectWs(this.currentAgent.id);
+        // this.connectWs(this.currentAgent.id); // owner comment out to avoid reconnecting on session switch
       } catch(e) {
         if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.error('Failed to switch session');
       }

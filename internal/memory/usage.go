@@ -462,3 +462,75 @@ func (s *UsageStore) GetTodayCost() (float64, error) {
 func (s *UsageStore) QuerySummary() (*types.UsageSummary, error) {
 	return s.GetUsageSummary(nil, nil, nil)
 }
+
+// QueryGlobalHourly gets global hourly spend.
+func (s *UsageStore) QueryGlobalHourly() (float64, error) {
+	now := time.Now()
+	oneHourAgo := now.Add(-1 * time.Hour)
+	return s.QuerySpend(nil, &oneHourAgo, &now)
+}
+
+// QueryGlobalDaily gets global daily spend.
+func (s *UsageStore) QueryGlobalDaily() (float64, error) {
+	return s.GetTodayCost()
+}
+
+// QueryGlobalMonthly gets global monthly spend.
+func (s *UsageStore) QueryGlobalMonthly() (float64, error) {
+	now := time.Now()
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	return s.QuerySpend(nil, &startOfMonth, &now)
+}
+
+// QueryHourly gets hourly spend for an agent.
+func (s *UsageStore) QueryHourly(agentID types.AgentID) (float64, error) {
+	now := time.Now()
+	oneHourAgo := now.Add(-1 * time.Hour)
+	return s.QuerySpend(&agentID, &oneHourAgo, &now)
+}
+
+// QueryDaily gets daily spend for an agent.
+func (s *UsageStore) QueryDaily(agentID types.AgentID) (float64, error) {
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	return s.QuerySpend(&agentID, &startOfDay, &now)
+}
+
+// QueryMonthly gets monthly spend for an agent.
+func (s *UsageStore) QueryMonthly(agentID types.AgentID) (float64, error) {
+	now := time.Now()
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	return s.QuerySpend(&agentID, &startOfMonth, &now)
+}
+
+// QuerySpend gets spend in a time range for an optional agent.
+func (s *UsageStore) QuerySpend(agentID *types.AgentID, start, end *time.Time) (float64, error) {
+	query := `SELECT COALESCE(SUM(cost_usd), 0.0) FROM usage WHERE 1=1`
+	args := []interface{}{}
+	argIndex := 1
+
+	if agentID != nil {
+		query += fmt.Sprintf(" AND agent_id = ?%d", argIndex)
+		args = append(args, agentID.String())
+		argIndex++
+	}
+
+	if start != nil {
+		query += fmt.Sprintf(" AND created_at >= ?%d", argIndex)
+		args = append(args, start.Format(time.RFC3339))
+		argIndex++
+	}
+
+	if end != nil {
+		query += fmt.Sprintf(" AND created_at <= ?%d", argIndex)
+		args = append(args, end.Format(time.RFC3339))
+		argIndex++
+	}
+
+	var spend float64
+	err := s.db.QueryRow(query, args...).Scan(&spend)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query spend: %w", err)
+	}
+	return spend, nil
+}

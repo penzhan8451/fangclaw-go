@@ -2537,14 +2537,66 @@ func (r *Router) handleCommands(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleBudget(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
+	budget := k.Config().Budget
+	usageStore := k.UsageStore()
+
+	hourlySpend, _ := usageStore.QueryGlobalHourly()
+	dailySpend, _ := usageStore.QueryGlobalDaily()
+	monthlySpend, _ := usageStore.QueryGlobalMonthly()
+
+	hourlyPct := 0.0
+	if budget.MaxHourlyUSD > 0.0 {
+		hourlyPct = hourlySpend / budget.MaxHourlyUSD
+	}
+
+	dailyPct := 0.0
+	if budget.MaxDailyUSD > 0.0 {
+		dailyPct = dailySpend / budget.MaxDailyUSD
+	}
+
+	monthlyPct := 0.0
+	if budget.MaxMonthlyUSD > 0.0 {
+		monthlyPct = monthlySpend / budget.MaxMonthlyUSD
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"monthly_limit": 0.0,
-		"monthly_spent": 0.0,
+		"hourly_spend":                    hourlySpend,
+		"hourly_limit":                    budget.MaxHourlyUSD,
+		"hourly_pct":                      hourlyPct,
+		"daily_spend":                     dailySpend,
+		"daily_limit":                     budget.MaxDailyUSD,
+		"daily_pct":                       dailyPct,
+		"monthly_spend":                   monthlySpend,
+		"monthly_limit":                   budget.MaxMonthlyUSD,
+		"monthly_pct":                     monthlyPct,
+		"alert_threshold":                 budget.AlertThreshold,
+		"default_max_llm_tokens_per_hour": budget.DefaultMaxLLMTokensPerHour,
 	})
 }
 
 func (r *Router) handleBudgetAgents(w http.ResponseWriter, req *http.Request) {
-	respondJSON(w, http.StatusOK, []interface{}{})
+	k := r.getKernel(req)
+	usageStore := k.UsageStore()
+	agents := k.AgentRegistry().List()
+
+	type agentBudget struct {
+		AgentID   string  `json:"agent_id"`
+		AgentName string  `json:"agent_name"`
+		Monthly   float64 `json:"monthly"`
+	}
+
+	var result []agentBudget
+	for _, agent := range agents {
+		monthly, _ := usageStore.QueryMonthly(agent.ID)
+		result = append(result, agentBudget{
+			AgentID:   agent.GetID(),
+			AgentName: agent.Name,
+			Monthly:   monthly,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 
 func (r *Router) handleNetworkStatus(w http.ResponseWriter, req *http.Request) {
