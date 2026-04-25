@@ -91,7 +91,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("\n✓ !")
 	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Edit ~/.fangclaw-go/.fangclaw-go.env")
+	fmt.Println("  1. Edit ~/.fangclaw-go/config.toml provider and model or Setup from Dashboard")
 	fmt.Println("  2. Add your API key to ~/.fangclaw-go/.fangclaw-go.env")
 	fmt.Println("  3. fangclaw-go start")
 

@@ -199,7 +199,7 @@ func NewServer(k *kernel.Kernel, cfg *ServerConfig) *Server {
 	staticDir := findStaticDir()
 	fs := http.FileServer(http.Dir(staticDir))
 
-	// Custom handler to serve index.html for root path (check auth)
+	// See multi_tenant_server.go, this is unused.Custom handler to serve index.html for root path (check auth)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			// Check if we should show dashboard or redirect to home
