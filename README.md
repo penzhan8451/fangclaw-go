@@ -6,9 +6,9 @@
   <strong>One binary. Agents that actually work for you.</strong>
 </p>
 
-<p align="center">
+<!-- <p align="center">
   <a href="https://github.com/RightNow-AI/openfang">OpenFang Project</a>
-</p>
+</p> -->
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Go-blue?style=flat-square" alt="Go" />
