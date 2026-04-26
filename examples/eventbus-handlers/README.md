@@ -1,10 +1,10 @@
 # EventBus Handler Examples
 
-This directory contains practical examples of EventBus handlers for fangclaw-go. These examples demonstrate how to use the EventBus system for various real-world scenarios.
+This directory contains practical examples of EventBus handlers for fanggo. These examples demonstrate how to use the EventBus system for various real-world scenarios.
 
 ## Overview
 
-The EventBus system in fangclaw-go provides a publish-subscribe mechanism for event-driven communication. Handlers can subscribe to specific event types or all events and react accordingly.
+The EventBus system in fanggo provides a publish-subscribe mechanism for event-driven communication. Handlers can subscribe to specific event types or all events and react accordingly.
 
 ## Directory Structure
 
@@ -155,9 +155,9 @@ eb.Publish(event)
 4. **Use Timeouts**: For network operations (like webhooks), use timeouts.
 5. **Log Context**: Include sufficient context in logs for debugging.
 
-## Integration with fangclaw-go
+## Integration with fanggo
 
-To use these handlers in your fangclaw-go application:
+To use these handlers in your fanggo application:
 
 1. Import the eventbus package
 2. Create handlers for the events you're interested in

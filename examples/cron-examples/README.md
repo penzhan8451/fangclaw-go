@@ -1,6 +1,6 @@
-# Fangclaw-Go Cron 功能示例
+# FangGo Cron 功能示例
 
-本目录包含 fangclaw-go 中 cron 定时任务功能的各种示例。
+本目录包含 fanggo 中 cron 定时任务功能的各种示例。
 
 ## 目录结构
 
@@ -24,7 +24,7 @@ examples/cron-examples/
 
 ## 功能概述
 
-fangclaw-go 的 cron 功能支持三种调度方式：
+fanggo 的 cron 功能支持三种调度方式：
 
 ### 1. Schedule Kind: "at" - 一次性定时任务
 在指定的时间点执行一次任务。
@@ -158,42 +158,45 @@ fangclaw-go 的 cron 功能支持三种调度方式：
 
 ## 使用方法
 
+You can create a cron task through dashboard or CLI:
+`go build -o fanggo ./cmd/fangclaw-go`
+
 ### 1. 创建定时任务
 
 ```bash
 # 确保 daemon 正在运行
-fangclaw-go start
+fanggo start
 
 # 创建定时任务
-fangclaw-go cron create examples/cron-examples/simple/03-cron-daily-morning.json
+fanggo cron create examples/cron-examples/simple/03-cron-daily-morning.json
 ```
 
 ### 2. 列出所有定时任务
 
 ```bash
-fangclaw-go cron list
+fanggo cron list
 ```
 
 ### 3. 启用/禁用定时任务
 
 ```bash
 # 启用
-fangclaw-go cron enable <job-id>
+fanggo cron enable <job-id>
 
 # 禁用
-fangclaw-go cron disable <job-id>
+fanggo cron disable <job-id>
 ```
 
 ### 4. 查看任务状态
 
 ```bash
-fangclaw-go cron status <job-id>
+fanggo cron status <job-id>
 ```
 
 ### 5. 删除定时任务
 
 ```bash
-fangclaw-go cron delete <job-id>
+fanggo cron delete <job-id>
 ```
 
 ## Cron 表达式说明

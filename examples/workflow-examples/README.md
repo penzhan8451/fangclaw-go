@@ -1,6 +1,6 @@
-# Fangclaw-Go Workflow Examples
+# FangGo Workflow Examples
 
-This directory contains comprehensive examples of workflow configurations for fangclaw-go, showcasing both simple patterns and real-world complex scenarios.
+This directory contains comprehensive examples of workflow configurations for fanggo, showcasing both simple patterns and real-world complex scenarios.
 
 ## Directory Structure
 
@@ -145,40 +145,43 @@ Automated customer support ticket processing:
 
 ## Usage
 
-### Creating a Workflow
+You can create a workflow through dashboard or CLI:
+`go build -o fanggo ./cmd/fangclaw-go`
+
+### Creating a Workflow (CLI command)
 
 ```bash
 # Start the daemon if not running
-fangclaw-go start
+fanggo start
 
 # Create a workflow from a file
-fangclaw-go workflow create examples/workflow-examples/simple/01-simple-sequential-pipeline.json
+fanggo workflow create examples/workflow-examples/simple/01-simple-sequential-pipeline.json
 ```
 
 ### Listing Workflows
 
 ```bash
-fangclaw-go workflow list
+fanggo workflow list
 ```
 
 ### Running a Workflow
 
 ```bash
 # Run a workflow with input
-fangclaw-go workflow run <workflow-id> "Your input content here"
+fanggo workflow run <workflow-id> "Your input content here"
 ```
 
 ### Getting Workflow Status
 
 ```bash
 # Check status of a specific run
-fangclaw-go workflow status <run-id>
+fanggo workflow status <run-id>
 ```
 
 ### Deleting a Workflow
 
 ```bash
-fangclaw-go workflow delete <workflow-id>
+fanggo workflow delete <workflow-id>
 ```
 
 ## Best Practices

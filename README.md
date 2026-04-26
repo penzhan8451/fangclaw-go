@@ -47,7 +47,6 @@ The entire system compiles to a single binary. One install, one command, your ag
   - Setup Wizard - Interactive command-line setup wizard
 - 🔄 **Hot Configuration Reload** - Supports runtime configuration updates
 - 📱 **Device Pairing** - QR code device pairing management
-- 📈 **Usage Metering** - Complete usage statistics and metering
 - ⏰ **Scheduler System** - Cron scheduling and background task execution
 
 ---
@@ -80,7 +79,7 @@ fangclaw-go/
 │   ├── kernel/            # Core Kernel
 │   ├── mcp/               # Model Context Protocol
 │   ├── memory/            # Memory storage
-│   ├── metering/          # Usage metering
+│   ├── multi_tenant_server/ # Multi-tenant server
 │   ├── oauth/             # OAuth authentication
 │   ├── p2p/               # P2P network
 │   ├── pairing/           # Device pairing
