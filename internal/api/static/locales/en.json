@@ -125,7 +125,7 @@
   },
   "setup": {
     "setupRequired": "SETUP REQUIRED",
-    "configureApiKey": "Please configure your API key first",
+    "configureApiKey": "Please configure your LLM Provider API key and Model (Settings->Provider and Config) first",
     "goToSettings": "Go to Settings",
     "getStarted": "To get started, you need to configure your provider and API key in Settings.",
     "gettingStarted": "Getting Started",

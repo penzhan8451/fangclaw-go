@@ -125,9 +125,9 @@
   },
   "setup": {
     "setupRequired": "需要设置",
-    "configureApiKey": "请先配置您的API密钥",
+    "configureApiKey": "请先配置您的LLM提供商API密钥和模型（设置页面->提供商和配置）",
     "goToSettings": "前往设置",
-    "getStarted": "要开始使用，您需要在设置中配置您的提供商和API密钥。",
+    "getStarted": "要开始使用，您需要在设置页面中配置您的LLM提供商API密钥和模型。",
     "gettingStarted": "开始使用",
     "setupWizard": "设置向导",
     "launchSetupWizard": "启动设置向导",
