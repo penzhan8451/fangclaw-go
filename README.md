@@ -118,8 +118,6 @@ If you have binary already compiled for your OS platform, you can skip this step
 This step is **Only** for the case you can access CLI, mostly it is owner role user.
 For **user** role, you can use dashboard to configure your provider and model for the first time (Settings -> Provider and Config tab).
 
-Run the dashboard:
-
 Run the setup wizard:
 
 ```bash
@@ -148,7 +146,7 @@ Then, start the daemon:
 
 ### Next Steps After Starting
 
-Once the daemon is running, you have several options: (CLI if you can access or Dashboard):
+Once the daemon is running, you have several options: (For CLI user):
 
 #### 1. **Explore Available Hands**
 
@@ -194,7 +192,7 @@ Activate autonomous capabilities that work for you 24/7:
 
 #### 4. **Access the Dashboard**
 
-If you don't want to use CLI or you cannot access CLI, you can use dashboard to manage your agents. You can create, activate, chat with agents or hands in the dashboard. Open your browser to:
+If you don't want to use CLI or cannot access CLI, you can use dashboard to manage your agents. You can create, activate, chat with agents or hands in the dashboard. Open your browser to:
 
 - **Dashboard**: <http://127.0.0.1:4200/>
 - **API Status**: <http://127.0.0.1:4200/api/health>
@@ -239,16 +237,6 @@ level = "info"
 > # or
 > ANTHROPIC_API_KEY=sk-ant-...
 > ```
-
-or, in the console:
-
-```bash
-export OPENROUTER_API_KEY=sk-...
-# or
-export OPENAI_API_KEY=sk-...
-# or
-export ANTHROPIC_API_KEY=sk-ant-...
-```
 
 ***
 
@@ -442,7 +430,7 @@ Create \`github-agent.json:
 
 ### For Dashboard User:
 
-You can install skills from ClawHub or upload your own skills fromn the dashboard.
+You can install skills from ClawHub or upload your own skills fromn the dashboard -> Skills sidebar.
 
 ![Install Skill from ClawHub or Upload your Skill (SKILL.md or zip)](image-1.png)
 
@@ -450,15 +438,11 @@ You can install skills from ClawHub or upload your own skills fromn the dashboar
 
 1. **Create the Agent:**
 
-```bash
-# Or create via CLI or dashboard
-```
-
-When the Agent runs, it will automatically load the `github` skill from `~/.fangclaw-go/skills/github/` and add its prompt context to the Agent's system prompt.
+![Use setup wizard](image-3.png)
 
 Also, you can configure the Agent's skills in the Agent Details window.
 
-![Configure Agent Skills (or Tools) in Agent Details Window](image-2.png)
+![Agent Details](image-4.png)
 
 ***
 
