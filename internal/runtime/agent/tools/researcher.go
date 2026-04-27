@@ -319,12 +319,13 @@ func cleanPDFFormattedText(text string) string {
 
 // WebSearchTool searches the web using Tavily, Serper, Google Custom Search API, or Baidu
 type WebSearchTool struct {
-	apiKey   string
-	provider string // "tavily", "serper", "google", or "baidu"
+	apiKey    string
+	apiSecret string
+	provider  string // "tavily", "serper", "google", "baidu-qianfan", "baidu"
 }
 
 // NewWebSearchTool creates a new web search tool. It reads API key from environment.
-// Priority: TAVILY_API_KEY > SERPER_API_KEY > GOOGLE_API_KEY+GOOGLE_CX > BAIDU_ENABLED
+// Priority: TAVILY_API_KEY > BAIDU_QIANFAN_API_KEY > SERPER_API_KEY > GOOGLE_API_KEY+GOOGLE_CX > BAIDU_ENABLED
 func NewWebSearchTool() *WebSearchTool {
 	tool := &WebSearchTool{}
 
@@ -332,6 +333,13 @@ func NewWebSearchTool() *WebSearchTool {
 	if apiKey := os.Getenv("TAVILY_API_KEY"); apiKey != "" {
 		tool.apiKey = apiKey
 		tool.provider = "tavily"
+		return tool
+	}
+
+	// Try Baidu Qianfan AI Search (simpler API - only needs API key)
+	if apiKey := os.Getenv("BAIDU_QIANFAN_API_KEY"); apiKey != "" {
+		tool.apiKey = apiKey
+		tool.provider = "baidu-qianfan"
 		return tool
 	}
 
@@ -352,7 +360,7 @@ func NewWebSearchTool() *WebSearchTool {
 	}
 
 	// Try Baidu (no API key needed for basic search)
-	if 2 > 1 || os.Getenv("BAIDU_ENABLED") == "true" || os.Getenv("BAIDU_ENABLED") == "1" {
+	if os.Getenv("BAIDU_ENABLED") == "true" || os.Getenv("BAIDU_ENABLED") == "1" {
 		tool.provider = "baidu"
 		return tool
 	}
@@ -425,6 +433,8 @@ func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}
 	switch t.provider {
 	case "tavily":
 		results, err = t.searchTavily(ctx, query, maxResults)
+	case "baidu-qianfan":
+		results, err = t.searchBaiduQianfan(ctx, query, maxResults)
 	case "serper":
 		results, err = t.searchSerper(ctx, query, maxResults)
 	case "google":
@@ -619,6 +629,71 @@ func (t *WebSearchTool) searchGoogle(ctx context.Context, query string, maxResul
 			Snippet: safeTruncate(r.Snippet, 300),
 		})
 	}
+	return results, nil
+}
+
+// searchBaiduQianfan searches using Baidu Qianfan AI Search API (v2 - simpler API)
+func (t *WebSearchTool) searchBaiduQianfan(ctx context.Context, query string, maxResults int) ([]SearchResult, error) {
+	if t.apiKey == "" {
+		return nil, fmt.Errorf("BAIDU_QIANFAN_API_KEY must be set")
+	}
+
+	// Use the simpler v2 API that only requires API key
+	apiURL := "https://qianfan.baidubce.com/v2/ai_search/web_search"
+
+	reqBody := map[string]interface{}{
+		"query":       query,
+		"top_k":       maxResults,
+		"need_filter": false,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, strings.NewReader(string(bodyBytes)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-App-Key", t.apiKey)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	// Parse response
+	var qianfanResp struct {
+		Results []struct {
+			Title   string `json:"title"`
+			Link    string `json:"link"`
+			Snippet string `json:"snippet"`
+		} `json:"results"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&qianfanResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	var results []SearchResult
+	for _, r := range qianfanResp.Results {
+		results = append(results, SearchResult{
+			Title:   r.Title,
+			URL:     r.Link,
+			Snippet: safeTruncate(r.Snippet, 300),
+		})
+	}
+
+	fmt.Println("✅Return baidu qianfan search results")
 	return results, nil
 }
 
