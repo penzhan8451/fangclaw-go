@@ -113,7 +113,7 @@ func (p *OpenRouterProvider) Chat(ctx context.Context, req *Request) (*Response,
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	httpReq.Header.Set("HTTP-Referer", "https://github.com/penzhan8451/fangclaw-go")
-	httpReq.Header.Set("X-Title", "OpenFang")
+	httpReq.Header.Set("X-Title", "Fanggo")
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
