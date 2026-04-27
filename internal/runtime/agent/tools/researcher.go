@@ -646,7 +646,7 @@ func (t *WebSearchTool) searchBaidu(ctx context.Context, query string, maxResult
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("failed to read baidu search response: %w", err)
 	}
 
 	return parseBaiduSearchResults(string(bodyBytes), maxResults), nil
@@ -687,6 +687,7 @@ func parseBaiduSearchResults(html string, max int) []SearchResult {
 		}
 	}
 
+	fmt.Println("✅Return baidu search results")
 	return results
 }
 
