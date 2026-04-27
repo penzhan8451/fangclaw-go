@@ -120,10 +120,6 @@ For **user** role, you can use dashboard to configure your provider and model fo
 
 Run the dashboard:
 
-```bash
-./fangclaw-go dashboard
-```
-
 Run the setup wizard:
 
 ```bash
