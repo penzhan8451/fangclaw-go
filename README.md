@@ -440,7 +440,8 @@ You can install skills from ClawHub or upload your own skills fromn the dashboar
 
 ![Use setup wizard](image-3.png)
 
-Also, you can configure the Agent's skills in the Agent Details window.
+
+After creation, you can configure the Agent's skills in the Agent Details window to add external skills.
 
 ![Agent Details](image-4.png)
 
