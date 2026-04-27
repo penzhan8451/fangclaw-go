@@ -39,13 +39,14 @@ type TokenUsage struct {
 
 // Message represents a chat message.
 type Message struct {
-	ID         string     `json:"id"`
-	Role       string     `json:"role"` // "system", "user", "assistant", "tool"
-	Content    string     `json:"content"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-	Name       string     `json:"name,omitempty"` // For tool responses
-	Timestamp  time.Time  `json:"timestamp"`
+	ID               string     `json:"id"`
+	Role             string     `json:"role"` // "system", "user", "assistant", "tool"
+	Content          string     `json:"content"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string     `json:"tool_call_id,omitempty"`
+	Name             string     `json:"name,omitempty"` // For tool responses
+	Timestamp        time.Time  `json:"timestamp"`
 }
 
 // NewTextMessage creates a new text message.
@@ -55,6 +56,17 @@ func NewTextMessage(role Role, text string) Message {
 		Role:      string(role),
 		Content:   text,
 		Timestamp: time.Now(),
+	}
+}
+
+// NewTextMessageWithReasoning creates a new text message with reasoning content.
+func NewTextMessageWithReasoning(role Role, text, reasoning string) Message {
+	return Message{
+		ID:               uuid.New().String(),
+		Role:             string(role),
+		Content:          text,
+		ReasoningContent: reasoning,
+		Timestamp:        time.Now(),
 	}
 }
 
@@ -114,15 +126,15 @@ type Session struct {
 func NewSession(agentID AgentID, agentName, agentModelProvider, agentModelName string, label *string) Session {
 	now := time.Now()
 	return Session{
-		ID:                  NewSessionID(),
-		AgentID:             agentID,
-		AgentName:           agentName,
-		AgentModelProvider:  agentModelProvider,
-		AgentModelName:      agentModelName,
-		Messages:            []Message{},
-		Label:               label,
-		CreatedAt:           now,
-		UpdatedAt:           now,
+		ID:                 NewSessionID(),
+		AgentID:            agentID,
+		AgentName:          agentName,
+		AgentModelProvider: agentModelProvider,
+		AgentModelName:     agentModelName,
+		Messages:           []Message{},
+		Label:              label,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 }
 

@@ -1245,7 +1245,8 @@ func (k *Kernel) ExecuteWorkflow(ctx context.Context, workflowID types.WorkflowI
 	}
 
 	sender := func(agentID, prompt string) (string, uint64, uint64, error) {
-		return k.SendMessageWithUsage(ctx, agentID, prompt)
+		response, _, inputTokens, outputTokens, err := k.SendMessageWithUsage(ctx, agentID, prompt)
+		return response, inputTokens, outputTokens, err
 	}
 
 	return k.workflowEngine.ExecuteRun(*runID, resolver, sender)
@@ -1317,7 +1318,8 @@ func (k *Kernel) ExecuteWorkflowWithDelivery(ctx context.Context, workflowID typ
 	}
 
 	sender := func(agentID, prompt string) (string, uint64, uint64, error) {
-		return k.SendMessageWithUsage(ctx, agentID, prompt)
+		response, _, inputTokens, outputTokens, err := k.SendMessageWithUsage(ctx, agentID, prompt)
+		return response, inputTokens, outputTokens, err
 	}
 
 	output, err := k.workflowEngine.ExecuteRun(*runID, resolver, sender)
@@ -1698,15 +1700,15 @@ func (k *Kernel) SendMessage(ctx context.Context, agentID string, message string
 }
 
 // SendMessageWithUsage sends a message to an agent and gets the response with token usage.
-func (k *Kernel) SendMessageWithUsage(ctx context.Context, agentID string, message string) (string, uint64, uint64, error) {
+func (k *Kernel) SendMessageWithUsage(ctx context.Context, agentID string, message string) (string, string, uint64, uint64, error) {
 	runner := agent.NewAgentRunner(k.agentRuntime)
 	result, err := runner.RunAgent(ctx, agentID, message, nil, nil)
 	if err != nil {
 		k.auditLog.Record("system", agentID, audit.ActionAgentMessage, "agent loop failed", fmt.Sprintf("error: %v", err))
-		return "", 0, 0, err
+		return "", "", 0, 0, err
 	}
 	k.auditLog.Record("system", agentID, audit.ActionAgentMessage, fmt.Sprintf("tokens_in=%d, tokens_out=%d", result.TotalUsage.PromptTokens, result.TotalUsage.CompletionTokens), "ok")
-	return result.Response, uint64(result.TotalUsage.PromptTokens), uint64(result.TotalUsage.CompletionTokens), nil
+	return result.Response, result.ReasoningContent, uint64(result.TotalUsage.PromptTokens), uint64(result.TotalUsage.CompletionTokens), nil
 }
 
 // FindAgentByName finds an agent by name.

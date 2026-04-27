@@ -81,9 +81,10 @@ type openaiToolCall struct {
 }
 
 type openaiMessage struct {
-	Role      string           `json:"role"`
-	Content   string           `json:"content"`
-	ToolCalls []openaiToolCall `json:"tool_calls,omitempty"`
+	Role             string           `json:"role"`
+	Content          string           `json:"content"`
+	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	ToolCalls        []openaiToolCall `json:"tool_calls,omitempty"`
 }
 
 type openaiResponse struct {
@@ -185,11 +186,22 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req *Request) (*Response, err
 		}
 	}
 
+	reasoningContent := openaiResp.Choices[0].Message.ReasoningContent
+	content := openaiResp.Choices[0].Message.Content
+
+	// Extract <think> tags from content if no reasoning_content field
+	if reasoningContent == "" && strings.Contains(content, "<think>") {
+		cleaned, thinking := extractThinkTags(content)
+		content = cleaned
+		reasoningContent = thinking
+	}
+
 	return &Response{
-		Model:      openaiResp.Model,
-		Content:    openaiResp.Choices[0].Message.Content,
-		StopReason: openaiResp.Choices[0].Finish,
-		ToolCalls:  toolCalls,
+		Model:            openaiResp.Model,
+		Content:          content,
+		ReasoningContent: reasoningContent,
+		StopReason:       openaiResp.Choices[0].Finish,
+		ToolCalls:        toolCalls,
 		Usage: Usage{
 			InputTokens:  openaiResp.Usage.PromptTokens,
 			OutputTokens: openaiResp.Usage.CompletionTokens,
@@ -283,4 +295,41 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req *Request) (<-chan S
 	}()
 
 	return eventChan, nil
+}
+
+// extractThinkTags extracts <think>...</think> blocks from text.
+// Returns (cleaned_text, Option<thinking_text>)
+func extractThinkTags(text string) (string, string) {
+	var thinkingParts []string
+	cleaned := text
+
+	for {
+		start := strings.Index(cleaned, "<think>")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(cleaned[start+7:], "</think>")
+		if end == -1 {
+			// Unclosed <think> tag — treat everything after as thinking
+			thought := strings.TrimSpace(cleaned[start+7:])
+			if thought != "" {
+				thinkingParts = append(thinkingParts, thought)
+			}
+			cleaned = cleaned[:start]
+			break
+		}
+		end = start + 7 + end
+		thought := strings.TrimSpace(cleaned[start+7 : end])
+		if thought != "" {
+			thinkingParts = append(thinkingParts, thought)
+		}
+		// Remove the entire <think>...</think> block
+		cleaned = cleaned[:start] + cleaned[end+8:]
+	}
+
+	cleaned = strings.TrimSpace(cleaned)
+	if len(thinkingParts) == 0 {
+		return cleaned, ""
+	}
+	return cleaned, strings.Join(thinkingParts, "\n\n")
 }

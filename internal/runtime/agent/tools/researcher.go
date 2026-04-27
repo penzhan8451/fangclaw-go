@@ -35,8 +35,8 @@ func (t *PDFExtractTool) Schema() map[string]interface{} {
 			"parameters": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"source": map[string]interface{}{"type": "string", "description": "Local file path or URL to the PDF file"},
-					"max_pages": map[string]interface{}{"type": "integer", "description": "Maximum number of pages to extract (default: all pages)", "default": 0},
+					"source":               map[string]interface{}{"type": "string", "description": "Local file path or URL to the PDF file"},
+					"max_pages":            map[string]interface{}{"type": "integer", "description": "Maximum number of pages to extract (default: all pages)", "default": 0},
 					"include_page_numbers": map[string]interface{}{"type": "boolean", "description": "Include page numbers in output (default: true)", "default": true},
 				},
 				"required": []string{"source"},
@@ -136,11 +136,11 @@ func getPageCount(pdfData []byte) int {
 	content := string(pdfData)
 	count := strings.Count(content, "/Type /Page")
 	count += strings.Count(content, "/Type/Page")
-	
+
 	// Also check for page objects
 	count += strings.Count(content, "<<\n/Type /Page")
 	count += strings.Count(content, "<< /Type /Page")
-	
+
 	if count == 0 {
 		count = 1 // Default to at least 1 page
 	}
@@ -152,40 +152,40 @@ func getPageCount(pdfData []byte) int {
 // For advanced PDF processing, external libraries like unipdf would be needed
 func extractTextFromPDFData(pdfData []byte, maxPages int, includePageNumbers bool) (string, error) {
 	content := string(pdfData)
-	
+
 	// Remove binary streams and metadata
 	content = removePDFStreams(content)
 	content = removePDFMetadata(content)
-	
+
 	// Extract text objects
 	textObjects := extractPDFTextObjects(content)
-	
+
 	var result strings.Builder
 	currentPage := 1
-	
+
 	for _, textObj := range textObjects {
 		if maxPages > 0 && currentPage > maxPages {
 			break
 		}
-		
+
 		if includePageNumbers {
 			result.WriteString(fmt.Sprintf("\n--- Page %d ---\n", currentPage))
 		}
-		
+
 		// Clean up the extracted text
 		cleanText := cleanPDFFormattedText(textObj)
 		if strings.TrimSpace(cleanText) != "" {
 			result.WriteString(cleanText)
 			result.WriteString("\n")
 		}
-		
+
 		currentPage++
 	}
-	
+
 	if result.Len() == 0 {
 		return "", fmt.Errorf("no text content found in PDF - this may be an image-based PDF that requires OCR")
 	}
-	
+
 	return result.String(), nil
 }
 
@@ -194,27 +194,27 @@ func removePDFStreams(content string) string {
 	// Remove stream objects that contain binary data
 	start := 0
 	var result strings.Builder
-	
+
 	for {
 		streamStart := strings.Index(content[start:], "stream")
 		if streamStart == -1 {
 			result.WriteString(content[start:])
 			break
 		}
-		
+
 		streamStart += start
 		result.WriteString(content[start:streamStart])
-		
+
 		// Find endstream
 		streamEnd := strings.Index(content[streamStart:], "endstream")
 		if streamEnd == -1 {
 			break
 		}
-		
+
 		streamEnd += streamStart
 		start = streamEnd + len("endstream")
 	}
-	
+
 	return result.String()
 }
 
@@ -238,7 +238,7 @@ func removePDFMetadata(content string) string {
 // extractPDFTextObjects extracts text content from PDF text objects
 func extractPDFTextObjects(content string) []string {
 	var textObjects []string
-	
+
 	// Look for BT/ET blocks (Begin Text/End Text)
 	start := 0
 	for {
@@ -246,32 +246,32 @@ func extractPDFTextObjects(content string) []string {
 		if btPos == -1 {
 			break
 		}
-		
+
 		btPos += start
 		etPos := strings.Index(content[btPos:], "ET")
 		if etPos == -1 {
 			break
 		}
-		
+
 		etPos += btPos
 		textBlock := content[btPos+2 : etPos]
-		
+
 		// Extract text strings from the block
 		textContent := extractTextFromBlock(textBlock)
 		if strings.TrimSpace(textContent) != "" {
 			textObjects = append(textObjects, textContent)
 		}
-		
+
 		start = etPos + 2
 	}
-	
+
 	return textObjects
 }
 
 // extractTextFromBlock extracts readable text from a PDF text block
 func extractTextFromBlock(block string) string {
 	var result strings.Builder
-	
+
 	// Look for text strings marked with parentheses
 	i := 0
 	for i < len(block) {
@@ -293,7 +293,7 @@ func extractTextFromBlock(block string) string {
 			i++
 		}
 	}
-	
+
 	return result.String()
 }
 
@@ -301,47 +301,47 @@ func extractTextFromBlock(block string) string {
 func cleanPDFFormattedText(text string) string {
 	// Remove extra whitespace
 	text = strings.Join(strings.Fields(text), " ")
-	
+
 	// Remove common PDF artifacts
 	text = strings.ReplaceAll(text, "\x00", "")
 	text = strings.ReplaceAll(text, "\x01", "")
 	text = strings.ReplaceAll(text, "\x02", "")
-	
+
 	// Handle common ligatures
 	text = strings.ReplaceAll(text, "fi", "fi")
 	text = strings.ReplaceAll(text, "fl", "fl")
 	text = strings.ReplaceAll(text, "ff", "ff")
-	
+
 	return strings.TrimSpace(text)
 }
 
 // ============ Web Search Tool (Researcher) ============
 
-// WebSearchTool searches the web using Tavily, Serper, or Google Custom Search API
+// WebSearchTool searches the web using Tavily, Serper, Google Custom Search API, or Baidu
 type WebSearchTool struct {
-	apiKey     string
-	provider   string // "tavily", "serper", or "google"
+	apiKey   string
+	provider string // "tavily", "serper", "google", or "baidu"
 }
 
 // NewWebSearchTool creates a new web search tool. It reads API key from environment.
-// Priority: TAVILY_API_KEY > SERPER_API_KEY > GOOGLE_API_KEY+GOOGLE_CX
+// Priority: TAVILY_API_KEY > SERPER_API_KEY > GOOGLE_API_KEY+GOOGLE_CX > BAIDU_ENABLED
 func NewWebSearchTool() *WebSearchTool {
 	tool := &WebSearchTool{}
-	
+
 	// Try Tavily first
 	if apiKey := os.Getenv("TAVILY_API_KEY"); apiKey != "" {
 		tool.apiKey = apiKey
 		tool.provider = "tavily"
 		return tool
 	}
-	
+
 	// Try Serper
 	if apiKey := os.Getenv("SERPER_API_KEY"); apiKey != "" {
 		tool.apiKey = apiKey
 		tool.provider = "serper"
 		return tool
 	}
-	
+
 	// Try Google (requires both API key and CX)
 	googleAPIKey := os.Getenv("GOOGLE_API_KEY")
 	googleCX := os.Getenv("GOOGLE_CX")
@@ -350,7 +350,13 @@ func NewWebSearchTool() *WebSearchTool {
 		tool.provider = "google"
 		return tool
 	}
-	
+
+	// Try Baidu (no API key needed for basic search)
+	if 2 > 1 || os.Getenv("BAIDU_ENABLED") == "true" || os.Getenv("BAIDU_ENABLED") == "1" {
+		tool.provider = "baidu"
+		return tool
+	}
+
 	// No API key configured - will return error on execute
 	tool.provider = "none"
 	return tool
@@ -360,6 +366,7 @@ func (t *WebSearchTool) Name() string { return "web_search" }
 func (t *WebSearchTool) Description() string {
 	return "Search the web for information using search APIs"
 }
+func (t *WebSearchTool) Provider() string { return t.provider }
 
 func (t *WebSearchTool) Schema() map[string]interface{} {
 	return map[string]interface{}{
@@ -391,7 +398,7 @@ func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}
 	if query == "" {
 		return "", fmt.Errorf("query required")
 	}
-	
+
 	maxResults := 5
 	if v, ok := args["max_results"].(int); ok && v > 0 {
 		if v > 10 {
@@ -407,14 +414,14 @@ func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}
 			maxResults = int(v)
 		}
 	}
-	
+
 	if t.provider == "none" || t.apiKey == "" {
 		return "", fmt.Errorf("no search API key configured. Set TAVILY_API_KEY, SERPER_API_KEY, or GOOGLE_API_KEY+GOOGLE_CX environment variable")
 	}
-	
+
 	var results []SearchResult
 	var err error
-	
+
 	switch t.provider {
 	case "tavily":
 		results, err = t.searchTavily(ctx, query, maxResults)
@@ -422,18 +429,20 @@ func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}
 		results, err = t.searchSerper(ctx, query, maxResults)
 	case "google":
 		results, err = t.searchGoogle(ctx, query, maxResults)
+	case "baidu":
+		results, err = t.searchBaidu(ctx, query, maxResults)
 	default:
 		return "", fmt.Errorf("unknown search provider: %s", t.provider)
 	}
-	
+
 	if err != nil {
 		return "", fmt.Errorf("search failed: %w", err)
 	}
-	
+
 	if len(results) == 0 {
 		return "No results found for query: " + query, nil
 	}
-	
+
 	var output strings.Builder
 	output.WriteString(fmt.Sprintf("Search results for: \"%s\"\n\n", query))
 	for i, r := range results {
@@ -441,7 +450,7 @@ func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}
 		output.WriteString(fmt.Sprintf("   URL: %s\n", r.URL))
 		output.WriteString(fmt.Sprintf("   %s\n\n", r.Snippet))
 	}
-	
+
 	return output.String(), nil
 }
 
@@ -455,35 +464,35 @@ type SearchResult struct {
 // searchTavily searches using Tavily API
 func (t *WebSearchTool) searchTavily(ctx context.Context, query string, maxResults int) ([]SearchResult, error) {
 	reqBody := map[string]interface{}{
-		"api_key":          t.apiKey,
-		"query":            query,
-		"max_results":      maxResults,
+		"api_key":             t.apiKey,
+		"query":               query,
+		"max_results":         maxResults,
 		"include_raw_content": false,
 	}
-	
+
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	
+
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.tavily.com/search", strings.NewReader(string(bodyBytes)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
-	
+
 	var tavilyResp struct {
 		Results []struct {
 			Title   string `json:"title"`
@@ -491,11 +500,11 @@ func (t *WebSearchTool) searchTavily(ctx context.Context, query string, maxResul
 			Content string `json:"content"`
 		} `json:"results"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&tavilyResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-	
+
 	var results []SearchResult
 	for _, r := range tavilyResp.Results {
 		results = append(results, SearchResult{
@@ -510,34 +519,34 @@ func (t *WebSearchTool) searchTavily(ctx context.Context, query string, maxResul
 // searchSerper searches using Serper API
 func (t *WebSearchTool) searchSerper(ctx context.Context, query string, maxResults int) ([]SearchResult, error) {
 	reqBody := map[string]interface{}{
-		"q": query,
+		"q":   query,
 		"num": maxResults,
 	}
-	
+
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	
+
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://google.serper.dev/search", strings.NewReader(string(bodyBytes)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-KEY", t.apiKey)
-	
+
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
-	
+
 	var serperResp struct {
 		Organic []struct {
 			Title   string `json:"title"`
@@ -545,11 +554,11 @@ func (t *WebSearchTool) searchSerper(ctx context.Context, query string, maxResul
 			Snippet string `json:"snippet"`
 		} `json:"organic"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&serperResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-	
+
 	var results []SearchResult
 	for _, r := range serperResp.Organic {
 		results = append(results, SearchResult{
@@ -569,27 +578,27 @@ func (t *WebSearchTool) searchGoogle(ctx context.Context, query string, maxResul
 	}
 	apiKey := parts[0]
 	cx := parts[1]
-	
+
 	apiURL := fmt.Sprintf("https://www.googleapis.com/customsearch/v1?key=%s&cx=%s&q=%s&num=%d",
 		apiKey, cx, url.QueryEscape(query), maxResults)
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
-	
+
 	var googleResp struct {
 		Items []struct {
 			Title   string `json:"title"`
@@ -597,11 +606,11 @@ func (t *WebSearchTool) searchGoogle(ctx context.Context, query string, maxResul
 			Snippet string `json:"snippet"`
 		} `json:"items"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&googleResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-	
+
 	var results []SearchResult
 	for _, r := range googleResp.Items {
 		results = append(results, SearchResult{
@@ -611,6 +620,84 @@ func (t *WebSearchTool) searchGoogle(ctx context.Context, query string, maxResul
 		})
 	}
 	return results, nil
+}
+
+// searchBaidu searches using Baidu (no API key needed)
+func (t *WebSearchTool) searchBaidu(ctx context.Context, query string, maxResults int) ([]SearchResult, error) {
+	apiURL := fmt.Sprintf("https://www.baidu.com/s?wd=%s&rn=%d", url.QueryEscape(query), maxResults)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return parseBaiduSearchResults(string(bodyBytes), maxResults), nil
+}
+
+// parseBaiduSearchResults parses Baidu search results from HTML into SearchResult
+func parseBaiduSearchResults(html string, max int) []SearchResult {
+	var results []SearchResult
+
+	chunks := strings.Split(html, "class=\"result c-container\"")
+	for _, chunk := range chunks[1:] {
+		if len(results) >= max {
+			break
+		}
+
+		title := extractBetween(chunk, "data-title=\"", "\"")
+		if title == "" {
+			title = extractBetween(chunk, "<h3", "</h3>")
+			title = extractBetween(title, ">", "<")
+		}
+
+		url := extractBetween(chunk, "href=\"", "\"")
+		if url == "" || strings.HasPrefix(url, "/") || strings.HasPrefix(url, "#") {
+			continue
+		}
+
+		snippet := extractBetween(chunk, "class=\"c-abstract\"", "</div>")
+		snippet = strings.TrimSpace(stripHTMLTags(snippet))
+
+		title = cleanBaiduSearchTitle(title)
+
+		if title != "" && url != "" {
+			results = append(results, SearchResult{
+				Title:   title,
+				URL:     url,
+				Snippet: safeTruncate(snippet, 300),
+			})
+		}
+	}
+
+	return results
+}
+
+// cleanBaiduSearchTitle cleans Baidu search result title
+func cleanBaiduSearchTitle(title string) string {
+	title = strings.ReplaceAll(title, "&quot;", "\"")
+	title = strings.ReplaceAll(title, "&amp;", "&")
+	title = strings.ReplaceAll(title, "&lt;", "<")
+	title = strings.ReplaceAll(title, "&gt;", ">")
+	title = strings.ReplaceAll(title, "&#39;", "'")
+	return strings.TrimSpace(title)
 }
 
 // ============ Web Scrape Tool (Researcher) ============

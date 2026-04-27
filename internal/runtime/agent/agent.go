@@ -51,12 +51,13 @@ type StreamCallback func(event llm.StreamEvent)
 
 // AgentLoopResult represents the result of an agent loop execution.
 type AgentLoopResult struct {
-	Response   string
-	TotalUsage types.TokenUsage
-	Iterations uint32
-	CostUSD    *float64
-	Silent     bool
-	Directives types.ReplyDirectives
+	Response         string
+	ReasoningContent string
+	TotalUsage       types.TokenUsage
+	Iterations       uint32
+	CostUSD          *float64
+	Silent           bool
+	Directives       types.ReplyDirectives
 }
 
 // ToolRegistry manages available tools.
@@ -480,10 +481,11 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 
 		// Add assistant message to history
 		assistantMsg := types.Message{
-			ID:        fmt.Sprintf("msg_%d", len(agentCtx.GetMessages())),
-			Role:      "assistant",
-			Content:   resp.Content,
-			Timestamp: time.Now(),
+			ID:               fmt.Sprintf("msg_%d", len(agentCtx.GetMessages())),
+			Role:             "assistant",
+			Content:          resp.Content,
+			ReasoningContent: resp.ReasoningContent,
+			Timestamp:        time.Now(),
 		}
 		agentCtx.AddMessage(assistantMsg)
 		messages = append(messages, assistantMsg)
@@ -565,10 +567,11 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			}
 
 			return &AgentLoopResult{
-				Response:   finalResponse,
-				TotalUsage: totalUsage,
-				Iterations: uint32(iteration + 1),
-				Silent:     false,
+				Response:         finalResponse,
+				ReasoningContent: resp.ReasoningContent,
+				TotalUsage:       totalUsage,
+				Iterations:       uint32(iteration + 1),
+				Silent:           false,
 			}, nil
 
 		case "tool_calls", "tool_use":
@@ -601,10 +604,11 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 				recordUsage(totalUsage, uint32(iteration+1))
 
 				return &AgentLoopResult{
-					Response:   finalResponse,
-					TotalUsage: totalUsage,
-					Iterations: uint32(iteration + 1),
-					Silent:     false,
+					Response:         finalResponse,
+					ReasoningContent: resp.ReasoningContent,
+					TotalUsage:       totalUsage,
+					Iterations:       uint32(iteration + 1),
+					Silent:           false,
 				}, nil
 			}
 
@@ -649,10 +653,11 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			}
 
 			return &AgentLoopResult{
-				Response:   finalResponse,
-				TotalUsage: totalUsage,
-				Iterations: uint32(iteration + 1),
-				Silent:     false,
+				Response:         finalResponse,
+				ReasoningContent: resp.ReasoningContent,
+				TotalUsage:       totalUsage,
+				Iterations:       uint32(iteration + 1),
+				Silent:           false,
 			}, nil
 		}
 	}

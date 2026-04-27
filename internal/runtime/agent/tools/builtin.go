@@ -370,19 +370,27 @@ func (t *WeatherTool) getMockWeather(location string) string {
 	)
 }
 
-type SearchTool struct{}
+type SearchTool struct {
+	webSearchTool *WebSearchTool
+}
 
-func NewSearchTool() *SearchTool { return &SearchTool{} }
+func NewSearchTool() *SearchTool {
+	return &SearchTool{
+		webSearchTool: NewWebSearchTool(),
+	}
+}
 
-func (t *SearchTool) Name() string        { return "search" }
-func (t *SearchTool) Description() string { return "Search the web" }
+func (t *SearchTool) Name() string { return "search" }
+func (t *SearchTool) Description() string {
+	return "Search the web (tries stable APIs first, falls back to free search)"
+}
 
 func (t *SearchTool) Schema() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "function",
 		"function": map[string]interface{}{
 			"name":        "search",
-			"description": "Search the web for information",
+			"description": "Search the web for information (tries stable APIs first, falls back to free search)",
 			"parameters": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -400,6 +408,26 @@ func (t *SearchTool) Execute(ctx context.Context, args map[string]interface{}) (
 		return "", fmt.Errorf("query required")
 	}
 
+	// First try WebSearchTool (stable APIs)
+	if t.webSearchTool != nil && t.webSearchTool.Provider() != "none" {
+		if result, err := t.webSearchTool.Execute(ctx, args); err == nil {
+			return result, nil
+		}
+	}
+
+	// Then try Baidu if enabled
+	if 2 > 1 || os.Getenv("BAIDU_ENABLED") == "true" || os.Getenv("BAIDU_ENABLED") == "1" {
+		if result, err := t.searchBaidu(ctx, query, 5); err == nil {
+			return result, nil
+		}
+	}
+
+	// Fallback to DuckDuckGo
+	return t.searchDuckDuckGo(ctx, query)
+}
+
+// searchDuckDuckGo searches using DuckDuckGo
+func (t *SearchTool) searchDuckDuckGo(ctx context.Context, query string) (string, error) {
 	client := &http.Client{
 		Timeout: 15 * time.Second,
 	}
@@ -442,6 +470,94 @@ func (t *SearchTool) Execute(ctx context.Context, args map[string]interface{}) (
 	}
 
 	return output.String(), nil
+}
+
+// searchBaidu searches using Baidu
+func (t *SearchTool) searchBaidu(ctx context.Context, query string, maxResults int) (string, error) {
+	apiURL := fmt.Sprintf("https://www.baidu.com/s?wd=%s&rn=%d", url.QueryEscape(query), maxResults)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("API error (status %d)", resp.StatusCode)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	results := parseBaiduResults(string(bodyBytes), maxResults)
+	if len(results) == 0 {
+		return fmt.Sprintf("No results found for '%s'.", query), nil
+	}
+
+	var output strings.Builder
+	output.WriteString(fmt.Sprintf("Search results for '%s':\n\n", query))
+	for i, r := range results {
+		output.WriteString(fmt.Sprintf("%d. %s\n   URL: %s\n   %s\n\n", i+1, r.title, r.url, r.snippet))
+	}
+
+	return output.String(), nil
+}
+
+// parseBaiduResults parses Baidu search results from HTML
+func parseBaiduResults(html string, max int) []searchResult {
+	var results []searchResult
+
+	chunks := strings.Split(html, "class=\"result c-container\"")
+	for _, chunk := range chunks[1:] {
+		if len(results) >= max {
+			break
+		}
+
+		title := extractBetween(chunk, "data-title=\"", "\"")
+		if title == "" {
+			title = extractBetween(chunk, "<h3", "</h3>")
+			title = extractBetween(title, ">", "<")
+		}
+
+		url := extractBetween(chunk, "href=\"", "\"")
+		if url == "" || strings.HasPrefix(url, "/") || strings.HasPrefix(url, "#") {
+			continue
+		}
+
+		snippet := extractBetween(chunk, "class=\"c-abstract\"", "</div>")
+		snippet = strings.TrimSpace(stripHTMLTags(snippet))
+
+		title = cleanBaiduTitle(title)
+
+		if title != "" && url != "" {
+			results = append(results, searchResult{
+				title:   title,
+				url:     url,
+				snippet: snippet,
+			})
+		}
+	}
+
+	return results
+}
+
+// cleanBaiduTitle cleans Baidu search result title
+func cleanBaiduTitle(title string) string {
+	title = strings.ReplaceAll(title, "&quot;", "\"")
+	title = strings.ReplaceAll(title, "&amp;", "&")
+	title = strings.ReplaceAll(title, "&lt;", "<")
+	title = strings.ReplaceAll(title, "&gt;", ">")
+	title = strings.ReplaceAll(title, "&#39;", "'")
+	return strings.TrimSpace(title)
 }
 
 type searchResult struct {

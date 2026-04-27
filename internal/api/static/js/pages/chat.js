@@ -427,6 +427,13 @@ function chatPage() {
             var text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
             // Sanitize any raw function-call text from history
             text = self.sanitizeToolText(text);
+            
+            // Check for reasoning content in message
+            var reasoningContent = m.reasoning_content || '';
+            if (reasoningContent) {
+              text = '<details><summary>Reasoning...</summary>\n\n' + reasoningContent + '</details>\n\n' + text;
+            }
+            
             // Build tool cards from historical tool data
             var tools = (m.tools || []).map(function(t, idx) {
               return {
@@ -887,7 +894,14 @@ function chatPage() {
         var httpMeta = (res.input_tokens || 0) + ' in / ' + (res.output_tokens || 0) + ' out';
         if (res.cost_usd != null) httpMeta += ' | $' + res.cost_usd.toFixed(4);
         if (res.iterations) httpMeta += ' | ' + res.iterations + ' iter';
-        this.messages.push({ id: ++msgId, role: 'agent', text: res.response, meta: httpMeta, tools: [], ts: Date.now() });
+        
+        var finalTextContent = res.response;
+        var reasoningContent = res.reasoning_content || '';
+        if (this.thinkingMode !== 'off' && reasoningContent) {
+          finalTextContent = '<details><summary>Reasoning...</summary>\n\n' + reasoningContent + '</details>\n\n' + finalTextContent;
+        }
+        
+        this.messages.push({ id: ++msgId, role: 'agent', text: finalTextContent, meta: httpMeta, tools: [], ts: Date.now() });
       } catch(e) {
         this.messages = this.messages.filter(function(m) { return !m.thinking; });
         var errorMsg = e.message || 'An unknown error occurred';

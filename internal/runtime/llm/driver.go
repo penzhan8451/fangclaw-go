@@ -49,11 +49,12 @@ type ToolCall struct {
 
 // Response represents a chat completion response.
 type Response struct {
-	Model      string     `json:"model"`
-	Content    string     `json:"content"`
-	StopReason string     `json:"stop_reason,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	Usage      Usage      `json:"usage,omitempty"`
+	Model            string     `json:"model"`
+	Content          string     `json:"content"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"`
+	StopReason       string     `json:"stop_reason,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+	Usage            Usage      `json:"usage,omitempty"`
 }
 
 // Usage represents token usage.

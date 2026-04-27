@@ -3532,17 +3532,19 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 	message := ResolveAttachments(reqBody.Attachments, reqBody.Message)
 
 	ctx := context.Background()
-	response, inputTokens, outputTokens, err := r.getKernel(req).SendMessageWithUsage(ctx, actualAgentID, message)
+	response, reasoningContent, inputTokens, outputTokens, err := r.getKernel(req).SendMessageWithUsage(ctx, actualAgentID, message)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"response": response,
-		"message": map[string]string{
-			"role":    "assistant",
-			"content": response,
+		"response":          response,
+		"reasoning_content": reasoningContent,
+		"message": map[string]interface{}{
+			"role":              "assistant",
+			"content":           response,
+			"reasoning_content": reasoningContent,
 		},
 		"usage": map[string]interface{}{
 			"input_tokens":  inputTokens,
@@ -5807,7 +5809,8 @@ func (r *Router) handleRunWorkflow(w http.ResponseWriter, req *http.Request) {
 	}
 
 	sender := func(agentID, prompt string) (string, uint64, uint64, error) {
-		return r.getKernel(req).SendMessageWithUsage(execCtx, agentID, prompt)
+		response, _, inputTokens, outputTokens, err := r.getKernel(req).SendMessageWithUsage(execCtx, agentID, prompt)
+		return response, inputTokens, outputTokens, err
 	}
 
 	output, err := r.getKernel(req).WorkflowEngine().ExecuteRun(*runID, resolver, sender)
