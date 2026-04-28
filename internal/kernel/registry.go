@@ -278,6 +278,32 @@ func (r *AgentRegistry) UpdateTools(id types.AgentID, tools []string) error {
 	return nil
 }
 
+func (r *AgentRegistry) UpdateModel(id types.AgentID, provider string, model string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entry, exists := r.agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	entry.Manifest.Model.Provider = provider
+	entry.Manifest.Model.Model = model
+
+	// 根据 provider 查找正确的 APIKeyEnv
+	providers := types.BuiltinProviders()
+	for _, p := range providers {
+		if p.ID == provider {
+			entry.Manifest.Model.APIKeyEnv = p.APIKeyEnv
+			break
+		}
+	}
+
+	entry.LastActive = time.Now()
+	r.saveToDisk()
+	return nil
+}
+
 func (r *AgentRegistry) AppendSkills(id types.AgentID, newSkills []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

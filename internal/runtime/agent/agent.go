@@ -208,6 +208,29 @@ func (r *Runtime) GetDriver(provider string) (llm.Driver, error) {
 	return driver, nil
 }
 
+func (r *Runtime) ListDrivers() map[string]llm.Driver {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make(map[string]llm.Driver)
+	for k, v := range r.drivers {
+		result[k] = v
+	}
+	return result
+}
+
+func (r *Runtime) HasDriver(provider string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, ok := r.drivers[provider]
+	return ok
+}
+
+func (r *Runtime) UnregisterDriver(provider string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.drivers, provider)
+}
+
 func (r *Runtime) RegisterTool(tool tools.Tool) {
 	r.tools.Register(tool)
 }
@@ -1445,6 +1468,27 @@ func (r *Runtime) ListAgents() []*AgentContext {
 		agents = append(agents, agent)
 	}
 	return agents
+}
+
+func (r *Runtime) UpdateAgentModel(id string, provider string, model string) error {
+	// Check if we have driver for this provider
+	_, err := r.GetDriver(provider)
+	if err != nil {
+		// Log the registered drivers to help debugging
+		log.Printf("UpdateAgentModel: no driver found for provider %q. Registered drivers: %v", provider, r.ListDrivers())
+		return err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if agentCtx, ok := r.agents[id]; ok {
+		agentCtx.Provider = provider
+		agentCtx.Model = model
+		log.Printf("Updated agent %s model: %s/%s", id, provider, model)
+		return nil
+	}
+	return fmt.Errorf("agent not found: %s", id)
 }
 
 func (r *Runtime) UpdateAgentSkills(id string, skills []string) {

@@ -687,7 +687,57 @@
                 <span x-show="currentAgent && currentAgent.identity && currentAgent.identity.emoji" x-text="currentAgent && currentAgent.identity && currentAgent.identity.emoji" style="font-size:20px;line-height:1"></span>
                 <div style="min-width:0">
                   <div class="font-bold" x-text="currentAgent ? currentAgent.name : ''"></div>
-                  <div class="text-xs text-dim truncate" style="font-family:var(--font-mono);font-size:11px" x-text="currentAgent ? currentAgent.model_provider + ':' + currentAgent.model_name : ''"></div>
+                  <div style="position:relative">
+                    <button 
+                      class="text-xs text-dim truncate cursor-pointer hover:text-primary transition-colors" 
+                      style="font-family:var(--font-mono);font-size:11px;display:flex;align-items:center;gap:2px"
+                      @click="showModelDropdown = !showModelDropdown"
+                      @click.outside="showModelDropdown = false"
+                      :disabled="modelsLoading"
+                    >
+                      <span x-text="currentAgent ? currentAgent.model_provider + ':' + currentAgent.model_name : ''"></span>
+                      <span x-show="!modelsLoading" style="font-size:8px">▼</span>
+                      <span x-show="modelsLoading" style="font-size:8px;animation:spin 1s linear infinite">⟳</span>
+                    </button>
+                    
+                    <!-- Model dropdown -->
+                    <div 
+                      class="model-dropdown" 
+                      x-show="showModelDropdown" 
+                      x-transition
+                      style="position:absolute;top:100%;left:0;margin-top:4px;z-index:100;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);max-height:400px;overflow-y:auto;min-width:280px"
+                    >
+                      <div style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--text-secondary)">
+                        Select Model
+                      </div>
+                      <template x-for="model in availableModels" :key="model.id">
+                        <div 
+                          class="model-option"
+                          :class="(model.provider === currentAgent.model_provider && model.model_name === currentAgent.model_name) ? 'active' : ''"
+                          @click="updateAgentModel(model)"
+                          style="padding:10px 12px;cursor:pointer;transition:background 0.15s"
+                        >
+                          <div style="display:flex;justify-content:space-between;align-items:center">
+                            <div style="min-width:0">
+                              <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" x-text="model.display_name"></div>
+                              <div style="font-size:11px;color:var(--text-dim);margin-top:2px;display:flex;align-items:center;gap:6px">
+                                <span class="badge" style="font-size:10px;padding:1px 6px" x-text="model.provider"></span>
+                                <span x-show="model.context_window" style="font-family:var(--font-mono)">
+                                  <span x-text="model.context_window"></span> ctx
+                                </span>
+                              </div>
+                            </div>
+                            <div x-show="model.provider === currentAgent.model_provider && model.model_name === currentAgent.model_name" style="color:var(--success)">
+                              ✓
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+                      <div x-show="!availableModels.length && !modelsLoading" style="padding:16px 12px;text-align:center;font-size:12px;color:var(--text-dim)">
+                        No models available
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="flex gap-2 items-center">

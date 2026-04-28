@@ -1157,6 +1157,11 @@ tr:hover td { background: var(--surface2); }
 }
 .session-dot.active { background: var(--success); }
 
+/* Model switcher */
+.model-option:hover { background: var(--surface2); }
+.model-option.active { background: var(--accent-subtle); }
+.model-option.active:hover { background: var(--accent-subtle); }
+
 /* Chat search bar */
 .chat-search-bar {
   display: flex;
@@ -4762,7 +4767,57 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                 <span x-show="currentAgent && currentAgent.identity && currentAgent.identity.emoji" x-text="currentAgent && currentAgent.identity && currentAgent.identity.emoji" style="font-size:20px;line-height:1"></span>
                 <div style="min-width:0">
                   <div class="font-bold" x-text="currentAgent ? currentAgent.name : ''"></div>
-                  <div class="text-xs text-dim truncate" style="font-family:var(--font-mono);font-size:11px" x-text="currentAgent ? currentAgent.model_provider + ':' + currentAgent.model_name : ''"></div>
+                  <div style="position:relative">
+                    <button 
+                      class="text-xs text-dim truncate cursor-pointer hover:text-primary transition-colors" 
+                      style="font-family:var(--font-mono);font-size:11px;display:flex;align-items:center;gap:2px"
+                      @click="showModelDropdown = !showModelDropdown"
+                      @click.outside="showModelDropdown = false"
+                      :disabled="modelsLoading"
+                    >
+                      <span x-text="currentAgent ? currentAgent.model_provider + ':' + currentAgent.model_name : ''"></span>
+                      <span x-show="!modelsLoading" style="font-size:8px">▼</span>
+                      <span x-show="modelsLoading" style="font-size:8px;animation:spin 1s linear infinite">⟳</span>
+                    </button>
+                    
+                    <!-- Model dropdown -->
+                    <div 
+                      class="model-dropdown" 
+                      x-show="showModelDropdown" 
+                      x-transition
+                      style="position:absolute;top:100%;left:0;margin-top:4px;z-index:100;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);max-height:400px;overflow-y:auto;min-width:280px"
+                    >
+                      <div style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--text-secondary)">
+                        Select Model
+                      </div>
+                      <template x-for="model in availableModels" :key="model.id">
+                        <div 
+                          class="model-option"
+                          :class="(model.provider === currentAgent.model_provider && model.model_name === currentAgent.model_name) ? 'active' : ''"
+                          @click="updateAgentModel(model)"
+                          style="padding:10px 12px;cursor:pointer;transition:background 0.15s"
+                        >
+                          <div style="display:flex;justify-content:space-between;align-items:center">
+                            <div style="min-width:0">
+                              <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" x-text="model.display_name"></div>
+                              <div style="font-size:11px;color:var(--text-dim);margin-top:2px;display:flex;align-items:center;gap:6px">
+                                <span class="badge" style="font-size:10px;padding:1px 6px" x-text="model.provider"></span>
+                                <span x-show="model.context_window" style="font-family:var(--font-mono)">
+                                  <span x-text="model.context_window"></span> ctx
+                                </span>
+                              </div>
+                            </div>
+                            <div x-show="model.provider === currentAgent.model_provider && model.model_name === currentAgent.model_name" style="color:var(--success)">
+                              ✓
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+                      <div x-show="!availableModels.length && !modelsLoading" style="padding:16px 12px;text-align:center;font-size:12px;color:var(--text-dim)">
+                        No models available
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="flex gap-2 items-center">
@@ -12691,6 +12746,10 @@ function chatPage() {
     _audioChunks: [],
     recordingTime: 0,
     _recordingTimer: null,
+    // Model switcher
+    availableModels: [],
+    modelsLoading: false,
+    showModelDropdown: false,
     slashCommands: [
       { cmd: '/help', desc: 'Show available commands' },
       { cmd: '/agents', desc: 'Switch to Agents page' },
@@ -12812,6 +12871,37 @@ function chatPage() {
           self.showSlashMenu = false;
         }
       });
+    },
+
+    async loadAvailableModels() {
+      if (!this.currentAgent) return;
+      this.modelsLoading = true;
+      try {
+        const data = await FangClawGoAPI.get('/api/agents/' + this.currentAgent.id + '/available-models');
+        this.availableModels = data.models || [];
+      } catch(e) {
+        this.availableModels = [];
+        if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.error('Failed to load available models');
+      } finally {
+        this.modelsLoading = false;
+      }
+    },
+
+    async updateAgentModel(model) {
+      if (!this.currentAgent) return;
+      try {
+        await FangClawGoAPI.put('/api/agents/' + this.currentAgent.id + '/model', {
+          provider: model.provider,
+          model: model.model_name
+        });
+        // Update local currentAgent
+        this.currentAgent.model_provider = model.provider;
+        this.currentAgent.model_name = model.model_name;
+        if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.success('Model switched to ' + model.display_name);
+        this.showModelDropdown = false;
+      } catch(e) {
+        if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.error('Failed to switch model: ' + e.message);
+      }
     },
 
     // Fetch dynamic slash commands from server
@@ -12986,13 +13076,28 @@ function chatPage() {
         case '/model':
           if (self.currentAgent) {
             if (cmdArgs) {
-              FangClawGoAPI.put('/api/agents/' + self.currentAgent.id + '/model', { model: cmdArgs }).then(function() {
+              // Try to find the model in available models
+              const foundModel = self.availableModels.find(m => m.model_name === cmdArgs || m.id === cmdArgs);
+              const provider = foundModel ? foundModel.provider : self.currentAgent.model_provider;
+              FangClawGoAPI.put('/api/agents/' + self.currentAgent.id + '/model', { 
+                provider: provider,
+                model: cmdArgs 
+              }).then(function() {
+                self.currentAgent.model_provider = provider;
                 self.currentAgent.model_name = cmdArgs;
                 self.messages.push({ id: ++msgId, role: 'system', text: 'Model switched to: `' + cmdArgs + '`', meta: '', tools: [] });
                 self.scrollToBottom();
               }).catch(function(e) { FangClawGoToast.error('Model switch failed: ' + e.message); });
             } else {
-              self.messages.push({ id: ++msgId, role: 'system', text: '**Current Model**\n- Provider: `' + (self.currentAgent.model_provider || '?') + '`\n- Model: `' + (self.currentAgent.model_name || '?') + '`', meta: '', tools: [] });
+              let text = '**Current Model**\n- Provider: `' + (self.currentAgent.model_provider || '?') + '`\n- Model: `' + (self.currentAgent.model_name || '?') + '`';
+              if (self.availableModels.length > 0) {
+                text += '\n\n**Available Models:**';
+                self.availableModels.forEach(function(m) {
+                  const isActive = m.provider === self.currentAgent.model_provider && m.model_name === self.currentAgent.model_name;
+                  text += '\n- `' + m.model_name + '`' + (isActive ? ' ⟵ current' : '') + ' (' + m.provider + ')';
+                });
+              }
+              self.messages.push({ id: ++msgId, role: 'system', text: text, meta: '', tools: [] });
               self.scrollToBottom();
             }
           } else {
@@ -13049,6 +13154,8 @@ function chatPage() {
       this.currentAgent = realAgent || agent;
       this.messages = [];
       this.connectWs(agent.id);
+      // Load available models when agent is selected
+      this.loadAvailableModels();
       if (!skipWelcome) {
         // Show welcome tips only when not switching to an existing session
         this.messages.push({
@@ -13151,7 +13258,7 @@ function chatPage() {
         await this.loadSession(this.currentAgent.id, sessionId);
         await this.loadSessions(this.currentAgent.id);
         // Reconnect WebSocket for new session
-        this._wsAgent = null;
+        // this._wsAgent = null;  // owner comment out
         // this.connectWs(this.currentAgent.id); // owner comment out to avoid reconnecting on session switch
       } catch(e) {
         if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.error('Failed to switch session');

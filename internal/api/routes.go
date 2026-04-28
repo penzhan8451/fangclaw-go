@@ -675,6 +675,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/agents/{id}/session/compact", r.handleCompactSession)
 	mux.HandleFunc("POST /api/agents/{id}/message", r.handleAgentMessage)
 	mux.HandleFunc("POST /api/agents/{id}/stop", r.handleStopAgent)
+	mux.HandleFunc("GET /api/agents/{id}/available-models", r.handleAgentAvailableModels)
 	mux.HandleFunc("PUT /api/agents/{id}/model", r.handleUpdateAgentModel)
 	mux.HandleFunc("PUT /api/agents/{id}/skills", r.handleUpdateAgentSkills)
 	mux.HandleFunc("PUT /api/v1/agents/{id}/skills", r.handleUpdateAgentSkills)
@@ -3627,7 +3628,66 @@ func (r *Router) handleStopAgent(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) handleUpdateAgentModel(w http.ResponseWriter, req *http.Request) {
-	respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+	id := req.PathValue("id")
+	k := r.getKernel(req)
+
+	var reqBody struct {
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate required fields
+	if reqBody.Provider == "" || reqBody.Model == "" {
+		respondError(w, http.StatusBadRequest, "Missing required fields: 'provider' and 'model' are required")
+		return
+	}
+
+	// Parse agent ID from string
+	agentID, err := types.ParseAgentID(id)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid agent ID")
+		return
+	}
+
+	// Get the agent from registry to update
+	agent := k.AgentRegistry().Get(agentID)
+	if agent == nil {
+		respondError(w, http.StatusNotFound, "Agent not found")
+		return
+	}
+
+	// Extract model name from provider/model format if present
+	modelName := reqBody.Model
+	if idx := strings.Index(modelName, "/"); idx != -1 {
+		modelName = modelName[idx+1:]
+	}
+
+	// Update the agent's model in the registry
+	if err := k.AgentRegistry().UpdateModel(agentID, reqBody.Provider, modelName); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save agent: %v", err))
+		return
+	}
+
+	// First, register all available drivers to make sure the provider's driver exists
+	runtime := k.AgentRuntime()
+	k.RegisterAllAvailableDrivers(runtime)
+
+	// Update the agent in runtime
+	if err := runtime.UpdateAgentModel(id, reqBody.Provider, modelName); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to update agent model: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status":   "updated",
+		"agent":    id,
+		"provider": reqBody.Provider,
+		"model":    reqBody.Model,
+	})
 }
 
 func (r *Router) handleDeleteAgentAlias(w http.ResponseWriter, req *http.Request) {

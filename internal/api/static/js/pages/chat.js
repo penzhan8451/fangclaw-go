@@ -29,6 +29,10 @@ function chatPage() {
     _audioChunks: [],
     recordingTime: 0,
     _recordingTimer: null,
+    // Model switcher
+    availableModels: [],
+    modelsLoading: false,
+    showModelDropdown: false,
     slashCommands: [
       { cmd: '/help', desc: 'Show available commands' },
       { cmd: '/agents', desc: 'Switch to Agents page' },
@@ -150,6 +154,37 @@ function chatPage() {
           self.showSlashMenu = false;
         }
       });
+    },
+
+    async loadAvailableModels() {
+      if (!this.currentAgent) return;
+      this.modelsLoading = true;
+      try {
+        const data = await FangClawGoAPI.get('/api/agents/' + this.currentAgent.id + '/available-models');
+        this.availableModels = data.models || [];
+      } catch(e) {
+        this.availableModels = [];
+        if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.error('Failed to load available models');
+      } finally {
+        this.modelsLoading = false;
+      }
+    },
+
+    async updateAgentModel(model) {
+      if (!this.currentAgent) return;
+      try {
+        await FangClawGoAPI.put('/api/agents/' + this.currentAgent.id + '/model', {
+          provider: model.provider,
+          model: model.model_name
+        });
+        // Update local currentAgent
+        this.currentAgent.model_provider = model.provider;
+        this.currentAgent.model_name = model.model_name;
+        if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.success('Model switched to ' + model.display_name);
+        this.showModelDropdown = false;
+      } catch(e) {
+        if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.error('Failed to switch model: ' + e.message);
+      }
     },
 
     // Fetch dynamic slash commands from server
@@ -324,13 +359,28 @@ function chatPage() {
         case '/model':
           if (self.currentAgent) {
             if (cmdArgs) {
-              FangClawGoAPI.put('/api/agents/' + self.currentAgent.id + '/model', { model: cmdArgs }).then(function() {
+              // Try to find the model in available models
+              const foundModel = self.availableModels.find(m => m.model_name === cmdArgs || m.id === cmdArgs);
+              const provider = foundModel ? foundModel.provider : self.currentAgent.model_provider;
+              FangClawGoAPI.put('/api/agents/' + self.currentAgent.id + '/model', { 
+                provider: provider,
+                model: cmdArgs 
+              }).then(function() {
+                self.currentAgent.model_provider = provider;
                 self.currentAgent.model_name = cmdArgs;
                 self.messages.push({ id: ++msgId, role: 'system', text: 'Model switched to: `' + cmdArgs + '`', meta: '', tools: [] });
                 self.scrollToBottom();
               }).catch(function(e) { FangClawGoToast.error('Model switch failed: ' + e.message); });
             } else {
-              self.messages.push({ id: ++msgId, role: 'system', text: '**Current Model**\n- Provider: `' + (self.currentAgent.model_provider || '?') + '`\n- Model: `' + (self.currentAgent.model_name || '?') + '`', meta: '', tools: [] });
+              let text = '**Current Model**\n- Provider: `' + (self.currentAgent.model_provider || '?') + '`\n- Model: `' + (self.currentAgent.model_name || '?') + '`';
+              if (self.availableModels.length > 0) {
+                text += '\n\n**Available Models:**';
+                self.availableModels.forEach(function(m) {
+                  const isActive = m.provider === self.currentAgent.model_provider && m.model_name === self.currentAgent.model_name;
+                  text += '\n- `' + m.model_name + '`' + (isActive ? ' ⟵ current' : '') + ' (' + m.provider + ')';
+                });
+              }
+              self.messages.push({ id: ++msgId, role: 'system', text: text, meta: '', tools: [] });
               self.scrollToBottom();
             }
           } else {
@@ -387,6 +437,8 @@ function chatPage() {
       this.currentAgent = realAgent || agent;
       this.messages = [];
       this.connectWs(agent.id);
+      // Load available models when agent is selected
+      this.loadAvailableModels();
       if (!skipWelcome) {
         // Show welcome tips only when not switching to an existing session
         this.messages.push({
@@ -489,7 +541,7 @@ function chatPage() {
         await this.loadSession(this.currentAgent.id, sessionId);
         await this.loadSessions(this.currentAgent.id);
         // Reconnect WebSocket for new session
-        this._wsAgent = null;
+        // this._wsAgent = null;  // owner comment out
         // this.connectWs(this.currentAgent.id); // owner comment out to avoid reconnecting on session switch
       } catch(e) {
         if (typeof FangClawGoToast !== 'undefined') FangClawGoToast.error('Failed to switch session');

@@ -12,6 +12,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/model_catalog"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 	"github.com/penzhan8451/fangclaw-go/internal/userdir"
+	"github.com/rs/zerolog/log"
 )
 
 func getSecretsPath(username string) (string, error) {
@@ -100,13 +101,15 @@ func removeSecretEnv(envVar, username string) error {
 func (r *Router) handleProviders(w http.ResponseWriter, req *http.Request) {
 	k := r.getKernel(req)
 	catalog := k.ModelCatalog()
+	secrets := k.GetSecrets()
+	catalog.DetectAuthWithSecrets(secrets)
 	providers := catalog.ListProviders()
 
 	var result []map[string]interface{}
 	for _, p := range providers {
 		authStatus := "not_configured"
 		if p.KeyRequired && p.APIKeyEnv != "" {
-			if os.Getenv(p.APIKeyEnv) != "" {
+			if secrets[p.APIKeyEnv] != "" {
 				authStatus = "configured"
 			}
 		} else if !p.KeyRequired {
@@ -127,6 +130,40 @@ func (r *Router) handleProviders(w http.ResponseWriter, req *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"providers": result,
 		"total":     len(result),
+	})
+}
+
+// handleAgentAvailableModels returns all available providers and models for a given agent
+func (r *Router) handleAgentAvailableModels(w http.ResponseWriter, req *http.Request) {
+	k := r.getKernel(req)
+	catalog := k.ModelCatalog()
+	secrets := k.GetSecrets()
+	catalog.DetectAuthWithSecrets(secrets)
+
+	// Get all available models (with providers that have API keys configured)
+	availableModels := catalog.AvailableModels()
+
+	var result []map[string]interface{}
+	for _, m := range availableModels {
+		result = append(result, map[string]interface{}{
+			"id":                 m.ID,
+			"model_name":         m.ModelName,
+			"display_name":       m.DisplayName,
+			"provider":           m.Provider,
+			"tier":               m.Tier,
+			"context_window":     m.ContextWindow,
+			"max_output_tokens":  m.MaxOutputTokens,
+			"input_cost_per_m":   m.InputCostPerM,
+			"output_cost_per_m":  m.OutputCostPerM,
+			"supports_tools":     m.SupportsTools,
+			"supports_vision":    m.SupportsVision,
+			"supports_streaming": m.SupportsStreaming,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"models": result,
+		"total":  len(result),
 	})
 }
 
@@ -176,9 +213,13 @@ func (r *Router) handleSetProviderKey(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	os.Setenv(provider.APIKeyEnv, key)
-
-	catalog.DetectAuth()
+	// Reload secrets and re-register drivers
+	if err := k.ReloadSecrets(); err != nil {
+		log.Warn().Err(err).Msg("Failed to reload secrets")
+	}
+	secrets := k.GetSecrets()
+	catalog.DetectAuthWithSecrets(secrets)
+	k.RegisterAllAvailableDrivers(k.AgentRuntime())
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "saved",
@@ -208,9 +249,14 @@ func (r *Router) handleDeleteProviderKey(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	os.Unsetenv(provider.APIKeyEnv)
-
-	catalog.DetectAuth()
+	// Reload secrets and re-register drivers
+	if err := k.ReloadSecrets(); err != nil {
+		log.Warn().Err(err).Msg("Failed to reload secrets")
+	}
+	secrets := k.GetSecrets()
+	catalog.DetectAuthWithSecrets(secrets)
+	// Unregister the driver we just removed
+	k.AgentRuntime().UnregisterDriver(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "removed",

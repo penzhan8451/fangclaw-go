@@ -369,87 +369,15 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 	skillManageTool := tools.NewSkillManageTool(skillLoader)
 	agentRuntime.RegisterTool(skillManageTool)
 
+	// Register all available LLM drivers from secrets.env
+	k.RegisterAllAvailableDrivers(agentRuntime)
+
 	// Agents loaded from disk also need to be registered in AgentRuntime
 	agents := agentRegistry.List()
 	if len(agents) > 0 {
-		// Load config file
-		cfg, err := config.Load("")
-		if err != nil {
-			cfg = config.DefaultConfig()
-		}
-
 		for _, agentEntry := range agents {
-			// Declare variables
-			var agentProvider, agentModel, agentAPIKeyEnv string
-
-			// If any config is missing in agent entry (provider, model, or APIKeyEnv), use defaults from config.toml
-			if agentEntry.Manifest.Model.Provider == "" || agentEntry.Manifest.Model.Model == "" || agentEntry.Manifest.Model.APIKeyEnv == "" {
-				agentProvider = cfg.DefaultModel.Provider
-				agentModel = cfg.DefaultModel.Model
-				agentAPIKeyEnv = cfg.DefaultModel.APIKeyEnv
-			} else {
-				// Otherwise use config from agent entry
-				agentProvider = agentEntry.Manifest.Model.Provider
-				agentModel = agentEntry.Manifest.Model.Model
-				agentAPIKeyEnv = agentEntry.Manifest.Model.APIKeyEnv
-			}
-
-			// Get API key from secrets
-			apiKey := k.GetSecret(agentAPIKeyEnv)
-			if apiKey == "" {
-				log.Warn().Str("agent", agentEntry.Name).Str("env", agentAPIKeyEnv).Msg("API key not set, skipping registration to runtime")
-				continue
-			}
-
-			// Create LLM driver
-			driver, err := llm.NewDriver(agentProvider, apiKey, agentModel)
-			if err != nil {
-				log.Warn().Str("agent", agentEntry.Name).Err(err).Msg("Failed to create LLM driver, skipping registration to runtime")
-				continue
-			}
-
-			// Register driver to AgentRuntime
-			agentRuntime.RegisterDriver(agentProvider, driver)
-
-			// Register agent to AgentRuntime
-			_, err = agentRuntime.RegisterAgent(
-				context.Background(),
-				agentEntry.ID.String(),
-				agentEntry.Name,
-				agentProvider,
-				agentModel,
-				agentEntry.Manifest.SystemPrompt,
-				agentEntry.Manifest.Tools,
-				agentEntry.Manifest.Skills,
-				agentEntry.Manifest.SkillPromptContext,
-				agentEntry.Files,
-			)
-			if err != nil {
-				log.Warn().Str("agent", agentEntry.Name).Err(err).Msg("Failed to register agent in runtime, skipping")
-			} else {
-				caps := manifestToCapabilities(agentEntry.Manifest)
-				for _, cap := range caps {
-					fmt.Printf("***manifestToCapailities Type %s to grant to agent:%s\n", cap.Type, agentEntry.ID.String())
-					fmt.Printf("***manifestToCapailities Resource %s to grant to agent:%s\n", cap.Resource, agentEntry.ID.String())
-				}
-				k.capabilityMgr.Grant(agentEntry.ID.String(), caps)
-
-				// Register agent quota
-				agentIDStr := agentEntry.ID.String()
-				quota := k.config.Quotas.Default
-				if agentQuota, ok := k.config.Quotas.Agents[agentIDStr]; ok {
-					quota = agentQuota
-				}
-				schedulerQuota := scheduler.ResourceQuota{
-					MaxTokensPerHour:    quota.MaxTokensPerHour,
-					MaxToolCallsPerHour: quota.MaxToolCallsPerHour,
-					MaxCostPerHourUSD:   quota.MaxCostPerHourUSD,
-				}
-				k.agentScheduler.Register(agentIDStr, schedulerQuota)
-
-				log.Debug().Str("agent", agentEntry.Name).Str("id", agentEntry.ID.String()).Msg("Registered agent from disk")
-			}
-		} //_for loop for agent in _agentRegistry
+			k.registerAgentToRuntime(agentEntry)
+		}
 
 		// Restore hand instances from agents
 		log.Debug().Int("agents", len(agents)).Msg("Restoring hand instances from agents")
@@ -462,6 +390,92 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 	}
 
 	return k, nil
+}
+
+func (k *Kernel) registerAgentToRuntime(agentEntry *AgentEntry) {
+	agentIDStr := agentEntry.ID.String()
+
+	// If agent is already registered, skip (this prevents resetting usage stats!)
+	if _, ok := k.agentRuntime.GetAgent(agentIDStr); ok {
+		log.Debug().Str("agent", agentEntry.Name).Str("id", agentIDStr).Msg("Agent already registered, skipping")
+		return
+	}
+
+	// Load config file for defaults
+	cfg, err := config.Load("")
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	// Declare variables
+	var agentProvider, agentModel, agentAPIKeyEnv string
+
+	// If any config is missing in agent entry (provider, model, or APIKeyEnv), use defaults from config.toml
+	if agentEntry.Manifest.Model.Provider == "" || agentEntry.Manifest.Model.Model == "" || agentEntry.Manifest.Model.APIKeyEnv == "" {
+		agentProvider = cfg.DefaultModel.Provider
+		agentModel = cfg.DefaultModel.Model
+		agentAPIKeyEnv = cfg.DefaultModel.APIKeyEnv
+	} else {
+		// Otherwise use config from agent entry
+		agentProvider = agentEntry.Manifest.Model.Provider
+		agentModel = agentEntry.Manifest.Model.Model
+		agentAPIKeyEnv = agentEntry.Manifest.Model.APIKeyEnv
+	}
+
+	// Get API key from secrets
+	apiKey := k.GetSecret(agentAPIKeyEnv)
+	if apiKey == "" {
+		log.Warn().Str("agent", agentEntry.Name).Str("env", agentAPIKeyEnv).Msg("API key not set, skipping registration to runtime")
+		return
+	}
+
+	// Create LLM driver if not already registered
+	if !k.agentRuntime.HasDriver(agentProvider) {
+		driver, err := llm.NewDriver(agentProvider, apiKey, agentModel)
+		if err != nil {
+			log.Warn().Str("agent", agentEntry.Name).Err(err).Msg("Failed to create LLM driver, skipping registration to runtime")
+			return
+		}
+		// Register driver to AgentRuntime
+		k.agentRuntime.RegisterDriver(agentProvider, driver)
+	}
+
+	// Register agent to AgentRuntime
+	_, err = k.agentRuntime.RegisterAgent(
+		context.Background(),
+		agentIDStr,
+		agentEntry.Name,
+		agentProvider,
+		agentModel,
+		agentEntry.Manifest.SystemPrompt,
+		agentEntry.Manifest.Tools,
+		agentEntry.Manifest.Skills,
+		agentEntry.Manifest.SkillPromptContext,
+		agentEntry.Files,
+	)
+	if err != nil {
+		log.Warn().Str("agent", agentEntry.Name).Err(err).Msg("Failed to register agent in runtime, skipping")
+	} else {
+		// Grant capabilities
+		caps := manifestToCapabilities(agentEntry.Manifest)
+		k.capabilityMgr.Grant(agentIDStr, caps)
+
+		// Register agent quota - only register if not already present
+		if _, hasQuota := k.agentScheduler.GetQuota(agentIDStr); !hasQuota {
+			quota := k.config.Quotas.Default
+			if agentQuota, ok := k.config.Quotas.Agents[agentIDStr]; ok {
+				quota = agentQuota
+			}
+			schedulerQuota := scheduler.ResourceQuota{
+				MaxTokensPerHour:    quota.MaxTokensPerHour,
+				MaxToolCallsPerHour: quota.MaxToolCallsPerHour,
+				MaxCostPerHourUSD:   quota.MaxCostPerHourUSD,
+			}
+			k.agentScheduler.Register(agentIDStr, schedulerQuota)
+		}
+
+		log.Debug().Str("agent", agentEntry.Name).Str("id", agentIDStr).Msg("Registered agent from disk")
+	}
 }
 
 func (k *Kernel) Start(ctx context.Context) error {
@@ -482,63 +496,10 @@ func (k *Kernel) Start(ctx context.Context) error {
 
 	// Load agents from agentRegistry and register to agentRuntime
 	agentEntries := k.agentRegistry.List()
-	fmt.Printf("[Kernel] Found %d agents in registry to register to runtime\n", len(agentEntries))
+	log.Info().Int("agents", len(agentEntries)).Msg("Registering agents from registry to runtime")
 	for _, entry := range agentEntries {
-		fmt.Printf("[Kernel] Registering agent from registry: ID=%s, Name=%s\n", entry.ID.String(), entry.Name)
-
-		manifest := entry.Manifest
-
-		// Get API key
-		apiKeyEnv := manifest.Model.APIKeyEnv
-		apiKey := k.GetSecret(apiKeyEnv)
-		if apiKey == "" {
-			fmt.Printf("[Kernel] Warning: API key not found for agent %s (env=%s), skipping\n", entry.Name, apiKeyEnv)
-			continue
-		}
-
-		// Create and register driver
-		driver, err := llm.NewDriver(manifest.Model.Provider, apiKey, manifest.Model.Model)
-		if err != nil {
-			fmt.Printf("[Kernel] Warning: Failed to create LLM driver for agent %s: %v, skipping\n", entry.Name, err)
-			continue
-		}
-		k.agentRuntime.RegisterDriver(manifest.Model.Provider, driver)
-
-		// Register agent to runtime with the original ID
-		_, err = k.agentRuntime.RegisterAgent(
-			context.Background(),
-			entry.ID.String(),
-			entry.Name,
-			manifest.Model.Provider,
-			manifest.Model.Model,
-			manifest.SystemPrompt,
-			manifest.Tools,
-			manifest.Skills,
-			manifest.SkillPromptContext,
-			entry.Files,
-		)
-		if err != nil {
-			fmt.Printf("[Kernel] Warning: Failed to register agent %s in runtime: %v\n", entry.Name, err)
-		} else {
-			fmt.Printf("[Kernel] Successfully registered agent %s (ID=%s) to runtime\n", entry.Name, entry.ID.String())
-
-			// Grant capabilities
-			caps := manifestToCapabilities(manifest)
-			k.capabilityMgr.Grant(entry.ID.String(), caps)
-
-			// Register agent quota
-			agentIDStr := entry.ID.String()
-			quota := k.config.Quotas.Default
-			if agentQuota, ok := k.config.Quotas.Agents[agentIDStr]; ok {
-				quota = agentQuota
-			}
-			schedulerQuota := scheduler.ResourceQuota{
-				MaxTokensPerHour:    quota.MaxTokensPerHour,
-				MaxToolCallsPerHour: quota.MaxToolCallsPerHour,
-				MaxCostPerHourUSD:   quota.MaxCostPerHourUSD,
-			}
-			k.agentScheduler.Register(agentIDStr, schedulerQuota)
-		}
+		log.Debug().Str("id", entry.ID.String()).Str("name", entry.Name).Msg("Registering agent from registry")
+		k.registerAgentToRuntime(entry)
 	}
 
 	k.started = true
@@ -855,6 +816,62 @@ func (k *Kernel) ReloadSecrets() error {
 	}
 	k.SetSecrets(secrets)
 	return nil
+}
+
+func (k *Kernel) RegisterAllAvailableDrivers(agentRuntime *agent.Runtime) {
+	providers := k.modelCatalog.ListProviders()
+	secrets := k.GetSecrets()
+
+	// First update model catalog with secrets to know which providers are configured
+	k.modelCatalog.DetectAuthWithSecrets(secrets)
+
+	for _, p := range providers {
+		// Check if provider already has a driver registered
+		if agentRuntime.HasDriver(p.ID) {
+			continue
+		}
+
+		// Get API key
+		apiKey := ""
+		if p.KeyRequired {
+			if p.APIKeyEnv != "" {
+				apiKey = secrets[p.APIKeyEnv]
+			}
+			// Special case for Gemini which also accepts GOOGLE_API_KEY
+			if p.ID == "gemini" && apiKey == "" {
+				apiKey = secrets["GOOGLE_API_KEY"]
+			}
+
+			if apiKey == "" {
+				log.Debug().Str("provider", p.ID).Msg("No API key found, skipping driver registration")
+				continue
+			}
+		}
+
+		// Find a default model for this provider
+		var defaultModel string
+		models := k.modelCatalog.ListModels()
+		for _, m := range models {
+			if m.Provider == p.ID {
+				defaultModel = m.ModelName
+				break
+			}
+		}
+		if defaultModel == "" {
+			log.Warn().Str("provider", p.ID).Msg("No model found for provider, skipping driver registration")
+			continue
+		}
+
+		// Create driver
+		driver, err := llm.NewDriver(p.ID, apiKey, defaultModel)
+		if err != nil {
+			log.Warn().Str("provider", p.ID).Err(err).Msg("Failed to create LLM driver, skipping registration")
+			continue
+		}
+
+		agentRuntime.RegisterDriver(p.ID, driver)
+		log.Info().Str("provider", p.ID).Msg("Registered LLM driver")
+	}
 }
 
 func (k *Kernel) EventBus() *eventbus.EventBus {

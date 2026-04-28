@@ -557,6 +557,11 @@ tr:hover td { background: var(--surface2); }
 }
 .session-dot.active { background: var(--success); }
 
+/* Model switcher */
+.model-option:hover { background: var(--surface2); }
+.model-option.active { background: var(--accent-subtle); }
+.model-option.active:hover { background: var(--accent-subtle); }
+
 /* Chat search bar */
 .chat-search-bar {
   display: flex;
