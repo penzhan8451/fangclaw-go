@@ -360,7 +360,7 @@ func NewWebSearchTool() *WebSearchTool {
 	}
 
 	// Try Baidu (no API key needed for basic search)
-	if os.Getenv("BAIDU_ENABLED") == "true" || os.Getenv("BAIDU_ENABLED") == "1" {
+	if true || (os.Getenv("BAIDU_ENABLED") == "true" || os.Getenv("BAIDU_ENABLED") == "1") {
 		tool.provider = "baidu"
 		return tool
 	}

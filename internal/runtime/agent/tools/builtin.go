@@ -416,7 +416,7 @@ func (t *SearchTool) Execute(ctx context.Context, args map[string]interface{}) (
 	}
 
 	// Then try Baidu if enabled
-	if os.Getenv("BAIDU_ENABLED") == "true" || os.Getenv("BAIDU_ENABLED") == "1" {
+	if true || (os.Getenv("BAIDU_ENABLED") == "true" || os.Getenv("BAIDU_ENABLED") == "1") {
 		if result, err := t.searchBaidu(ctx, query, 5); err == nil {
 			return result, nil
 		}
