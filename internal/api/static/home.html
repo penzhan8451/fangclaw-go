@@ -42,7 +42,28 @@
             }
         }
 
-        checkAuth();
+        // Check for GitHub login success callback
+        var urlParams = new URLSearchParams(window.location.search);
+        var githubLoginSuccess = urlParams.get('github_login') === 'success';
+        var token = urlParams.get('token');
+
+        if (githubLoginSuccess && token) {
+            // Set the token immediately
+            localStorage.setItem('fangclawgo-token', token);
+            
+            // Remove query params from URL without reloading
+            var newUrl = window.location.pathname + window.location.hash;
+            window.history.replaceState({}, '', newUrl);
+            
+            // Update UI
+            checkAuth();
+            
+            // Redirect to dashboard
+            window.location.href = '/index.html';
+        } else {
+            // Initial data load - check auth first
+            checkAuth();
+        }
     </script>
 
     <section class="hero">

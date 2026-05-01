@@ -152,23 +152,31 @@ func (s *MultiTenantServer) createHandler(mux *http.ServeMux) http.HandlerFunc {
 		}
 
 		token := extractTokenFromRequest(r)
+		log.Debug().Str("token", token).Bool("has_token", token != "").Msg("Extracted token")
+
 		if token != "" {
 			user, err := s.authManager.ValidateToken(token)
-			if err == nil {
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to validate token")
+			} else {
+				log.Debug().Str("user_id", user.ID).Str("username", user.Username).Msg("Token validated successfully")
+				// 首先设置基本的认证 context（这些是 /api/auth/me 等路由需要的）
+				ctx := r.Context()
+				ctx = context.WithValue(ctx, "user_id", user.ID)
+				ctx = context.WithValue(ctx, "username", user.Username)
+				ctx = context.WithValue(ctx, UserKey, user)
+
+				// 尝试获取或创建 userKernel（对于需要 kernel 的路由）
 				userKernel, err := s.kernelManager.GetOrCreateKernel(user.ID, user.Username, user.Role)
 				if err != nil {
 					log.Error().Err(err).Str("user", user.Username).Msg("Failed to get/create user kernel")
 				} else {
-					ctx := r.Context()
-					ctx = context.WithValue(ctx, "user_id", user.ID)
 					ctx = context.WithValue(ctx, "user_kernel", userKernel)
-					ctx = context.WithValue(ctx, "username", user.Username)
-					ctx = context.WithValue(ctx, UserKey, user)
-					mux.ServeHTTP(w, r.WithContext(ctx))
-					return
 				}
-			} else {
-				log.Error().Err(err).Msg("Failed to validate token")
+
+				// 无论是否成功获取 userKernel，都继续处理请求
+				mux.ServeHTTP(w, r.WithContext(ctx))
+				return
 			}
 		}
 
@@ -328,7 +336,11 @@ func (s *MultiTenantServer) setupStaticFiles(mux *http.ServeMux) {
 			http.Redirect(w, r, "/index", http.StatusFound)
 			return
 		case "/", "/home":
-			http.Redirect(w, r, "/home", http.StatusFound)
+			redirectPath := "/home"
+			if r.URL.RawQuery != "" {
+				redirectPath += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, redirectPath, http.StatusFound)
 			return
 		}
 		fs.ServeHTTP(w, r)
