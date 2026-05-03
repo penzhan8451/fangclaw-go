@@ -6,7 +6,7 @@
     {
       "name": "analyze",
       "agent": {
-        "name": "analyst"
+        "name": "Data analyst"
       },
       "prompt_template": "Please analyze this input carefully: {{input}}",
       "mode": "sequential",

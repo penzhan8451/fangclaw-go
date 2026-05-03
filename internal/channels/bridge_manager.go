@@ -6,14 +6,13 @@ import (
 	"sync"
 
 	"github.com/penzhan8451/fangclaw-go/internal/autoreply"
+	"github.com/rs/zerolog/log"
 )
 
-// KernelResolver resolves a kernel by owner username.
 type KernelResolver interface {
 	GetKernelByOwner(owner string) (ChannelBridgeHandle, bool)
 }
 
-// BridgeManager manages all running channel adapters and dispatches messages.
 type BridgeManager struct {
 	handle         ChannelBridgeHandle
 	router         *AgentRouter
@@ -25,7 +24,6 @@ type BridgeManager struct {
 	kernelResolver KernelResolver
 }
 
-// NewBridgeManager creates a new bridge manager.
 func NewBridgeManager(handle ChannelBridgeHandle, router *AgentRouter) *BridgeManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &BridgeManager{
@@ -37,12 +35,10 @@ func NewBridgeManager(handle ChannelBridgeHandle, router *AgentRouter) *BridgeMa
 	}
 }
 
-// SetKernelResolver sets the kernel resolver for multi-tenant message routing.
 func (m *BridgeManager) SetKernelResolver(resolver KernelResolver) {
 	m.kernelResolver = resolver
 }
 
-// RegisterAdapter registers a channel adapter with the bridge manager.
 func (m *BridgeManager) RegisterAdapter(name string, adapter Adapter) error {
 	m.adaptersMu.Lock()
 	defer m.adaptersMu.Unlock()
@@ -53,25 +49,20 @@ func (m *BridgeManager) RegisterAdapter(name string, adapter Adapter) error {
 
 	m.adapters[name] = adapter
 
-	// If bridge manager is already running, start dispatching for this new adapter
 	select {
 	case <-m.ctx.Done():
-		// Bridge manager is stopping, don't start
 	default:
-		// Check if we're already started (by seeing if cancel func is still valid)
-		// Start dispatching for this new adapter
-		fmt.Printf("Registering and starting new channel adapter: %s\n", name)
+		log.Info().Str("adapter", name).Msg("Registering and starting new channel adapter")
 
-		// Check if adapter is already connected and started - if not, do it
 		if adapter.GetState() != ChannelStateConnected {
 			if err := adapter.Connect(); err != nil {
-				fmt.Printf("Warning: Failed to connect %s: %v\n", name, err)
+				log.Warn().Str("adapter", name).Err(err).Msg("Failed to connect adapter")
 			}
 		}
 
 		if adapter.GetState() != ChannelStateConnected {
 			if err := adapter.Start(); err != nil {
-				fmt.Printf("Warning: Failed to start %s: %v\n", name, err)
+				log.Warn().Str("adapter", name).Err(err).Msg("Failed to start adapter")
 			}
 		}
 
@@ -80,20 +71,19 @@ func (m *BridgeManager) RegisterAdapter(name string, adapter Adapter) error {
 			m.wg.Add(1)
 			go m.dispatchMessages(name, adapter, msgChan)
 		} else {
-			fmt.Printf("Warning: Failed to get receive channel for %s: %v\n", name, err)
+			log.Warn().Str("adapter", name).Err(err).Msg("Failed to get receive channel")
 		}
 	}
 
 	return nil
 }
 
-// Start starts all registered adapters and begins message dispatching.
 func (m *BridgeManager) Start() error {
 	m.adaptersMu.RLock()
 	defer m.adaptersMu.RUnlock()
 
 	for name, adapter := range m.adapters {
-		fmt.Printf("Starting channel adapter: %s\n", name)
+		log.Info().Str("adapter", name).Msg("Starting channel adapter")
 
 		if err := adapter.Connect(); err != nil {
 			return fmt.Errorf("failed to connect %s: %w", name, err)
@@ -115,20 +105,19 @@ func (m *BridgeManager) Start() error {
 	return nil
 }
 
-// dispatchMessages dispatches messages from a channel adapter.
 func (m *BridgeManager) dispatchMessages(name string, adapter Adapter, msgChan <-chan *Message) {
 	defer m.wg.Done()
 
-	fmt.Printf("Message dispatcher started for: %s\n", name)
+	log.Info().Str("adapter", name).Msg("Message dispatcher started")
 
 	for {
 		select {
 		case <-m.ctx.Done():
-			fmt.Printf("Message dispatcher stopped for: %s\n", name)
+			log.Info().Str("adapter", name).Msg("Message dispatcher stopped")
 			return
 		case msg, ok := <-msgChan:
 			if !ok {
-				fmt.Printf("Message channel closed for: %s\n", name)
+				log.Info().Str("adapter", name).Msg("Message channel closed")
 				return
 			}
 
@@ -137,67 +126,62 @@ func (m *BridgeManager) dispatchMessages(name string, adapter Adapter, msgChan <
 			if channel != nil {
 				owner = channel.Owner
 			}
-			fmt.Printf("[BridgeManager] Received message from %s (owner: %s): %s\n", name, owner, msg.Content)
+			log.Debug().Str("adapter", name).Str("owner", owner).Str("content", msg.Content).Msg("Received message")
 			m.handleMessage(adapter, msg)
 		}
 	}
 }
 
-// handleMessage processes a single message.
 func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 	channelType := adapter.GetChannel().Type
 	channel := adapter.GetChannel()
 	owner := channel.Owner
 
 	var handle ChannelBridgeHandle = m.handle
-	fmt.Printf("[BridgeManager] Default handle type: %T, kernelResolver nil: %v\n", m.handle, m.kernelResolver == nil)
+	log.Debug().Str("handle_type", fmt.Sprintf("%T", m.handle)).Bool("kernel_resolver_nil", m.kernelResolver == nil).Msg("Handling message")
 	if m.kernelResolver != nil && owner != "" {
 		if kernelHandle, ok := m.kernelResolver.GetKernelByOwner(owner); ok {
 			handle = kernelHandle
-			fmt.Printf("[BridgeManager] Routing message to kernel for owner: %s, handle type: %T\n", owner, handle)
+			log.Debug().Str("owner", owner).Str("handle_type", fmt.Sprintf("%T", handle)).Msg("Routing message to kernel for owner")
 		} else {
-			fmt.Printf("[BridgeManager] No kernel found for owner: %s, using default handle\n", owner)
+			log.Debug().Str("owner", owner).Msg("No kernel found for owner, using default handle")
 		}
 	}
 
 	if cmd, args, isCmd := isCommand(msg.Content); isCmd {
-		fmt.Printf("Handling command: /%s\n", cmd)
+		log.Info().Str("command", cmd).Msg("Handling command")
 		response := m.handleCommand(adapter, msg, cmd, args, handle)
 		m.sendReplyWithHandle(adapter, msg, response, "", handle)
 		return
 	}
 
-	// 直接从用户的 kernel 获取 agents，不用全局的 router
 	agents, err := handle.ListAgents(m.ctx)
 	if err == nil {
-		fmt.Printf("Available agents in user kernel: %v\n", agents)
+		log.Debug().Int("count", len(agents)).Msg("Available agents in user kernel")
 		for i, a := range agents {
-			fmt.Printf("  Agent[%d]: ID=%q, Name=%q\n", i, a.ID, a.Name)
+			log.Debug().Int("index", i).Str("id", a.ID).Str("name", a.Name).Msg("Agent")
 		}
 	} else {
-		fmt.Printf("Error listing agents in user kernel: %v\n", err)
+		log.Warn().Err(err).Msg("Error listing agents in user kernel")
 	}
 
 	var agentID string
 	if len(agents) > 0 {
-		// 优先检查用户是否通过 /agent 命令指定了特定的 agent
 		if userAgentID, ok := m.router.Route(channelType, msg.Sender); ok {
-			// 验证指定的 agent 是否在可用列表中
 			found := false
 			for _, a := range agents {
 				if a.ID == userAgentID {
 					found = true
 					agentID = userAgentID
-					fmt.Printf("Using user-selected agent: %s\n", agentID)
+					log.Info().Str("agent_id", agentID).Msg("Using user-selected agent")
 					break
 				}
 			}
 			if !found {
-				fmt.Printf("User-selected agent %s not available, trying channel config...\n", userAgentID)
+				log.Warn().Str("agent_id", userAgentID).Msg("User-selected agent not available, trying channel config")
 			}
 		}
 
-		// 如果用户没有指定，或者指定的 agent 不存在，检查通道配置中的 DefaultAgent
 		if agentID == "" {
 			var channelDefaultAgent string
 			switch channelType {
@@ -208,35 +192,32 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 			}
 
 			if channelDefaultAgent != "" {
-				// 按名称查找 agent
 				channelAgentID, found := handle.FindAgentByName(m.ctx, channelDefaultAgent)
 				if found {
-					// 验证找到的 agent 是否在可用列表中
 					available := false
 					for _, a := range agents {
 						if a.ID == channelAgentID {
 							available = true
 							agentID = channelAgentID
-							fmt.Printf("Using channel-configured agent: %s (%s)\n", agentID, channelDefaultAgent)
+							log.Info().Str("agent_id", agentID).Str("agent_name", channelDefaultAgent).Msg("Using channel-configured agent")
 							break
 						}
 					}
 					if !available {
-						fmt.Printf("Channel-configured agent %s (ID: %s) not in available list, using first agent\n", channelDefaultAgent, channelAgentID)
+						log.Warn().Str("agent_name", channelDefaultAgent).Str("agent_id", channelAgentID).Msg("Channel-configured agent not in available list, using first agent")
 					}
 				} else {
-					fmt.Printf("Channel-configured agent %s not found by name, using first agent\n", channelDefaultAgent)
+					log.Warn().Str("agent_name", channelDefaultAgent).Msg("Channel-configured agent not found by name, using first agent")
 				}
 			}
 		}
 
-		// 如果以上都没有，使用第一个可用的 agent
 		if agentID == "" {
 			agentID = agents[0].ID
-			fmt.Printf("Using first available agent from user kernel: %s (%s)\n", agentID, agents[0].Name)
+			log.Info().Str("agent_id", agentID).Str("agent_name", agents[0].Name).Msg("Using first available agent from user kernel")
 		}
 	} else {
-		fmt.Printf("No agents available in user kernel!\n")
+		log.Warn().Msg("No agents available in user kernel")
 		helpMsg := "No agent assigned. Use /agents to list available agents, then /agent <name> to select one."
 		m.sendReplyWithHandle(adapter, msg, helpMsg, "", handle)
 		return
@@ -246,12 +227,11 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 	if autoReplyEngine != nil {
 		replyAgentID := autoReplyEngine.ShouldReply(msg.Content, string(channelType), agentID)
 		if replyAgentID == "" {
-			fmt.Printf("Message suppressed by pattern: %s\n", msg.Content)
+			log.Debug().Str("content", msg.Content).Msg("Message suppressed by pattern")
 			return
 		}
 
-		fmt.Printf("AutoReply triggered for message: %s (agentID=%s, availableAgents=%v)\n", msg.Content, agentID, agents)
-		fmt.Printf("AutoReply msg.sender: %s\n", msg.Sender)
+		log.Info().Str("content", msg.Content).Str("agent_id", agentID).Msg("AutoReply triggered for message")
 		replyChannel := autoreply.AutoReplyChannel{
 			ChannelType: string(channelType),
 			PeerID:      msg.Sender,
@@ -264,13 +244,13 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 				Recipient: msg.Sender,
 				Sender:    "bot",
 			}
-			fmt.Printf("AutoReply Recipient in sendFn(): %s\n", msg.Sender)
+			log.Debug().Str("recipient", msg.Sender).Msg("AutoReply sending reply")
 			sendErr := adapter.Send(replyMsg)
 			if sendErr == nil {
-				fmt.Printf("AutoReply successfully sent reply to QQ user: %s\n", msg.Sender)
+				log.Info().Str("recipient", msg.Sender).Msg("AutoReply successfully sent reply")
 				handle.RecordDelivery(m.ctx, replyAgentID, string(channelType), msg.Sender, true, "")
 			} else {
-				fmt.Printf("AutoReply failed to send reply to QQ user: %v\n", sendErr)
+				log.Warn().Err(sendErr).Str("recipient", msg.Sender).Msg("AutoReply failed to send reply")
 				handle.RecordDelivery(m.ctx, replyAgentID, string(channelType), msg.Sender, false, sendErr.Error())
 			}
 			return sendErr
@@ -285,16 +265,16 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 			handle.SendMessage,
 		)
 		if err == nil {
-			fmt.Printf("AutoReply ExecuteReply returned nil, will send reply asynchronously\n")
+			log.Debug().Msg("AutoReply ExecuteReply returned nil, will send reply asynchronously")
 			return
 		}
-		fmt.Printf("AutoReply ExecuteReply failed: %v, falling back to sync path\n", err)
+		log.Warn().Err(err).Msg("AutoReply ExecuteReply failed, falling back to sync path")
 	}
 
 	response, err := handle.SendMessage(m.ctx, agentID, msg.Content)
-	fmt.Printf("[BridgeManager] SendMessage called with agentID=%s, handle type=%T, error=%v, response_len=%d\n", agentID, handle, err, len(response))
+	log.Debug().Str("agent_id", agentID).Err(err).Int("response_len", len(response)).Msg("SendMessage result")
 	if err != nil {
-		fmt.Printf("Failed to send message to agent: %v\n", err)
+		log.Warn().Err(err).Str("agent_id", agentID).Msg("Failed to send message to agent")
 		handle.RecordDelivery(m.ctx, agentID, string(channelType), msg.Sender, false, err.Error())
 		errorMsg := "No agent found. Use /agents to list available agents, then /agent <name> or /agent default to select one."
 		m.sendReplyWithHandle(adapter, msg, errorMsg, "", handle)
@@ -306,14 +286,12 @@ func (m *BridgeManager) handleMessage(adapter Adapter, msg *Message) {
 	}
 }
 
-// sendReply sends a reply message to the user and records a delivery receipt if agentID is provided.
 func (m *BridgeManager) sendReply(adapter Adapter, originalMsg *Message, content string, agentID string) {
 	m.sendReplyWithHandle(adapter, originalMsg, content, agentID, m.handle)
 }
 
-// sendReplyWithHandle sends a reply using the specified handle.
 func (m *BridgeManager) sendReplyWithHandle(adapter Adapter, originalMsg *Message, content string, agentID string, handle ChannelBridgeHandle) {
-	fmt.Printf("[BridgeManager] sendReplyWithHandle called: Recipient=%s, content_len=%d\n", originalMsg.Sender, len(content))
+	log.Debug().Str("recipient", originalMsg.Sender).Int("content_len", len(content)).Msg("Sending reply")
 	channelType := adapter.GetChannel().Type
 	replyMsg := &Message{
 		Content:   content,
@@ -321,39 +299,37 @@ func (m *BridgeManager) sendReplyWithHandle(adapter Adapter, originalMsg *Messag
 		Sender:    "bot",
 	}
 
-	fmt.Printf("[BridgeManager] Calling adapter.Send (QQ adapter)...\n")
 	if err := adapter.Send(replyMsg); err != nil {
-		fmt.Printf("Failed to send reply: %v\n", err)
+		log.Warn().Err(err).Msg("Failed to send reply")
 		if agentID != "" {
 			handle.RecordDelivery(m.ctx, agentID, string(channelType), originalMsg.Sender, false, err.Error())
 		}
 		return
 	}
-	fmt.Printf("[BridgeManager] Adapter.Send (QQ) successful!\n")
+	log.Debug().Msg("Reply sent successfully")
 
 	if agentID != "" {
 		handle.RecordDelivery(m.ctx, agentID, string(channelType), originalMsg.Sender, true, "")
 	}
 }
 
-// Stop stops all adapters and the bridge manager.
 func (m *BridgeManager) Stop() {
-	fmt.Println("Stopping bridge manager...")
+	log.Info().Msg("Stopping bridge manager")
 	m.cancel()
 
 	m.adaptersMu.RLock()
 	defer m.adaptersMu.RUnlock()
 
 	for name, adapter := range m.adapters {
-		fmt.Printf("Stopping channel adapter: %s\n", name)
+		log.Info().Str("adapter", name).Msg("Stopping channel adapter")
 		if err := adapter.Stop(); err != nil {
-			fmt.Printf("Error stopping %s: %v\n", name, err)
+			log.Warn().Str("adapter", name).Err(err).Msg("Error stopping adapter")
 		}
 		if err := adapter.Disconnect(); err != nil {
-			fmt.Printf("Error disconnecting %s: %v\n", name, err)
+			log.Warn().Str("adapter", name).Err(err).Msg("Error disconnecting adapter")
 		}
 	}
 
 	m.wg.Wait()
-	fmt.Println("Bridge manager stopped")
+	log.Info().Msg("Bridge manager stopped")
 }

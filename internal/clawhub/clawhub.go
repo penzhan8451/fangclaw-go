@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 type ClawHubStats struct {
@@ -207,7 +209,7 @@ func (c *ClawHubClient) Browse(sort ClawHubSort, limit uint32, cursor *string) (
 			u = fmt.Sprintf("%s&cursor=%s", u, url.QueryEscape(*cursor))
 		}
 
-		fmt.Println("[ClawHub]Requesting url:", u)
+		log.Debug().Str("url", u).Msg("ClawHub requesting URL")
 		req, err := http.NewRequest("GET", u, nil)
 		if err != nil {
 			return nil, err
@@ -216,7 +218,7 @@ func (c *ClawHubClient) Browse(sort ClawHubSort, limit uint32, cursor *string) (
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			fmt.Println("[ClawHub]Request failed:", err)
+			log.Warn().Err(err).Msg("ClawHub request failed")
 			return nil, err
 		}
 		defer resp.Body.Close()

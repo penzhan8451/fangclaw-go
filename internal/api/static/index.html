@@ -582,6 +582,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .main-content { padding: 0; }
   .table-wrap { font-size: 10px; }
   .modal { margin: 8px; max-height: calc(100vh - 16px); }
+  
+  /* Project header buttons: hide text, show only icon on mobile */
+  .project-action-btn-text { display: none; }
+  .project-action-btn { padding: 8px 10px; }
 }
 
 /* Touch-friendly tap targets */
@@ -590,6 +594,55 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .nav-item { min-height: 44px; }
   .form-input, .form-select, .form-textarea { min-height: 44px; }
   .toggle { min-width: 44px; min-height: 28px; }
+}
+
+/* Project Sidebar Responsive */
+@media (max-width: 768px) {
+  .projects-layout {
+    grid-template-columns: 1fr !important;  /* 移动端只显示内容区 */
+    position: relative;
+  }
+  
+  .project-sidebar {
+    display: none !important;  /* 默认隐藏，强制覆盖 inline style */
+  }
+  
+  .project-sidebar.mobile-open {
+    display: flex !important;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 200;
+    transition: left 0.3s ease;
+    border-radius: 0;
+  }
+  
+  .project-sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 199;
+  }
+  
+  .project-sidebar-overlay.mobile-open {
+    display: block;
+  }
+  
+  .project-mobile-menu-btn {
+    display: flex !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .project-mobile-menu-btn {
+    display: none !important;
+  }
+  .project-sidebar-overlay {
+    display: none !important;
+  }
 }
 
 /* Focus mode — hide sidebar for distraction-free chat */
@@ -645,7 +698,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  padding: 6px;
   transition: border-color var(--transition-fast), transform 0.2s var(--ease-spring), box-shadow var(--transition-fast), background var(--transition-fast);
   position: relative;
   box-shadow: var(--shadow-xs);
@@ -4264,6 +4317,10 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
               <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
               <span class="nav-label" x-i18n="navigation.chat">Chat</span>
             </a>
+            <a class="nav-item" :class="{ active: page === 'projects' }" @click="navigate('projects')" :aria-current="page === 'projects' ? 'page' : false">
+              <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
+              <span class="nav-label" x-i18n="navigation.projects">Projects</span>
+            </a>
           </div>
         </template>
       </div>
@@ -5566,8 +5623,6 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
               </div>
             </div>
           </template>
-        </div>
-      </div>
     </template>
 
     <!-- Page: Workflows -->
@@ -6641,6 +6696,457 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                     </div>
                   </div>
                 </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <!-- Page: Projects -->
+    <template x-if="page === 'projects'">
+      <div x-data="projectsPage" x-init="init()">
+        <div class="page-header">
+          <h2>Projects</h2>
+          <button class="btn btn-primary btn-sm" @click="showCreateModal = true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            New Project
+          </button>
+        </div>
+        <div class="page-body">
+          <div class="projects-layout" style="display:grid;grid-template-columns:240px 1fr;gap:16px;height:calc(100vh - 120px);">
+            
+            <!-- Project Sidebar Overlay (Mobile Only) -->
+            <div class="project-sidebar-overlay" @click="showProjectSidebar = false" :class="showProjectSidebar ? 'mobile-open' : ''" style="display:none;"></div>
+            
+            <!-- Project List Sidebar -->
+            <div class="card project-sidebar" :class="showProjectSidebar ? 'mobile-open' : ''" style="display:flex;flex-direction:column;overflow:hidden;">
+              <div class="card-header" style="flex-shrink:0;">Your Projects</div>
+              <div style="flex:1;overflow:auto;padding:8px;">
+                <div x-show="loading" class="loading-state" style="padding:20px 0;"><div class="spinner"></div><span>Loading projects...</span></div>
+                <div x-show="!loading && !projects.length" class="empty-state" style="padding:20px 0;">
+                  <h4>No projects yet</h4>
+                  <p>Create a project to start collaborating with multiple agents.</p>
+                </div>
+                <template x-for="project in projects" :key="project.id">
+                  <div class="project-item" :class="{ 'project-item-active': currentProject && currentProject.id === project.id }" 
+                       @click="selectProject(project)" style="padding:6px;border-radius:8px;cursor:pointer;margin-bottom:4px;transition:background-color 0.15s;">
+                    <div class="project-item-header" style="display:flex;justify-content:space-between;align-items:center;">
+                      <div class="project-name" style="font-weight:600;" x-text="project.name"></div>
+                      <button class="btn btn-ghost btn-sm" @click.stop="deleteProject(project.id)" style="padding:4px 8px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                      </button>
+                    </div>
+                    <div class="project-desc" style="font-size:0.8rem;color:var(--text-dim);margin-top:4px;" x-text="project.description || 'No description'"></div>
+                    <div class="project-meta" style="font-size:0.75rem;color:var(--text-dim);margin-top:4px;display:flex;gap:8px;">
+                      <span x-text="(project.members || []).length + ' agent(s)'"></span>
+                      <span x-text="(project.chat_history || []).length + ' message(s)'"></span>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Project Details -->
+            <div class="card" style="display:flex;flex-direction:column;overflow:hidden;">
+              <template x-if="!currentProject">
+                <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+                  <!-- Header with Mobile Menu Button -->
+                  <div style="padding:8px;border-bottom:1px solid var(--border);flex-shrink:0;">
+                    <button class="btn btn-ghost btn-sm project-mobile-menu-btn" @click="showProjectSidebar = !showProjectSidebar" style="display:none;padding:8px;">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                      </svg>
+                    </button>
+                  </div>
+                  <div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-dim);overflow:auto;">
+                    <div style="text-align:center;max-width:600px;padding:16px;">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:16px;opacity:0.5;"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                    <h4>Select or create a project</h4>
+                    <p style="margin-bottom:16px;">Each project is a unit that allows multiple agents to work collaboratively on a task.</p>
+                    <div style="text-align:left;background:var(--bg-secondary);padding:12px;border-radius:8px;font-size:0.8rem;">
+                      <div style="font-weight:600;margin-bottom:8px;">Quick guide:</div>
+                      <ol style="margin:0;padding-left:18px;line-height:1.6;">
+                        <li>Go to <a href="#" @click.prevent="navigate('agents')" style="color:var(--accent);">Chat</a> page to start the agents you need</li>
+                        <li style="color:var(--text);">Return here, create a project, and add agents (related to your task) as members, for example, add 'Writer' agent if your task require writing content</li>
+                        <li>Optionally upload a workflow file on the "Workflows" TAB or Auto-Generate one based on your task description</li>
+                        <li>Enter your task description on the "Chat" TAB, and workflow will execute</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <template x-if="currentProject">
+                <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+                  <!-- Project Header -->
+                  <div style="padding:8px;border-bottom:1px solid var(--border);flex-shrink:0;">
+                    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;">
+                      <!-- Mobile Menu Button -->
+                      <button class="btn btn-ghost btn-sm project-mobile-menu-btn" @click="showProjectSidebar = !showProjectSidebar" style="display:none;padding:8px;flex-shrink:0;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <line x1="3" y1="6" x2="21" y2="6"></line>
+                          <line x1="3" y1="12" x2="21" y2="12"></line>
+                          <line x1="3" y1="18" x2="21" y2="18"></line>
+                        </svg>
+                      </button>
+                      <div style="min-width:0;flex:1 1 auto;">
+                        <h3 x-text="currentProject.name"></h3>
+                        <p class="text-sm text-dim" x-text="currentProject.description"></p>
+                      </div>
+                      <div class="flex gap-2 project-header-actions" style="flex-shrink:0;">
+                        <button class="btn btn-ghost btn-sm project-action-btn" title="Bind Workflow" @click="showBindWorkflowModal = true; loadAvailableWorkflows()">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                          <span class="project-action-btn-text">Bind Workflow</span>
+                        </button>
+                        <button class="btn btn-ghost btn-sm project-action-btn" title="Add Agent" @click="showAddMemberModal = true">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a3 3 0 01-6 0 3 3 0 016 0z"/><path d="M5 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><path d="M12 9v12"/></svg>
+                          <span class="project-action-btn-text">Add Agent</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2 mt-3" style="overflow:visible;">
+                      <template x-for="member in currentProject.members" :key="member.id">
+                        <div class="project-member-badge" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--bg-secondary);border-radius:20px;font-size:0.8rem;">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>
+                          <span x-text="member.name"></span>
+                          <span class="badge badge-dim" style="font-size:0.65rem;" x-text="member.role"></span>
+                          <template x-if="member.role !== 'pm'">
+                            <button class="btn btn-ghost btn-sm" @click="removeMember(member.id)" style="padding:0 4px;">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                            </button>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+
+                  <!-- Tab Navigation -->
+                  <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;">
+                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'chat' ? 'border-bottom:2px solid var(--accent);font-weight:600;' : ''" @click="projectTab = 'chat'" style="padding:8px 16px;">Chat</button>
+                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'workflows' ? 'border-bottom:2px solid var(--accent);font-weight:600;' : ''" @click="projectTab = 'workflows'" style="padding:8px 16px;">Workflows</button>
+                  </div>
+
+                  <!-- Chat Tab -->
+                  <template x-if="projectTab === 'chat'">
+                    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+                      <div style="flex:1;overflow:auto;padding:16px;">
+                        <template x-for="msg in (currentProject.chat_history || [])" :key="msg.id">
+                          <div class="chat-message" :class="msg.role" style="max-width:80%;margin-bottom:16px;" :style="msg.role === 'user' ? 'margin-left:auto;' : 'margin-right:auto;'">
+                            <div class="chat-message-header" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;" :style="msg.role === 'user' ? 'justify-content:flex-end;' : 'justify-content:flex-start;'">
+                              <template x-if="msg.agent_name">
+                                <span class="badge badge-dim" x-text="msg.agent_name"></span>
+                              </template>
+                              <span class="text-xs text-dim" x-text="formatDate(msg.timestamp)"></span>
+                            </div>
+                            <div class="chat-message-content" style="padding:12px;border-radius:12px;" :style="msg.role === 'user' ? 'background:var(--accent);color:white;' : 'background:var(--bg-secondary);'">
+                              <p x-text="msg.content" style="white-space:pre-wrap;margin:0;"></p>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                      <div style="padding:16px;border-top:1px solid var(--border);flex-shrink:0;position:relative;">
+                        <!-- Slash Command Dropdown -->
+                        <template x-if="showWorkflowCommands && (currentProject.workflow_bindings || []).length > 0">
+                          <div style="position:absolute;bottom:100%;left:16px;right:16px;background:var(--bg);border:2px solid #f1d963;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);max-height:200px;overflow:auto;z-index:50;">
+                            <div style="padding:8px 12px;font-size:0.75rem;color:var(--text-dim);border-bottom:1px solid var(--border);">
+                              Bound Workflows (click to run)
+                            </div>
+                            <template x-for="(wf, index) in (currentProject.workflow_bindings || [])" :key="wf.workflow_id">
+                              <div 
+                                style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;"
+                                @click="selectWorkflowFromCommand(wf)"
+                                @mouseenter="hoverCommandIndex = index"
+                                :style="hoverCommandIndex === index ? 'background:var(--bg-secondary);' : ''"
+                              >
+                                <div>
+                                  <div style="font-weight:500;" x-text="wf.workflow_name || wf.workflow_id"></div>
+                                  <div style="font-size:0.75rem;color:var(--text-dim);" x-text="wf.trigger_mode"></div>
+                                </div>
+                                <span class="badge" :class="wf.enabled ? 'badge-success' : 'badge-dim'" x-text="wf.enabled ? 'Enabled' : 'Disabled'"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                        <div class="flex gap-2">
+                          <input class="form-input" type="text" placeholder="Type a message or '/' to run workflow..." x-model="chatMessage" @keydown.enter="sendMessage()" @input="onChatInput()" @keydown="onChatKeydown($event)" :disabled="chatLoading">
+                          <button class="btn btn-primary" @click="sendMessage()" :disabled="chatLoading || !chatMessage.trim()">
+                            <template x-if="chatLoading">
+                              <span>Sending...</span>
+                            </template>
+                            <template x-if="!chatLoading">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                            </template>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- Workflows Tab -->
+                  <template x-if="projectTab === 'workflows'">
+                    <div style="flex:1;overflow:auto;padding:16px;">
+                      <!-- AI Generate Workflow -->
+                      <div style="padding:16px;background:var(--bg-secondary);border-radius:12px;margin-bottom:16px;">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                          <span style="font-weight:600;font-size:0.9rem;">Generate Workflow If No workflow In Hand</span>
+                        </div>
+                        <p style="margin:0 0 8px;font-size:0.8rem;color:var(--text-dim);">Describe what you want to accomplish, and will generate a workflow based on your project members.</p>
+                        <div class="flex gap-2">
+                          <input class="form-input" type="text" placeholder="e.g., Research a topic and write a summary report..." x-model="aiGenDescription" @keydown.enter="generateWorkflowByAI()" :disabled="aiGenLoading">
+                          <button class="btn btn-primary" @click="generateWorkflowByAI()" :disabled="aiGenLoading || !aiGenDescription.trim()">
+                            <template x-if="aiGenLoading">
+                              <span>Generating...</span>
+                            </template>
+                            <template x-if="!aiGenLoading">
+                              <span>Generate</span>
+                            </template>
+                          </button>
+                        </div>
+                        <!-- AI Generated Result -->
+                        <template x-if="aiGenResult">
+                          <div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+                            <div style="font-weight:600;margin-bottom:8px;" x-text="aiGenResult.workflow.name"></div>
+                            <p style="margin:0 0 8px;font-size:0.8rem;color:var(--text-dim);" x-text="aiGenResult.workflow.description"></p>
+                            <div style="margin-bottom:8px;">
+                              <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:4px;">Steps:</div>
+                              <template x-for="(step, idx) in (aiGenResult.workflow.steps || [])" :key="idx">
+                                <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.8rem;">
+                                  <span style="color:var(--accent);font-weight:600;" x-text="(idx + 1) + '.'"></span>
+                                  <span x-text="step.name"></span>
+                                  <span class="badge badge-dim" x-text="step.agent && step.agent.name ? step.agent.name : 'unknown'"></span>
+                                </div>
+                              </template>
+                            </div>
+                            <div class="flex gap-2">
+                              <button class="btn btn-primary btn-sm" @click="confirmGeneratedWorkflow()">Confirm & Add</button>
+                              <button class="btn btn-ghost btn-sm" @click="cancelGeneratedWorkflow()">Cancel</button>
+                            </div>
+                            <details style="margin-top:8px;">
+                              <summary style="font-size:0.75rem;color:var(--text-dim);cursor:pointer;">Workflow JSON</summary>
+                              <pre style="margin-top:4px;padding:8px;background:var(--bg-secondary);border-radius:6px;font-size:0.7rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all;" x-text="aiGenResult.workflow_json"></pre>
+                            </details>
+                          </div>
+                        </template>
+                      </div>
+
+                      <!-- Drop Zone -->
+                      <p>**Alternatively**, you can drag & drop a workflow JSON file here:</p> 
+                      <div
+                        @dragover="onDragOver($event)"
+                        @dragleave="onDragLeave($event)"
+                        @drop="handleWorkflowDrop($event)"
+                        :style="dragOver ? 'border:2px dashed var(--accent);background:var(--bg-secondary);' : 'border:2px dashed var(--border);'"
+                        style="border-radius:12px;padding:32px;text-align:center;margin-bottom:16px;transition:all 0.2s;">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 8px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <p style="margin:0;color:var(--text-dim);">Drag & drop a workflow JSON file here</p>
+                      </div>
+
+                      <!-- Bound Workflows List -->
+                      <template x-if="(currentProject.workflow_bindings || []).length > 0">
+                        <div>
+                          <h4 style="margin:0 0 12px;font-size:0.9rem;">Bound Workflows:</h4>
+                          <template x-for="wf in (currentProject.workflow_bindings || [])" :key="wf.workflow_id">
+                            <div style="padding:14px;background:var(--bg-secondary);border-radius:8px;margin-bottom:8px;" :style="!wf.enabled ? 'opacity:0.6;' : ''">
+                              <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <div style="font-weight:600;" x-text="'**' + wf.workflow_name || wf.workflow_id"></div>
+                                <div class="flex gap-1">
+                                  <button class="btn btn-ghost btn-sm" @click="runWorkflow(wf.workflow_id)" title="Run workflow" :disabled="chatLoading">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                  </button>
+                                  <button class="btn btn-ghost btn-sm" @click="toggleWorkflowEnabled(wf)" :title="wf.enabled ? 'Disable' : 'Enable'">
+                                    <template x-if="wf.enabled">
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 11-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                                    </template>
+                                    <template x-if="!wf.enabled">
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                                    </template>
+                                  </button>
+                                  <button class="btn btn-ghost btn-sm" @click="editWorkflowBinding(wf)" title="Edit trigger mode">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                  </button>
+                                  <button class="btn btn-ghost btn-sm" @click="unbindWorkflow(wf.workflow_id)" title="Unbind workflow">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                  </button>
+                                </div>
+                              </div>
+                              <div style="font-size:0.75rem;color:var(--text-dim);margin-top:4px;">
+                                Trigger: <span x-text="wf.trigger_mode"></span>
+                                <template x-if="wf.trigger_mode === 'keyword' && wf.keywords && wf.keywords.length">
+                                  <span> (<span x-text="wf.keywords.join(', ')"></span>)</span>
+                                </template>
+                                <span x-text="wf.enabled ? ' • Enabled' : ' • Disabled'" :style="wf.enabled ? 'color:var(--success);' : 'color:var(--text-dim);'"></span>
+                                <template x-if="wf.trigger_mode === 'auto'">
+                                  <span style="color:var(--text-dim);"> • Runs once then auto-disables</span>
+                                </template>
+                              </div>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+                      <template x-if="!(currentProject.workflow_bindings || []).length">
+                        <p class="text-dim" style="text-align:center;padding:24px;">No workflows bound to this project yet. Drop a workflow file or bind one from existing workflows.</p>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Create Project Modal -->
+          <template x-if="showCreateModal">
+            <div class="modal-overlay" @click.self="showCreateModal = false">
+              <div class="modal">
+                <div class="modal-header">
+                  <h3>Create New Project</h3>
+                  <button class="modal-close" @click="showCreateModal = false">&times;</button>
+                </div>
+                <div class="modal-body">
+                  <div class="form-group">
+                    <label>Project Name</label>
+                    <input class="form-input" type="text" x-model="newProjectName" placeholder="Enter project name">
+                  </div>
+                  <div class="form-group">
+                    <label>Description</label>
+                    <textarea class="form-input" x-model="newProjectDescription" placeholder="Enter project description" rows="3"></textarea>
+                  </div>
+                  <div class="form-group">
+                    <label>PM Keywords <span style="font-weight:normal;color:var(--dim)">(optional, comma-separated)</span></label>
+                    <input class="form-input" type="text" x-model="newPMKeywords" placeholder="e.g., search, analyze, write">
+                    <div class="text-xs text-dim" style="margin-top:4px">Keywords help PM Agent match workflows to user input. A PM Agent will be auto-generated.</div>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button class="btn btn-ghost" @click="showCreateModal = false">Cancel</button>
+                  <button class="btn btn-primary" @click="createProject()" :disabled="creating">
+                    <span x-show="creating">Creating...</span>
+                    <span x-show="!creating">Create Project</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Add Member Modal -->
+          <template x-if="showAddMemberModal">
+            <div class="modal-overlay" @click.self="showAddMemberModal = false">
+              <div class="modal">
+                <div class="modal-header">
+                  <h3>Add Agent to Project</h3>
+                  <button class="modal-close" @click="showAddMemberModal = false">&times;</button>
+                </div>
+                <div class="modal-body">
+                  <div class="form-group">
+                    <label>Agent</label>
+                    <select class="form-input" x-model="newMemberAgentId" @change="autoFillMemberName()">
+                      <option value="">Select an agent...</option>
+                      <template x-for="agent in $store.app.agents" :key="agent.id">
+                        <option :value="agent.id" x-text="agent.name"></option>
+                      </template>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Name</label>
+                    <input class="form-input" type="text" x-model="newMemberName" placeholder="Auto-filled from agent name">
+                  </div>
+                  <div class="form-group">
+                    <label>Role</label>
+                    <select class="form-input" x-model="newMemberRole">
+                      <option value="">Select a role...</option>
+                      <option value="researcher">Researcher</option>
+                      <option value="analyst">Analyst</option>
+                      <option value="writer">Writer</option>
+                      <option value="coder">Coder</option>
+                      <option value="code-reviewer">Code Reviewer</option>
+                      <option value="designer">Designer</option>
+                      <option value="translator">Translator</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button class="btn btn-ghost" @click="showAddMemberModal = false">Cancel</button>
+                  <button class="btn btn-primary" @click="addMember()">Add Agent</button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Bind Workflow Modal -->
+          <template x-if="showBindWorkflowModal">
+            <div class="modal-overlay" @click.self="showBindWorkflowModal = false">
+              <div class="modal">
+                <div class="modal-header">
+                  <h3>Bind Workflow to Project</h3>
+                  <button class="modal-close" @click="showBindWorkflowModal = false">&times;</button>
+                </div>
+                <div class="modal-body">
+                  <div class="form-group">
+                    <label>Workflow</label>
+                    <select class="form-input" x-model="bindWorkflowId" @change="onWorkflowSelect()">
+                      <option value="">Select a workflow...</option>
+                      <template x-for="wf in availableWorkflows" :key="wf.id">
+                        <option :value="wf.id" x-text="wf.name"></option>
+                      </template>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Trigger Mode</label>
+                    <select class="form-input" x-model="bindTriggerMode">
+                      <option value="auto">Auto (run once then auto-disable)</option>
+                      <option value="keyword">Keyword (trigger on specific words)</option>
+                      <option value="manual">Manual (trigger via API only)</option>
+                    </select>
+                  </div>
+                  <template x-if="bindTriggerMode === 'keyword'">
+                    <div class="form-group">
+                      <label>Keywords (comma-separated)</label>
+                      <input class="form-input" type="text" x-model="bindKeywords" placeholder="e.g., search, analyze, write">
+                    </div>
+                  </template>
+                </div>
+                <div class="modal-footer">
+                  <button class="btn btn-ghost" @click="showBindWorkflowModal = false">Cancel</button>
+                  <button class="btn btn-primary" @click="bindWorkflow()">Bind Workflow</button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Edit Workflow Binding Modal -->
+          <template x-if="showEditWorkflowModal">
+            <div class="modal-overlay" @click.self="showEditWorkflowModal = false">
+              <div class="modal">
+                <div class="modal-header">
+                  <h3>Edit Workflow Binding</h3>
+                  <button class="modal-close" @click="showEditWorkflowModal = false">&times;</button>
+                </div>
+                <div class="modal-body">
+                  <div class="form-group">
+                    <label>Workflow</label>
+                    <input class="form-input" type="text" :value="editWorkflowName" disabled>
+                  </div>
+                  <div class="form-group">
+                    <label>Trigger Mode</label>
+                    <select class="form-input" x-model="editTriggerMode">
+                      <option value="auto">Auto (run once then auto-disable)</option>
+                      <option value="keyword">Keyword (trigger on specific words)</option>
+                      <option value="manual">Manual (trigger via Run button only)</option>
+                    </select>
+                  </div>
+                  <template x-if="editTriggerMode === 'keyword'">
+                    <div class="form-group">
+                      <label>Keywords (comma-separated)</label>
+                      <input class="form-input" type="text" x-model="editKeywords" placeholder="e.g., search, analyze, write">
+                    </div>
+                  </template>
+                </div>
+                <div class="modal-footer">
+                  <button class="btn btn-ghost" @click="showEditWorkflowModal = false">Cancel</button>
+                  <button class="btn btn-primary" @click="saveWorkflowBinding()">Save Changes</button>
+                </div>
               </div>
             </div>
           </template>
@@ -12123,7 +12629,7 @@ function app() {
       });
 
       // Hash routing
-      var validPages = ['overview','agents','sessions','approvals','workflows','scheduler','channels','skills','hands','analytics','logs','settings','wizard','a2a','pairing','delivery'];
+      var validPages = ['overview','agents','sessions','approvals','workflows','scheduler','channels','skills','hands','analytics','logs','settings','wizard','a2a','pairing','delivery','projects'];
       var pageRedirects = {
         'chat': 'agents',
         'templates': 'agents',
@@ -20292,6 +20798,523 @@ function deliveryPage() {
     refreshAll() {
       this.loadDeliveryReceipts();
       this.loadDeliveryTasks();
+    }
+  };
+}
+
+function projectsPage() {
+  return {
+    projects: [],
+    loading: true,
+    creating: false,
+    currentProject: null,
+    showCreateModal: false,
+    showAddMemberModal: false,
+    showBindWorkflowModal: false,
+    showEditWorkflowModal: false,
+    newProjectName: '',
+    newProjectDescription: '',
+    newPMKeywords: '',
+    newMemberAgentId: '',
+    newMemberName: '',
+    newMemberRole: '',
+    chatLoading: false,
+    chatMessage: '',
+    availableWorkflows: [],
+    bindWorkflowId: '',
+    bindWorkflowName: '',
+    bindTriggerMode: 'auto',
+    bindKeywords: '',
+    editWorkflowId: '',
+    editWorkflowName: '',
+    editTriggerMode: 'auto',
+    editKeywords: '',
+    projectTab: 'chat',
+    dragOver: false,
+    aiGenDescription: '',
+    aiGenLoading: false,
+    aiGenResult: null,
+    showWorkflowCommands: false,
+    selectedCommandWorkflow: null,
+    hoverCommandIndex: -1,
+    showProjectSidebar: false,
+
+    async init() {
+      await this.refresh();
+    },
+
+    async refresh() {
+      try {
+        this.loading = true;
+        this.projects = await FangClawGoAPI.get('/api/projects');
+      } catch (e) {
+        console.error('Failed to load projects:', e);
+        FangClawGoToast.error('Failed to load projects');
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async createProject() {
+      if (!this.newProjectName.trim()) {
+        FangClawGoToast.error('Project name is required');
+        return;
+      }
+
+      try {
+        this.creating = true;
+        var pmKeywords = this.newPMKeywords ? this.newPMKeywords.split(',').map(function(k) { return k.trim(); }).filter(function(k) { return k; }) : [];
+        var project = await FangClawGoAPI.post('/api/projects', {
+          name: this.newProjectName.trim(),
+          description: this.newProjectDescription.trim(),
+          pm_keywords: pmKeywords
+        });
+
+        this.projects.push(project);
+        this.newProjectName = '';
+        this.newProjectDescription = '';
+        this.newPMKeywords = '';
+        this.showCreateModal = false;
+        FangClawGoToast.success('Project created successfully!');
+      } catch (e) {
+        console.error('Failed to create project:', e);
+        FangClawGoToast.error('Failed to create project');
+      } finally {
+        this.creating = false;
+      }
+    },
+
+    async deleteProject(projectId) {
+      if (!confirm('Are you sure you want to delete this project?')) return;
+
+      try {
+        await FangClawGoAPI.delete('/api/projects/' + projectId);
+        this.projects = this.projects.filter(function(p) { return p.id !== projectId; });
+        if (this.currentProject && this.currentProject.id === projectId) {
+          this.currentProject = null;
+        }
+        FangClawGoToast.success('Project deleted');
+      } catch (e) {
+        console.error('Failed to delete project:', e);
+        FangClawGoToast.error('Failed to delete project');
+      }
+    },
+
+    async selectProject(project) {
+      this.currentProject = project;
+      this.projectTab = 'chat';
+      this.showProjectSidebar = false;  // 选中后自动关闭 sidebar
+      try {
+        var chat = await FangClawGoAPI.get('/api/projects/' + project.id + '/chat');
+        this.currentProject.chat_history = chat;
+        var updated = await FangClawGoAPI.get('/api/projects/' + project.id);
+        this.currentProject.workflow_bindings = updated.workflow_bindings || [];
+      } catch (e) {
+        console.error('Failed to load project:', e);
+      }
+    },
+
+    async addMember() {
+      if (!this.newMemberAgentId || !this.newMemberName || !this.newMemberRole) {
+        FangClawGoToast.error('All fields are required');
+        return;
+      }
+
+      try {
+        await FangClawGoAPI.post('/api/projects/' + this.currentProject.id + '/members', {
+          agent_id: this.newMemberAgentId,
+          name: this.newMemberName,
+          role: this.newMemberRole
+        });
+
+        var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);
+        this.currentProject = updatedProject;
+        this.projects = this.projects.map(function(p) { return p.id === updatedProject.id ? updatedProject : p; });
+        this.newMemberAgentId = '';
+        this.newMemberName = '';
+        this.newMemberRole = '';
+        this.showAddMemberModal = false;
+        FangClawGoToast.success('Member added');
+      } catch (e) {
+        console.error('Failed to add member:', e);
+        FangClawGoToast.error('Failed to add member');
+      }
+    },
+
+    autoFillMemberName() {
+      if (this.newMemberAgentId) {
+        var agents = window.Alpine ? Alpine.store('app').agents : [];
+        var selectedAgent = agents.find(function(agent) { return agent.id === this.newMemberAgentId; }.bind(this));
+        if (selectedAgent) {
+          if (!this.newMemberName) {
+            this.newMemberName = selectedAgent.name;
+          }
+          this.newMemberRole = this.inferRoleFromName(selectedAgent.name);
+        }
+      } else {
+        this.newMemberRole = '';
+      }
+    },
+
+    inferRoleFromName(name) {
+      var nameLower = name.toLowerCase();
+      var roleMap = {
+        'research': 'researcher',
+        'search': 'researcher',
+        'analyst': 'analyst',
+        'analyz': 'analyst',
+        'writer': 'writer',
+        'author': 'writer',
+        'coder': 'coder',
+        'developer': 'coder',
+        'programmer': 'coder',
+        'code-review': 'code-reviewer',
+        'reviewer': 'code-reviewer',
+        'designer': 'designer',
+        'translator': 'translator'
+      };
+      for (var key in roleMap) {
+        if (nameLower.indexOf(key) !== -1) {
+          return roleMap[key];
+        }
+      }
+      return '';
+    },
+
+    async removeMember(agentId) {
+      if (!confirm('Are you sure you want to remove this member?')) return;
+
+      try {
+        await FangClawGoAPI.delete('/api/projects/' + this.currentProject.id + '/members/' + agentId);
+        var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);
+        this.currentProject = updatedProject;
+        this.projects = this.projects.map(function(p) { return p.id === updatedProject.id ? updatedProject : p; });
+        FangClawGoToast.success('Member removed');
+      } catch (e) {
+        console.error('Failed to remove member:', e);
+        FangClawGoToast.error('Failed to remove member');
+      }
+    },
+
+    async loadAvailableWorkflows() {
+      try {
+        this.availableWorkflows = await FangClawGoAPI.get('/api/workflows');
+      } catch (e) {
+        console.error('Failed to load workflows:', e);
+        this.availableWorkflows = [];
+      }
+    },
+
+    async bindWorkflow() {
+      if (!this.bindWorkflowId) {
+        FangClawGoToast.error('Please select a workflow');
+        return;
+      }
+
+      try {
+        var keywords = this.bindKeywords ? this.bindKeywords.split(',').map(function(k) { return k.trim(); }).filter(function(k) { return k; }) : [];
+        await FangClawGoAPI.post('/api/projects/' + this.currentProject.id + '/workflows', {
+          workflow_id: this.bindWorkflowId,
+          workflow_name: this.bindWorkflowName,
+          trigger_mode: this.bindTriggerMode,
+          keywords: keywords
+        });
+
+        var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);
+        this.currentProject = updatedProject;
+        this.projects = this.projects.map(function(p) { return p.id === updatedProject.id ? updatedProject : p; });
+        this.showBindWorkflowModal = false;
+        this.bindWorkflowId = '';
+        this.bindWorkflowName = '';
+        this.bindTriggerMode = 'auto';
+        this.bindKeywords = '';
+        FangClawGoToast.success('Workflow bound to project');
+      } catch (e) {
+        console.error('Failed to bind workflow:', e);
+        FangClawGoToast.error('Failed to bind workflow');
+      }
+    },
+
+    async unbindWorkflow(workflowId) {
+      if (!confirm('Unbind this workflow from the project?')) return;
+
+      try {
+        await FangClawGoAPI.delete('/api/projects/' + this.currentProject.id + '/workflows/' + encodeURIComponent(workflowId));
+        var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);
+        this.currentProject = updatedProject;
+        this.projects = this.projects.map(function(p) { return p.id === updatedProject.id ? updatedProject : p; });
+        FangClawGoToast.success('Workflow unbound');
+      } catch (e) {
+        console.error('Failed to unbind workflow:', e);
+        FangClawGoToast.error('Failed to unbind workflow');
+      }
+    },
+
+    async toggleWorkflowEnabled(wf) {
+      try {
+        await FangClawGoAPI.patch('/api/projects/' + this.currentProject.id + '/workflows/' + encodeURIComponent(wf.workflow_id), {
+          enabled: !wf.enabled
+        });
+        var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);
+        this.currentProject = updatedProject;
+        this.projects = this.projects.map(function(p) { return p.id === updatedProject.id ? updatedProject : p; });
+        FangClawGoToast.success(wf.enabled ? 'Workflow disabled' : 'Workflow enabled');
+      } catch (e) {
+        console.error('Failed to toggle workflow:', e);
+        FangClawGoToast.error('Failed to update workflow');
+      }
+    },
+
+    editWorkflowBinding(wf) {
+      this.editWorkflowId = wf.workflow_id;
+      this.editWorkflowName = wf.workflow_name || wf.workflow_id;
+      this.editTriggerMode = wf.trigger_mode;
+      this.editKeywords = (wf.keywords || []).join(', ');
+      this.showEditWorkflowModal = true;
+    },
+
+    async saveWorkflowBinding() {
+      try {
+        var keywords = this.editKeywords ? this.editKeywords.split(',').map(function(k) { return k.trim(); }).filter(function(k) { return k; }) : [];
+        await FangClawGoAPI.patch('/api/projects/' + this.currentProject.id + '/workflows/' + encodeURIComponent(this.editWorkflowId), {
+          trigger_mode: this.editTriggerMode,
+          keywords: keywords
+        });
+        var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);
+        this.currentProject = updatedProject;
+        this.projects = this.projects.map(function(p) { return p.id === updatedProject.id ? updatedProject : p; });
+        this.showEditWorkflowModal = false;
+        FangClawGoToast.success('Workflow binding updated');
+      } catch (e) {
+        console.error('Failed to update workflow binding:', e);
+        FangClawGoToast.error('Failed to update workflow binding');
+      }
+    },
+
+    async runWorkflow(workflowId) {
+      if (!this.currentProject) return;
+
+      try {
+        var input = prompt('Enter input for the workflow (optional):');
+        if (input === null || input.trim() === '') {
+          return;
+        }
+        
+        this.chatLoading = true;
+        var response = await FangClawGoAPI.post('/api/projects/' + this.currentProject.id + '/workflows/' + encodeURIComponent(workflowId) + '/run', {
+          content: input
+        });
+
+        this.projectTab = 'chat';
+        this.currentProject.chat_history = (this.currentProject.chat_history || []).concat(response);
+        var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);
+        this.currentProject = updatedProject;
+        this.projects = this.projects.map(function(p) { return p.id === updatedProject.id ? updatedProject : p; });
+        FangClawGoToast.success('Workflow executed');
+      } catch (e) {
+        console.error('Failed to run workflow:', e);
+        FangClawGoToast.error('Failed to run workflow');
+      } finally {
+        this.chatLoading = false;
+      }
+    },
+
+    async handleWorkflowDrop(event) {
+      event.preventDefault();
+      this.dragOver = false;
+
+      var file = event.dataTransfer.files[0];
+      if (!file || !file.name.endsWith('.json')) {
+        FangClawGoToast.error('Please drop a workflow JSON file');
+        return;
+      }
+
+      try {
+        var content = await file.text();
+        var workflow = JSON.parse(content);
+
+        if (!workflow.name || !workflow.steps || !workflow.steps.length) {
+          FangClawGoToast.error('Invalid workflow file: missing name or steps');
+          return;
+        }
+
+        if (!workflow.id) {
+          workflow.id = 'wf-' + Date.now();
+        }
+
+        var registered = await FangClawGoAPI.post('/api/workflows', workflow);
+
+        await FangClawGoAPI.post('/api/projects/' + this.currentProject.id + '/workflows', {
+          workflow_id: registered.id || workflow.id,
+          workflow_name: workflow.name,
+          trigger_mode: 'auto',
+          keywords: []
+        });
+
+        var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);
+        this.currentProject = updatedProject;
+        this.projects = this.projects.map(function(p) { return p.id === updatedProject.id ? updatedProject : p; });
+        FangClawGoToast.success('Workflow uploaded and bound to project');
+      } catch (e) {
+        console.error('Failed to upload workflow:', e);
+        FangClawGoToast.error('Failed to upload workflow: ' + (e.message || 'Unknown error'));
+      }
+    },
+
+    onDragOver(event) {
+      event.preventDefault();
+      this.dragOver = true;
+    },
+
+    onDragLeave(event) {
+      event.preventDefault();
+      this.dragOver = false;
+    },
+
+    onWorkflowSelect() {
+      if (this.bindWorkflowId) {
+        var wf = this.availableWorkflows.find(function(w) { return w.id === this.bindWorkflowId; }.bind(this));
+        if (wf) {
+          this.bindWorkflowName = wf.name;
+        }
+      }
+    },
+
+    async sendMessage() {
+      if (!this.chatMessage.trim() || !this.currentProject) return;
+
+      try {
+        this.chatLoading = true;
+        var userMsg = {
+          id: 'temp-' + Date.now(),
+          role: 'user',
+          content: this.chatMessage.trim(),
+          timestamp: new Date().toISOString()
+        };
+        this.currentProject.chat_history = (this.currentProject.chat_history || []).concat(userMsg);
+
+        var response = await FangClawGoAPI.post('/api/projects/' + this.currentProject.id + '/chat', {
+          content: this.chatMessage.trim()
+        });
+
+        this.currentProject.chat_history = (this.currentProject.chat_history || []).concat(response);
+        var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);
+        this.currentProject = updatedProject;
+        this.projects = this.projects.map(function(p) { return p.id === updatedProject.id ? updatedProject : p; });
+        this.chatMessage = '';
+      } catch (e) {
+        console.error('Failed to send message:', e);
+        FangClawGoToast.error('Failed to send message');
+      } finally {
+        this.chatLoading = false;
+      }
+    },
+
+    formatDate(dateStr) {
+      if (!dateStr) return '';
+      var d = new Date(dateStr);
+      return d.toLocaleString();
+    },
+
+    async generateWorkflowByAI() {
+      if (!this.aiGenDescription.trim() || !this.currentProject) return;
+
+      try {
+        this.aiGenLoading = true;
+        this.aiGenResult = null;
+        var result = await FangClawGoAPI.post('/api/projects/' + this.currentProject.id + '/generate-workflow', {
+          description: this.aiGenDescription.trim()
+        });
+        this.aiGenResult = result;
+      } catch (e) {
+        console.error('Failed to generate workflow:', e);
+        FangClawGoToast.error('Failed to generate workflow: ' + (e.message || 'Unknown error'));
+      } finally {
+        this.aiGenLoading = false;
+      }
+    },
+
+    async confirmGeneratedWorkflow() {
+      if (!this.aiGenResult || !this.currentProject) return;
+
+      try {
+        var workflow = this.aiGenResult.workflow;
+        if (!workflow.id) {
+          workflow.id = 'wf-ai-' + Date.now();
+        }
+
+        var registered = await FangClawGoAPI.post('/api/workflows', workflow);
+
+        await FangClawGoAPI.post('/api/projects/' + this.currentProject.id + '/workflows', {
+          workflow_id: registered.id || workflow.id,
+          workflow_name: workflow.name,
+          trigger_mode: 'manual',
+          keywords: []
+        });
+
+        var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);
+        this.currentProject = updatedProject;
+        this.projects = this.projects.map(function(p) { return p.id === updatedProject.id ? updatedProject : p; });
+
+        this.aiGenResult = null;
+        this.aiGenDescription = '';
+        FangClawGoToast.success('AI-generated workflow added to project');
+      } catch (e) {
+        console.error('Failed to confirm workflow:', e);
+        FangClawGoToast.error('Failed to add workflow: ' + (e.message || 'Unknown error'));
+      }
+    },
+
+    cancelGeneratedWorkflow() {
+      this.aiGenResult = null;
+    },
+
+    onChatInput() {
+      if (this.chatMessage.trim() === '/') {
+        this.showWorkflowCommands = true;
+        this.hoverCommandIndex = -1;
+      } else {
+        this.showWorkflowCommands = false;
+      }
+    },
+
+    onChatKeydown(event) {
+      if (!this.showWorkflowCommands) return;
+
+      var workflows = this.currentProject.workflow_bindings || [];
+      if (workflows.length === 0) return;
+
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault();
+          this.hoverCommandIndex = (this.hoverCommandIndex + 1) % workflows.length;
+          break;
+        case 'ArrowUp':
+          event.preventDefault();
+          this.hoverCommandIndex = (this.hoverCommandIndex - 1 + workflows.length) % workflows.length;
+          break;
+        case 'Enter':
+          event.preventDefault();
+          if (this.hoverCommandIndex >= 0 && this.hoverCommandIndex < workflows.length) {
+            this.selectWorkflowFromCommand(workflows[this.hoverCommandIndex]);
+          }
+          break;
+        case 'Escape':
+          event.preventDefault();
+          this.showWorkflowCommands = false;
+          break;
+      }
+    },
+
+    selectWorkflowFromCommand(wf) {
+      this.showWorkflowCommands = false;
+      this.chatMessage = '';
+      
+      if (!confirm('Run workflow: ' + (wf.workflow_name || wf.workflow_id) + '?')) {
+        return;
+      }
+
+      this.runWorkflow(wf.workflow_id);
     }
   };
 }

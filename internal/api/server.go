@@ -20,6 +20,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
+	"github.com/rs/zerolog/log"
 )
 
 func findStaticDir() string {
@@ -43,9 +44,9 @@ func findStaticDir() string {
 func loggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		fmt.Printf("[%s] %s %s\n", start.Format(time.RFC3339), r.Method, r.URL.Path)
+		log.Debug().Str("method", r.Method).Str("path", r.URL.Path).Msg("Request started")
 		next(w, r)
-		fmt.Printf("[%s] %s %s completed in %v\n", time.Now().Format(time.RFC3339), r.Method, r.URL.Path, time.Since(start))
+		log.Debug().Str("method", r.Method).Str("path", r.URL.Path).Dur("duration", time.Since(start)).Msg("Request completed")
 	}
 }
 
@@ -241,7 +242,7 @@ func NewServer(k *kernel.Kernel, cfg *ServerConfig) *Server {
 
 // Start starts the API server.
 func (s *Server) Start() error {
-	fmt.Printf("Starting API server on %s...\n", s.Config.ListenAddr)
+	log.Info().Str("addr", s.Config.ListenAddr).Msg("Starting API server")
 
 	// Start server in goroutine
 	go func() {
@@ -326,9 +327,9 @@ func RunServer(k *kernel.Kernel, cfg *ServerConfig, defaultAgentID string) error
 	go func() {
 		select {
 		case <-sigChan:
-			fmt.Println("\nShutting down...")
+			log.Info().Msg("Shutting down (signal)...")
 		case <-WaitForShutdown():
-			fmt.Println("\nShutdown requested via API...")
+			log.Info().Msg("Shutting down (API request)...")
 		}
 		cancel()
 		server.Stop(context.Background())
@@ -740,11 +741,11 @@ func A2AWSHandler(k *kernel.Kernel) http.HandlerFunc {
 		// Auto-subscribe based on query parameters
 		if taskID != "" {
 			wsManager.SubscribeA2ATask(clientID, taskID)
-			fmt.Printf("[A2A WS] Client %s subscribed to task %s\n", clientID, taskID)
+			log.Debug().Str("client_id", clientID).Str("task_id", taskID).Msg("A2A WS client subscribed to task")
 		}
 		if agentID != "" {
 			wsManager.SubscribeA2AAgent(clientID, agentID)
-			fmt.Printf("[A2A WS] Client %s subscribed to agent %s\n", clientID, agentID)
+			log.Debug().Str("client_id", clientID).Str("agent_id", agentID).Msg("A2A WS client subscribed to agent")
 		}
 
 		// Send welcome message
@@ -807,7 +808,7 @@ func A2AWSHandler(k *kernel.Kernel) http.HandlerFunc {
 						wsManager.SubscribeA2ATask(clientID, data.TaskID)
 						ack, _ := json.Marshal(WSMessage{Type: "a2a.subscribed", Data: json.RawMessage(fmt.Sprintf(`{"task_id":"%s","type":"task"}`, data.TaskID))})
 						client.Send <- ack
-						fmt.Printf("[A2A WS] Client %s subscribed to task %s\n", clientID, data.TaskID)
+						log.Debug().Str("client_id", clientID).Str("task_id", data.TaskID).Msg("A2A WS client subscribed to task")
 					}
 
 				case "a2a.unsubscribe_task":
@@ -819,7 +820,7 @@ func A2AWSHandler(k *kernel.Kernel) http.HandlerFunc {
 						wsManager.UnsubscribeA2ATask(clientID, data.TaskID)
 						ack, _ := json.Marshal(WSMessage{Type: "a2a.unsubscribed", Data: json.RawMessage(fmt.Sprintf(`{"task_id":"%s","type":"task"}`, data.TaskID))})
 						client.Send <- ack
-						fmt.Printf("[A2A WS] Client %s unsubscribed from task %s\n", clientID, data.TaskID)
+						log.Debug().Str("client_id", clientID).Str("task_id", data.TaskID).Msg("A2A WS client unsubscribed from task")
 					}
 
 				case "a2a.subscribe_agent":
@@ -831,7 +832,7 @@ func A2AWSHandler(k *kernel.Kernel) http.HandlerFunc {
 						wsManager.SubscribeA2AAgent(clientID, data.AgentID)
 						ack, _ := json.Marshal(WSMessage{Type: "a2a.subscribed", Data: json.RawMessage(fmt.Sprintf(`{"agent_id":"%s","type":"agent"}`, data.AgentID))})
 						client.Send <- ack
-						fmt.Printf("[A2A WS] Client %s subscribed to agent %s\n", clientID, data.AgentID)
+						log.Debug().Str("client_id", clientID).Str("agent_id", data.AgentID).Msg("A2A WS client subscribed to agent")
 					}
 
 				case "a2a.unsubscribe_agent":
@@ -843,7 +844,7 @@ func A2AWSHandler(k *kernel.Kernel) http.HandlerFunc {
 						wsManager.UnsubscribeA2AAgent(clientID, data.AgentID)
 						ack, _ := json.Marshal(WSMessage{Type: "a2a.unsubscribed", Data: json.RawMessage(fmt.Sprintf(`{"agent_id":"%s","type":"agent"}`, data.AgentID))})
 						client.Send <- ack
-						fmt.Printf("[A2A WS] Client %s unsubscribed from agent %s\n", clientID, data.AgentID)
+						log.Debug().Str("client_id", clientID).Str("agent_id", data.AgentID).Msg("A2A WS client unsubscribed from agent")
 					}
 
 				default:
@@ -899,7 +900,7 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 		defer conn.Close()
 
 		// Create client
-		fmt.Printf("[WebSocket] Http upgrade to WebSocket Success: %s\n", agentID)
+		log.Debug().Str("agent_id", agentID).Msg("WebSocket upgrade success")
 		clientID := fmt.Sprintf("ws-%d", time.Now().UnixNano())
 		client := wsManager.AddClient(agentID, clientID, conn)
 		defer wsManager.RemoveClient(agentID, clientID)

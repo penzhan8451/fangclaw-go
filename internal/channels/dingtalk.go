@@ -8,6 +8,7 @@ import (
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
+	"github.com/rs/zerolog/log"
 )
 
 func init() {
@@ -19,7 +20,7 @@ func autoRegisterDingTalk(registry *Registry, getSecret SecretGetter) error {
 	dingtalkClientSecret := getSecret("DINGTALK_CLIENT_SECRET")
 
 	if dingtalkClientID != "" && dingtalkClientSecret != "" {
-		fmt.Println("Auto-registering DingTalk channel...")
+		log.Info().Msg("Auto-registering DingTalk channel")
 		dingtalkChannel := &Channel{
 			Name:  "DingTalk Bot",
 			Type:  ChannelTypeDingTalk,
@@ -33,10 +34,10 @@ func autoRegisterDingTalk(registry *Registry, getSecret SecretGetter) error {
 		}
 
 		if err := registry.RegisterChannel(dingtalkChannel); err != nil {
-			fmt.Printf("Warning: Failed to auto-register DingTalk channel: %v\n", err)
+			log.Warn().Err(err).Msg("Failed to auto-register DingTalk channel")
 			return err
 		}
-		fmt.Println("DingTalk channel auto-registered successfully")
+		log.Info().Msg("DingTalk channel auto-registered successfully")
 	}
 	return nil
 }
@@ -149,7 +150,7 @@ func (a *DingTalkAdapter) Start() error {
 		return fmt.Errorf("dingtalk client_id or client_secret not configured (client_id=%q)", clientID)
 	}
 
-	fmt.Printf("Starting DingTalk adapter with client_id=%q\n", clientID)
+	log.Info().Str("client_id", clientID).Msg("Starting DingTalk adapter")
 
 	a.ctx, a.cancel = context.WithCancel(context.Background())
 
@@ -164,7 +165,7 @@ func (a *DingTalkAdapter) Start() error {
 
 	go func() {
 		if err := a.streamClient.Start(a.ctx); err != nil {
-			fmt.Printf("DingTalk WebSocket session error: %v\n", err)
+			log.Error().Err(err).Msg("DingTalk WebSocket session error")
 			a.Channel.State = ChannelStateError
 		}
 	}()

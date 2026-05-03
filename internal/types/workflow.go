@@ -187,12 +187,14 @@ type StepResult struct {
 type WorkflowTemplateID string
 
 type WorkflowTemplate struct {
-	ID          WorkflowTemplateID `json:"id"`
-	Name        string             `json:"name"`
-	Description string             `json:"description"`
-	Category    string             `json:"category"`
-	Workflow    Workflow           `json:"workflow"`
-	CreatedAt   time.Time          `json:"created_at"`
+	ID              WorkflowTemplateID `json:"id"`
+	Name            string             `json:"name"`
+	Description     string             `json:"description"`
+	Category        string             `json:"category"`
+	Workflow        Workflow           `json:"workflow"`
+	TriggerKeywords []string           `json:"trigger_keywords,omitempty"`
+	RequiredRoles   []string           `json:"required_roles,omitempty"`
+	CreatedAt       time.Time          `json:"created_at"`
 }
 
 type DeliveryType string

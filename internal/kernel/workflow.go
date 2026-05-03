@@ -516,13 +516,17 @@ func (e *WorkflowEngine) ExecuteRun(
 			resultsChan := make(chan stepResult, len(fanOutSteps))
 			var wg sync.WaitGroup
 
-			for _, fs := range fanOutSteps {
+			for stepOrd, fs := range fanOutSteps {
 				wg.Add(1)
-				// Create local variables to capture the current values
 				localIdx := fs.index
 				localStep := fs.step
-				go func(idx int, s types.WorkflowStep) {
+				localOrd := stepOrd
+				go func(idx int, s types.WorkflowStep, ord int) {
 					defer wg.Done()
+
+					if ord > 0 {
+						time.Sleep(time.Duration(ord) * 500 * time.Millisecond)
+					}
 
 					agentID, agentName, ok := resolver(s.Agent)
 					if !ok {
@@ -548,7 +552,7 @@ func (e *WorkflowEngine) ExecuteRun(
 						durationMS:   durationMS,
 						err:          err,
 					}
-				}(localIdx, localStep)
+				}(localIdx, localStep, localOrd)
 			}
 
 			go func() {
@@ -881,10 +885,12 @@ func (e *WorkflowEngine) loadDefaultTemplates() {
 
 	templates := []types.WorkflowTemplate{
 		{
-			ID:          "content-pipeline",
-			Name:        "Content Pipeline",
-			Description: "Analyze input, then summarize and write final content",
-			Category:    "content",
+			ID:              "content-pipeline",
+			Name:            "Content Pipeline",
+			Description:     "Analyze input, then summarize and write final content",
+			Category:        "content",
+			TriggerKeywords: []string{"分析", "总结", "analyze", "summarize", "内容", "content"},
+			RequiredRoles:   []string{"analyst", "writer"},
 			Workflow: types.Workflow{
 				ID:          "",
 				Name:        "Content Pipeline",
@@ -924,10 +930,12 @@ func (e *WorkflowEngine) loadDefaultTemplates() {
 			CreatedAt: time.Now(),
 		},
 		{
-			ID:          "code-review-pipeline",
-			Name:        "Code Review Pipeline",
-			Description: "Analyze code, then review and write improvements",
-			Category:    "coding",
+			ID:              "code-review-pipeline",
+			Name:            "Code Review Pipeline",
+			Description:     "Analyze code, then review and write improvements",
+			Category:        "coding",
+			TriggerKeywords: []string{"代码", "编程", "code", "review", "编程审查", "代码审查"},
+			RequiredRoles:   []string{"code-reviewer", "coder"},
 			Workflow: types.Workflow{
 				ID:          "",
 				Name:        "Code Review Pipeline",
@@ -967,10 +975,12 @@ func (e *WorkflowEngine) loadDefaultTemplates() {
 			CreatedAt: time.Now(),
 		},
 		{
-			ID:          "research-report",
-			Name:        "Research Report",
-			Description: "Research a topic and write a comprehensive report",
-			Category:    "research",
+			ID:              "research-report",
+			Name:            "Research Report",
+			Description:     "Research a topic and write a comprehensive report",
+			Category:        "research",
+			TriggerKeywords: []string{"搜索", "研究", "search", "research", "调研", "查找", "报告", "report"},
+			RequiredRoles:   []string{"researcher", "writer"},
 			Workflow: types.Workflow{
 				ID:          "",
 				Name:        "Research Report",

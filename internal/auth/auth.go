@@ -16,6 +16,7 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 type Role string
@@ -444,7 +445,7 @@ func (am *AuthManager) AuthenticateUser(username, password string) (*Session, er
 
 	_, err = am.db.Exec(`UPDATE users SET last_login = ? WHERE id = ?`, now.Format(time.RFC3339), user.ID)
 	if err != nil {
-		fmt.Printf("Warning: failed to update last_login: %v\n", err)
+		log.Warn().Err(err).Msg("Failed to update last_login")
 	}
 
 	am.sessionTokens[session.Token] = user.ID
@@ -491,7 +492,7 @@ func (am *AuthManager) ValidateToken(token string) (*User, error) {
 	now := time.Now()
 	_, err = am.db.Exec(`UPDATE users SET last_activity_at = ? WHERE id = ?`, now.Format(time.RFC3339), session.UserID)
 	if err != nil {
-		fmt.Printf("Warning: failed to update last_activity_at: %v\n", err)
+		log.Warn().Err(err).Msg("Failed to update last_activity_at")
 	}
 
 	return am.GetUserByID(session.UserID)

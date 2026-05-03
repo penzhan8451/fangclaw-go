@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -21,6 +20,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/skills"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
 	"github.com/pkoukk/tiktoken-go"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -177,7 +177,7 @@ func NewRuntime(semantic *memory.SemanticStore, sessions *memory.SessionStore, k
 	if r.reviewManager != nil {
 		memoryReviewTask := memory.NewMemoryReviewTask(r.semantic, r.fileStore)
 		if err := r.reviewManager.AddTask(memoryReviewTask); err != nil {
-			log.Printf("Failed to add memory review task: %v", err)
+			log.Warn().Err(err).Msg("Failed to add memory review task")
 		}
 		r.reviewManager.Start()
 	}
@@ -362,7 +362,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 	// Recall relevant memories from semantic store
 	memories, err := r.recallMemories(ctx, agentCtx)
 	if err != nil {
-		log.Printf("Warning: failed to recall memories: %v", err)
+		log.Warn().Err(err).Msg("Failed to recall memories")
 	}
 
 	// Find user message from context
@@ -381,7 +381,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 	}
 
 	// Build system prompt with memories, skills, and MemoryManager contributions
-	fmt.Printf("\n------------ Current Agent [%s] Skills: %s---------------\n", agentCtx.Name, agentCtx.Skills)
+	log.Info().Str("agent", agentCtx.Name).Strs("skills", agentCtx.Skills).Msg("Current agent skills")
 	systemPrompt := r.buildSystemPrompt(agentCtx.SystemPrompt, memories, agentCtx.Skills, agentCtx.SkillPromptContext, agentCtx.Files, agentCtx.Name, memoryPrefetch)
 
 	if userMessage == "" {
@@ -426,11 +426,11 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 
 	// Get available tools for this agent
 	availableTools := r.getAvailableTools(agentCtx.AgentID.String(), agentCtx.Tools, agentCtx.Skills)
-	fmt.Println("\n------Available tools------")
-	for _, tool := range availableTools {
-		fmt.Printf("  - %s\n", tool.Name())
+	toolNames := make([]string, len(availableTools))
+	for i, tool := range availableTools {
+		toolNames[i] = tool.Name()
 	}
-	fmt.Println("---------------------------")
+	log.Debug().Strs("tools", toolNames).Msg("Available tools")
 	toolSchemas := make([]map[string]interface{}, len(availableTools))
 	for i, tool := range availableTools {
 		toolSchemas[i] = tool.Schema()
@@ -451,7 +451,7 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			CreatedAt: time.Now(),
 		}
 		if err := r.usage.RecordUsage(record); err != nil {
-			log.Printf("Warning: failed to record usage: %v", err)
+			log.Warn().Err(err).Msg("Failed to record usage")
 		}
 	}
 
@@ -564,12 +564,12 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 
 			// Save session
 			if err := r.saveSession(ctx, agentCtx); err != nil {
-				log.Printf("Warning: failed to save session: %v", err)
+				log.Warn().Err(err).Msg("Failed to save session")
 			}
 
 			// Remember this interaction
 			if err := r.rememberInteraction(ctx, agentCtx, userMessage, finalResponse); err != nil {
-				log.Printf("Warning: failed to remember interaction: %v", err)
+				log.Warn().Err(err).Msg("Failed to remember interaction")
 			}
 
 			if onPhase != nil {
@@ -611,12 +611,12 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 				}
 
 				if err := r.saveSession(ctx, agentCtx); err != nil {
-					log.Printf("Warning: failed to save session: %v", err)
+					log.Warn().Err(err).Msg("Failed to save session")
 				}
 
 				// Remember this interaction
 				if err := r.rememberInteraction(ctx, agentCtx, userMessage, finalResponse); err != nil {
-					log.Printf("Warning: failed to remember interaction: %v", err)
+					log.Warn().Err(err).Msg("Failed to remember interaction")
 				}
 
 				if onPhase != nil {
@@ -650,12 +650,12 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 			finalResponse = resp.Content
 
 			if err := r.saveSession(ctx, agentCtx); err != nil {
-				log.Printf("Warning: failed to save session: %v", err)
+				log.Warn().Err(err).Msg("Failed to save session")
 			}
 
 			// Remember this interaction
 			if err := r.rememberInteraction(ctx, agentCtx, userMessage, finalResponse); err != nil {
-				log.Printf("Warning: failed to remember interaction: %v", err)
+				log.Warn().Err(err).Msg("Failed to remember interaction")
 			}
 
 			if onPhase != nil {
@@ -692,13 +692,13 @@ func (r *Runtime) RunAgentLoop(ctx context.Context, agentCtx *AgentContext, onPh
 
 	// Save session
 	if err := r.saveSession(ctx, agentCtx); err != nil {
-		log.Printf("Warning: failed to save session: %v", err)
+		log.Warn().Err(err).Msg("Failed to save session")
 	}
 
 	// Remember this interaction (even though it maxed out iterations)
 	finalResponse = "Max iterations exceeded. Please try again with a more specific request."
 	if err := r.rememberInteraction(ctx, agentCtx, userMessage, finalResponse); err != nil {
-		log.Printf("Warning: failed to remember interaction: %v", err)
+		log.Warn().Err(err).Msg("Failed to remember interaction")
 	}
 
 	// Record usage
@@ -740,11 +740,11 @@ func (r *Runtime) callLLMWithRetry(ctx context.Context, driver llm.Driver, req *
 		}
 
 		lastErr = err
-		log.Printf("LLM call failed (attempt %d/%d): %v", attempt+1, MAX_RETRIES+1, err)
+		log.Warn().Int("attempt", attempt+1).Int("max_attempts", MAX_RETRIES+1).Err(err).Msg("LLM call failed")
 
 		if attempt < MAX_RETRIES {
 			delay := time.Duration(BASE_RETRY_DELAY_MS*(1<<attempt)) * time.Millisecond
-			log.Printf("Retrying in %v...", delay)
+			log.Debug().Dur("delay", delay).Msg("Retrying LLM call")
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -760,8 +760,7 @@ func (r *Runtime) callLLMStreamWithRetry(ctx context.Context, driver llm.Driver,
 	var lastErr error
 	for attempt := 0; attempt <= MAX_RETRIES; attempt++ {
 		if !driver.SupportsStreaming() {
-			log.Printf("Provider does not support streaming, falling back to non-streaming")
-			fmt.Println("Falling back to non-streaming - callLLMWithRetry")
+			log.Info().Msg("Provider does not support streaming, falling back to non-streaming")
 			return r.callLLMWithRetry(ctx, driver, req)
 		}
 
@@ -772,7 +771,7 @@ func (r *Runtime) callLLMStreamWithRetry(ctx context.Context, driver llm.Driver,
 
 			tke, err := tiktoken.EncodingForModel("gpt-4o")
 			if err != nil {
-				log.Printf("Warning: failed to get tiktoken encoding, falling back to estimate: %v", err)
+				log.Warn().Err(err).Msg("Failed to get tiktoken encoding, falling back to estimate")
 			}
 
 			var inputTokenEstimate int
@@ -819,11 +818,11 @@ func (r *Runtime) callLLMStreamWithRetry(ctx context.Context, driver llm.Driver,
 		}
 
 		lastErr = err
-		log.Printf("LLM stream call failed (attempt %d/%d): %v", attempt+1, MAX_RETRIES+1, err)
+		log.Warn().Int("attempt", attempt+1).Int("max_attempts", MAX_RETRIES+1).Err(err).Msg("LLM stream call failed")
 
 		if attempt < MAX_RETRIES {
 			delay := time.Duration(BASE_RETRY_DELAY_MS*(1<<attempt)) * time.Millisecond
-			log.Printf("Retrying in %v...", delay)
+			log.Debug().Dur("delay", delay).Msg("Retrying LLM stream call")
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -982,7 +981,7 @@ func (r *Runtime) buildSystemPrompt(basePrompt string, memories []types.MemoryFr
 			}
 			skill, err := r.skills.LoadSkill(skillID)
 			if err != nil {
-				log.Printf("Warning: failed to load skill %s: %v", skillID, err)
+				log.Warn().Err(err).Str("skill", skillID).Msg("Failed to load skill")
 				continue
 			}
 			if skill.Manifest.PromptContext != "" {
@@ -1064,7 +1063,7 @@ func (r *Runtime) getAvailableTools(agentID string, toolNames []string, skillIDs
 		available = append(available, r.tools.List()...)
 	} else {
 		for _, name := range toolNames {
-			fmt.Printf("*****Checking tool *****==>%s\n", name)
+			log.Debug().Str("tool", name).Msg("Checking tool availability")
 			if tool, ok := r.tools.Get(name); ok {
 				available = append(available, tool)
 			}
@@ -1205,7 +1204,7 @@ func (r *Runtime) executeTool(ctx context.Context, agentCtx *AgentContext, name 
 
 	if r.approvalMgr != nil {
 		if r.approvalMgr.RequiresApproval(name) {
-			fmt.Printf("------Approval required for tool------: %s\n", name)
+			log.Info().Str("tool", name).Msg("Approval required for tool")
 			reqID := fmt.Sprintf("approval-%s-%d", name, time.Now().UnixNano())
 			inputJSON, _ := json.Marshal(args)
 			summary := fmt.Sprintf("%s: %s", name, truncateString(string(inputJSON), 200))
@@ -1246,7 +1245,7 @@ func (r *Runtime) executeTool(ctx context.Context, agentCtx *AgentContext, name 
 				RequestedAt:   time.Now(),
 			}
 
-			fmt.Printf("------Approval request submitted, waiting for approval------: %s\n", reqID)
+			log.Info().Str("request_id", reqID).Msg("Approval request submitted, waiting for approval")
 			decisionCh, err := r.approvalMgr.RequestApproval(req)
 			if err != nil {
 				return "", fmt.Errorf("approval system error: %w", err)
@@ -1426,7 +1425,7 @@ func (r *Runtime) RegisterAgent(ctx context.Context, id, name, provider, model, 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.agents[agentCtx.ID] = agentCtx
-	log.Printf("Agent registered: %s (%s)", name, agentCtx.ID)
+	log.Info().Str("name", name).Str("id", agentCtx.ID).Msg("Agent registered")
 	return agentCtx, nil
 }
 
@@ -1475,7 +1474,7 @@ func (r *Runtime) UpdateAgentModel(id string, provider string, model string) err
 	_, err := r.GetDriver(provider)
 	if err != nil {
 		// Log the registered drivers to help debugging
-		log.Printf("UpdateAgentModel: no driver found for provider %q. Registered drivers: %v", provider, r.ListDrivers())
+		log.Warn().Str("provider", provider).Interface("drivers", r.ListDrivers()).Msg("UpdateAgentModel: no driver found for provider")
 		return err
 	}
 
@@ -1485,7 +1484,7 @@ func (r *Runtime) UpdateAgentModel(id string, provider string, model string) err
 	if agentCtx, ok := r.agents[id]; ok {
 		agentCtx.Provider = provider
 		agentCtx.Model = model
-		log.Printf("Updated agent %s model: %s/%s", id, provider, model)
+		log.Info().Str("id", id).Str("provider", provider).Str("model", model).Msg("Updated agent model")
 		return nil
 	}
 	return fmt.Errorf("agent not found: %s", id)
@@ -1496,7 +1495,7 @@ func (r *Runtime) UpdateAgentSkills(id string, skills []string) {
 	defer r.mu.Unlock()
 	if agentCtx, ok := r.agents[id]; ok {
 		agentCtx.Skills = skills
-		log.Printf("Updated agent %s skills: %v", id, skills)
+		log.Info().Str("id", id).Strs("skills", skills).Msg("Updated agent skills")
 	}
 }
 
@@ -1505,7 +1504,7 @@ func (r *Runtime) UpdateAgentTools(id string, tools []string) {
 	defer r.mu.Unlock()
 	if agentCtx, ok := r.agents[id]; ok {
 		agentCtx.Tools = tools
-		log.Printf("Updated agent %s tools: %v", id, tools)
+		log.Info().Str("id", id).Strs("tools", tools).Msg("Updated agent tools")
 	}
 }
 
@@ -1518,7 +1517,7 @@ func (r *Runtime) UpdateAgentSystemPrompt(id string, systemPrompt string) {
 	defer r.mu.Unlock()
 	if agentCtx, ok := r.agents[id]; ok {
 		agentCtx.SystemPrompt = systemPrompt
-		log.Printf("Updated agent %s system prompt", id)
+		log.Info().Str("id", id).Msg("Updated agent system prompt")
 	}
 }
 

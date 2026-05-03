@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 // TelegramAdapter implements the Adapter interface for Telegram.
@@ -75,7 +76,7 @@ func (a *TelegramAdapter) Start() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Telegram bot @%s connected\n", botName)
+	log.Info().Str("bot", botName).Msg("Telegram bot connected")
 
 	// Start polling in a goroutine
 	go a.pollLoop()
@@ -161,21 +162,19 @@ func (a *TelegramAdapter) pollLoop() {
 	for {
 		select {
 		case <-a.shutdown:
-			fmt.Println("Telegram poll loop stopped")
+			log.Info().Msg("Telegram poll loop stopped")
 			return
 		default:
 			updates, err := a.getUpdates()
 			if err != nil {
 				errMsg := err.Error()
-				fmt.Printf("Telegram poll error: %v\n", err)
+				log.Warn().Err(err).Msg("Telegram poll error")
 
-				// Check for special errors
 				if errMsg == "conflict: another bot instance is running" {
-					fmt.Println("Stopping due to conflict with another bot instance")
+					log.Error().Msg("Stopping due to conflict with another bot instance")
 					return
 				}
 
-				// Handle rate limiting
 				var sleepDuration time.Duration
 				if len(errMsg) > 25 && errMsg[:25] == "rate limited, retry after" {
 					var retryAfter int
@@ -189,10 +188,9 @@ func (a *TelegramAdapter) pollLoop() {
 					}
 				}
 
-				// Sleep but still check for shutdown
 				select {
 				case <-a.shutdown:
-					fmt.Println("Telegram poll loop stopped")
+					log.Info().Msg("Telegram poll loop stopped")
 					return
 				case <-time.After(sleepDuration):
 				}
@@ -204,10 +202,9 @@ func (a *TelegramAdapter) pollLoop() {
 				a.handleUpdate(update)
 			}
 
-			// Small delay between polls
 			select {
 			case <-a.shutdown:
-				fmt.Println("Telegram poll loop stopped")
+				log.Info().Msg("Telegram poll loop stopped")
 				return
 			case <-time.After(a.pollInterval):
 			}
@@ -342,7 +339,7 @@ func (a *TelegramAdapter) handleUpdate(update map[string]interface{}) {
 	select {
 	case a.msgChan <- msg:
 	case <-time.After(1 * time.Second):
-		fmt.Printf("Warning: message channel full, dropped message\n")
+		log.Warn().Msg("Message channel full, dropped message")
 	}
 }
 

@@ -31,6 +31,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
 	"github.com/penzhan8451/fangclaw-go/internal/mediaprocessing"
 	"github.com/penzhan8451/fangclaw-go/internal/pairing"
+	"github.com/penzhan8451/fangclaw-go/internal/projects"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/llm"
 	"github.com/penzhan8451/fangclaw-go/internal/security"
 	"github.com/penzhan8451/fangclaw-go/internal/triggers"
@@ -563,6 +564,32 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/memory/agents/{id}/kv/{key}", r.handleSetAgentKVKey)
 	mux.HandleFunc("DELETE /api/memory/agents/{id}/kv/{key}", r.handleDeleteAgentKVKey)
 
+	// Project endpoints (v1)
+	mux.HandleFunc("GET /api/v1/projects", r.handleListProjects)
+	mux.HandleFunc("POST /api/v1/projects", r.handleCreateProject)
+	mux.HandleFunc("GET /api/v1/projects/{id}", r.handleGetProject)
+	mux.HandleFunc("DELETE /api/v1/projects/{id}", r.handleDeleteProject)
+	mux.HandleFunc("POST /api/v1/projects/{id}/members", r.handleAddProjectMember)
+	mux.HandleFunc("DELETE /api/v1/projects/{id}/members/{agentId}", r.handleRemoveProjectMember)
+	mux.HandleFunc("POST /api/v1/projects/{id}/chat", r.handleProjectChat)
+	mux.HandleFunc("GET /api/v1/projects/{id}/chat", r.handleGetProjectChat)
+
+	// Project endpoints (aliases without v1)
+	mux.HandleFunc("GET /api/projects", r.handleListProjects)
+	mux.HandleFunc("POST /api/projects", r.handleCreateProject)
+	mux.HandleFunc("GET /api/projects/{id}", r.handleGetProject)
+	mux.HandleFunc("DELETE /api/projects/{id}", r.handleDeleteProject)
+	mux.HandleFunc("POST /api/projects/{id}/members", r.handleAddProjectMember)
+	mux.HandleFunc("DELETE /api/projects/{id}/members/{agentId}", r.handleRemoveProjectMember)
+	mux.HandleFunc("POST /api/projects/{id}/chat", r.handleProjectChat)
+	mux.HandleFunc("GET /api/projects/{id}/chat", r.handleGetProjectChat)
+	mux.HandleFunc("GET /api/projects/{id}/workflows", r.handleListProjectWorkflows)
+	mux.HandleFunc("POST /api/projects/{id}/workflows", r.handleBindProjectWorkflow)
+	mux.HandleFunc("PATCH /api/projects/{id}/workflows/{workflowId}", r.handleUpdateProjectWorkflow)
+	mux.HandleFunc("DELETE /api/projects/{id}/workflows/{workflowId}", r.handleUnbindProjectWorkflow)
+	mux.HandleFunc("POST /api/projects/{id}/workflows/{workflowId}/run", r.handleRunProjectWorkflow)
+	mux.HandleFunc("POST /api/projects/{id}/generate-workflow", r.handleGenerateWorkflow)
+
 	// Skill endpoints
 	mux.HandleFunc("GET /api/v1/skills", r.handleListSkills)
 	mux.HandleFunc("POST /api/v1/skills", r.handleInstallSkill)
@@ -990,6 +1017,36 @@ func (r *Router) handleListAgents(w http.ResponseWriter, req *http.Request) {
 			"manifest":       agent.Manifest,
 		})
 	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (r *Router) handleGenerateWorkflow(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	var reqBody struct {
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if reqBody.Description == "" {
+		respondError(w, http.StatusBadRequest, "description is required")
+		return
+	}
+
+	pmAgent := r.getKernel(req).GetPMAgent()
+	result, err := pmAgent.GenerateWorkflowByLLM(req.Context(), projectID, reqBody.Description)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to generate workflow: %v", err))
+		return
+	}
+
 	respondJSON(w, http.StatusOK, result)
 }
 
@@ -2168,9 +2225,9 @@ func (r *Router) handleConfigureChannel(w http.ResponseWriter, req *http.Request
 			channel := adapter.GetChannel()
 			if channel != nil && channel.Type == nameToChannelType(name) {
 				if err := r.bridgeManager.RegisterAdapter(id, adapter); err != nil {
-					fmt.Printf("Warning: Failed to register adapter to bridge manager: %v\n", err)
+					log.Warn().Err(err).Str("adapter", id).Msg("Failed to register adapter to bridge manager")
 				} else {
-					fmt.Printf("Successfully registered new adapter %s to bridge manager\n", id)
+					log.Info().Str("adapter", id).Msg("Registered new adapter to bridge manager")
 				}
 			}
 		}
@@ -6272,7 +6329,7 @@ func (r *Router) handleCreatePairingRequest(w http.ResponseWriter, req *http.Req
 	)
 
 	// Log for debugging
-	fmt.Printf("[DEBUG] QR Code URL: %s (original host: %s, LAN IP: %s)\n", qrURI, req.Host, getLANIPAddress())
+	log.Debug().Str("qr_url", qrURI).Str("host", req.Host).Str("lan_ip", getLANIPAddress()).Msg("QR Code URL generated")
 
 	png, err := qrcode.Encode(qrURI, qrcode.Medium, 256)
 	if err != nil {
@@ -6304,14 +6361,14 @@ func (r *Router) handleCompletePairing(w http.ResponseWriter, req *http.Request)
 	}
 
 	if body.Token == "" {
-		fmt.Printf("[DEBUG] Pairing API - Missing token\n")
+		log.Debug().Msg("Pairing API - Missing token")
 		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": "Missing required fields"})
 		return
 	}
 
 	pm := r.getKernel(req).PairingManager()
 	if pm == nil {
-		fmt.Printf("[DEBUG] Pairing API - Pairing not enabled\n")
+		log.Debug().Msg("Pairing API - Pairing not enabled")
 		respondError(w, http.StatusNotFound, map[string]interface{}{"error": "Pairing not enabled"})
 		return
 	}
@@ -6334,16 +6391,17 @@ func (r *Router) handleCompletePairing(w http.ResponseWriter, req *http.Request)
 
 	pairedDevice, err := pm.CompletePairing(body.Token, device)
 	if err != nil {
-		fmt.Printf("[DEBUG] Pairing API - CompletePairing error: %v\n", err)
+		log.Debug().Err(err).Msg("Pairing API - CompletePairing error")
 		respondError(w, http.StatusBadRequest, map[string]interface{}{"error": err.Error()})
 		return
 	}
 
-	fmt.Printf("[DEBUG] Pairing API - Success!\n")
-	fmt.Printf("  Returned DeviceID: %s\n", pairedDevice.DeviceID)
-	fmt.Printf("  Returned DisplayName: %s\n", pairedDevice.DisplayName)
-	fmt.Printf("  Returned Platform: %s\n", pairedDevice.Platform)
-	fmt.Printf("  PairedAt: %s\n", pairedDevice.PairedAt.Format(time.RFC3339))
+	log.Info().
+		Str("device_id", pairedDevice.DeviceID).
+		Str("display_name", pairedDevice.DisplayName).
+		Str("platform", pairedDevice.Platform).
+		Str("paired_at", pairedDevice.PairedAt.Format(time.RFC3339)).
+		Msg("Pairing API - Success")
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"device_id":    pairedDevice.DeviceID,
@@ -6884,4 +6942,395 @@ func isAudioFile(contentType, filename string) bool {
 		".wma":  true,
 	}
 	return audioExts[ext]
+}
+
+// Project API handlers
+func (r *Router) handleListProjects(w http.ResponseWriter, req *http.Request) {
+	projects := r.getKernel(req).ProjectRegistry().List()
+	respondJSON(w, http.StatusOK, projects)
+}
+
+func (r *Router) handleCreateProject(w http.ResponseWriter, req *http.Request) {
+	var reqBody struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		PMKeywords  []string `json:"pm_keywords"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if reqBody.Name == "" {
+		respondError(w, http.StatusBadRequest, "project name is required")
+		return
+	}
+
+	username := r.getUserID(req)
+	project, err := r.getKernel(req).ProjectRegistry().Create(reqBody.Name, reqBody.Description, username, reqBody.PMKeywords)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to create project: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, project)
+}
+
+func (r *Router) handleGetProject(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	project := r.getKernel(req).ProjectRegistry().Get(projectID)
+	if project == nil {
+		respondError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, project)
+}
+
+func (r *Router) handleDeleteProject(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	if err := r.getKernel(req).ProjectRegistry().Delete(projectID); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to delete project: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (r *Router) handleAddProjectMember(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	var reqBody struct {
+		AgentID string `json:"agent_id"`
+		Name    string `json:"name"`
+		Role    string `json:"role"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	agentID, err := types.ParseAgentID(reqBody.AgentID)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent ID")
+		return
+	}
+
+	if err := r.getKernel(req).ProjectRegistry().AddMember(projectID, agentID, reqBody.Name, reqBody.Role); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to add member: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "added"})
+}
+
+func (r *Router) handleRemoveProjectMember(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	agentIdStr := req.PathValue("agentId")
+	agentID, err := types.ParseAgentID(agentIdStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid agent ID")
+		return
+	}
+
+	if err := r.getKernel(req).ProjectRegistry().RemoveMember(projectID, agentID); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to remove member: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "removed"})
+}
+
+func (r *Router) handleProjectChat(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	var reqBody struct {
+		Content    string `json:"content"`
+		WorkflowID string `json:"workflow_id,omitempty"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	userMsg := projects.ChatMessage{
+		ID:        uuid.NewString(),
+		Role:      "user",
+		Content:   reqBody.Content,
+		Timestamp: time.Now(),
+	}
+	if err := r.getKernel(req).ProjectRegistry().AddChatMessage(projectID, userMsg); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to add chat message: %v", err))
+		return
+	}
+
+	pmAgent := r.getKernel(req).GetPMAgent()
+
+	var result *projects.ChatMessage
+	if reqBody.WorkflowID != "" {
+		result, err = pmAgent.ExecuteWorkflowDirectly(req.Context(), projectID, reqBody.WorkflowID, reqBody.Content)
+	} else {
+		result, err = pmAgent.HandleUserInput(req.Context(), projectID, reqBody.Content)
+	}
+
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to process message: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (r *Router) handleGetProjectChat(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	project := r.getKernel(req).ProjectRegistry().Get(projectID)
+	if project == nil {
+		respondError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, project.ChatHistory)
+}
+
+func (r *Router) handleListProjectWorkflows(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	project := r.getKernel(req).ProjectRegistry().Get(projectID)
+	if project == nil {
+		respondError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, project.WorkflowBindings)
+}
+
+func (r *Router) handleBindProjectWorkflow(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	var reqBody struct {
+		WorkflowID   string   `json:"workflow_id"`
+		WorkflowName string   `json:"workflow_name"`
+		TriggerMode  string   `json:"trigger_mode"`
+		Keywords     []string `json:"keywords,omitempty"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if reqBody.WorkflowID == "" {
+		respondError(w, http.StatusBadRequest, "workflow_id is required")
+		return
+	}
+
+	triggerMode := projects.WorkflowTriggerMode(reqBody.TriggerMode)
+	if triggerMode == "" {
+		triggerMode = projects.TriggerModeAuto
+	}
+
+	binding := projects.ProjectWorkflowBinding{
+		WorkflowID:   reqBody.WorkflowID,
+		WorkflowName: reqBody.WorkflowName,
+		TriggerMode:  triggerMode,
+		Keywords:     reqBody.Keywords,
+		Enabled:      true,
+	}
+
+	if err := r.getKernel(req).ProjectRegistry().BindWorkflow(projectID, binding); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to bind workflow: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "bound"})
+}
+
+func (r *Router) handleUnbindProjectWorkflow(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	workflowID := req.PathValue("workflowId")
+	if workflowID == "" {
+		respondError(w, http.StatusBadRequest, "workflow ID is required")
+		return
+	}
+
+	if err := r.getKernel(req).ProjectRegistry().UnbindWorkflow(projectID, workflowID); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to unbind workflow: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "unbound"})
+}
+
+func (r *Router) handleUpdateProjectWorkflow(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	workflowID := req.PathValue("workflowId")
+	if workflowID == "" {
+		respondError(w, http.StatusBadRequest, "workflow ID is required")
+		return
+	}
+
+	var reqBody struct {
+		TriggerMode *string  `json:"trigger_mode,omitempty"`
+		Keywords    []string `json:"keywords,omitempty"`
+		Enabled     *bool    `json:"enabled,omitempty"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	project := r.getKernel(req).ProjectRegistry().Get(projectID)
+	if project == nil {
+		respondError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	var found *projects.ProjectWorkflowBinding
+	for i := range project.WorkflowBindings {
+		if project.WorkflowBindings[i].WorkflowID == workflowID {
+			found = &project.WorkflowBindings[i]
+			break
+		}
+	}
+	if found == nil {
+		respondError(w, http.StatusNotFound, "workflow binding not found")
+		return
+	}
+
+	if reqBody.TriggerMode != nil {
+		found.TriggerMode = projects.WorkflowTriggerMode(*reqBody.TriggerMode)
+	}
+	if reqBody.Keywords != nil {
+		found.Keywords = reqBody.Keywords
+	}
+	if reqBody.Enabled != nil {
+		found.Enabled = *reqBody.Enabled
+	}
+
+	if err := r.getKernel(req).ProjectRegistry().BindWorkflow(projectID, *found); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to update workflow binding: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (r *Router) handleRunProjectWorkflow(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	workflowID := req.PathValue("workflowId")
+	if workflowID == "" {
+		respondError(w, http.StatusBadRequest, "workflow ID is required")
+		return
+	}
+
+	project := r.getKernel(req).ProjectRegistry().Get(projectID)
+	if project == nil {
+		respondError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	var foundBinding *projects.ProjectWorkflowBinding
+	for i := range project.WorkflowBindings {
+		if project.WorkflowBindings[i].WorkflowID == workflowID {
+			foundBinding = &project.WorkflowBindings[i]
+			break
+		}
+	}
+	if foundBinding == nil {
+		respondError(w, http.StatusNotFound, "workflow not bound to this project")
+		return
+	}
+	if !foundBinding.Enabled {
+		respondError(w, http.StatusBadRequest, "workflow is disabled, please enable it first")
+		return
+	}
+
+	var reqBody struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	userMsg := projects.ChatMessage{
+		ID:        uuid.NewString(),
+		Role:      "user",
+		Content:   reqBody.Content,
+		Timestamp: time.Now(),
+	}
+	if err := r.getKernel(req).ProjectRegistry().AddChatMessage(projectID, userMsg); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to add chat message: %v", err))
+		return
+	}
+
+	pmAgent := r.getKernel(req).GetPMAgent()
+	result, err := pmAgent.ExecuteWorkflowDirectly(req.Context(), projectID, workflowID, reqBody.Content)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to run workflow: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }

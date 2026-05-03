@@ -70,6 +70,8 @@ def main():
     html_parts.append(read_file(os.path.join(static_dir, 'js', 'pages', 'pairing.js')))
     html_parts.append("\n")
     html_parts.append(read_file(os.path.join(static_dir, 'js', 'pages', 'delivery.js')))
+    html_parts.append("\n")
+    html_parts.append(read_file(os.path.join(static_dir, 'js', 'pages', 'projects.js')))
     html_parts.append("\n</script>\n")
     
     html_parts.append("<script>\n")

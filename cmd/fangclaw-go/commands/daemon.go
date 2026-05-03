@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -17,6 +16,8 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/channels"
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
+	"github.com/penzhan8451/fangclaw-go/internal/logging"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -71,39 +72,22 @@ func cleanupDaemonInfo(daemonPath string) {
 }
 
 func setupLogFile() error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
-	logFile := filepath.Join(homeDir, ".fangclaw-go", "daemon.log")
+	logFile := logging.DefaultLogFilePath()
 
-	// Check log file size
-	if fi, err := os.Stat(logFile); err == nil {
-		if fi.Size() > 50*1024*1024 { // 50MB limit
-			// Truncate log file
-			if err := os.Truncate(logFile, 0); err != nil {
-				return fmt.Errorf("failed to truncate log file: %w", err)
-			}
-		}
+	logLevel := "info"
+	cfg, err := config.Load("")
+	if err == nil && cfg.Log.Level != "" {
+		logLevel = cfg.Log.Level
+	}
+	if cfg != nil && cfg.Log.File != "" {
+		logFile = cfg.Log.File
 	}
 
-	// Open log file for append
-	// f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to open log file: %w", err)
-	// }
+	if err := logging.SetupFileOnly(logLevel, logFile); err != nil {
+		return fmt.Errorf("failed to setup logging: %w", err)
+	}
 
-	// // Redirect stdout and stderr to log file
-	// os.Stdout = f
-	// os.Stderr = f
-
-	// Add timestamp to each log line
-	// log.SetOutput(f)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-
-	// Log startup message
-	log.Println("Daemon starting...")
-	log.Printf("Log file: %s", logFile)
+	log.Info().Str("log_file", logFile).Str("level", logLevel).Msg("Daemon starting")
 
 	return nil
 }
@@ -160,49 +144,42 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		return k.GetSecret(key)
 	}
 	if err := channels.AutoRegisterAll(k.Registry(), getSecret); err != nil {
-		fmt.Printf("Warning: Failed to auto-register some channels: %v\n", err)
+		log.Warn().Err(err).Msg("Failed to auto-register some channels")
 	}
 
-	// Also load channels from config.toml
-	fmt.Println("Loading channels from config file...")
+	log.Info().Msg("Loading channels from config file")
 	started, err := channels.LoadConfiguredChannels(k.Registry(), cfg, getSecret)
 	if err != nil {
-		fmt.Printf("Warning: Failed to load channels from config: %v\n", err)
+		log.Warn().Err(err).Msg("Failed to load channels from config")
 	} else if len(started) > 0 {
-		fmt.Printf("Started channels from config: %v\n", started)
+		log.Info().Strs("channels", started).Msg("Started channels from config")
 	}
 
-	// Create and start Channel Bridge Manager
 	router := channels.NewAgentRouter()
 
-	// Read default agent from config file
-	fmt.Printf("Config loaded. Default agent from config: '%s'\n", cfg.DefaultAgent)
+	log.Info().Str("default_agent", cfg.DefaultAgent).Msg("Config loaded")
 
-	// Find and set default agent from agent registry
 	agents := k.AgentRegistry().List()
-	fmt.Printf("Agents in registry at startup: %d agents found\n", len(agents))
+	log.Info().Int("count", len(agents)).Msg("Agents in registry at startup")
 	for i, agent := range agents {
-		fmt.Printf("  Agent %d: Name='%s', ID='%s'\n", i+1, agent.Name, agent.ID.String())
+		log.Info().Int("index", i+1).Str("name", agent.Name).Str("id", agent.ID.String()).Msg("Registered agent")
 	}
 
 	var defaultAgentID string
 	if cfg.DefaultAgent != "" {
-		// Priority given to the agent specified in the config file
-		// Method 1: Find by agent name
 		for _, agent := range agents {
 			if agent.Name == cfg.DefaultAgent {
 				defaultAgentID = agent.ID.String()
-				fmt.Printf("Using default agent from config: %s (ID: %s)\n", agent.Name, defaultAgentID)
+				log.Info().Str("name", agent.Name).Str("id", defaultAgentID).Msg("Using default agent from config")
 				break
 			}
 		}
-		// Method 2: If not found by name, try to find by hand ID (check if tags have "hand:xxx")
 		if defaultAgentID == "" {
 			for _, agent := range agents {
 				for _, tag := range agent.Tags {
 					if tag == "hand:"+cfg.DefaultAgent {
 						defaultAgentID = agent.ID.String()
-						fmt.Printf("Using default agent from config (hand: %s): %s (ID: %s)\n", cfg.DefaultAgent, agent.Name, defaultAgentID)
+						log.Info().Str("hand", cfg.DefaultAgent).Str("name", agent.Name).Str("id", defaultAgentID).Msg("Using default agent from config (hand)")
 						break
 					}
 				}
@@ -212,16 +189,15 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if defaultAgentID == "" {
-			fmt.Printf("Warning: Default agent '%s' not found in agent list\n", cfg.DefaultAgent)
+			log.Warn().Str("agent", cfg.DefaultAgent).Msg("Default agent not found in agent list")
 		}
 	}
 
 	if defaultAgentID == "" && len(agents) > 0 {
-		// If not specified in config or not found, use the first agent as default
 		defaultAgentID = agents[0].ID.String()
-		fmt.Printf("Set default agent to: %s (ID: %s)\n", agents[0].Name, defaultAgentID)
+		log.Info().Str("name", agents[0].Name).Str("id", defaultAgentID).Msg("Set default agent to first available")
 	} else if defaultAgentID == "" {
-		fmt.Println("Warning: No agents found. Users will need to activate hands first.")
+		log.Warn().Msg("No agents found. Users will need to activate hands first")
 	}
 
 	if defaultAgentID != "" {
@@ -230,76 +206,61 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 
 	bridgeManager := channels.NewBridgeManager(k, router)
 
-	// Register all adapters to bridge manager
 	adapters := k.Registry().ListAdapters()
 	for id, adapter := range adapters {
 		if err := bridgeManager.RegisterAdapter(id, adapter); err != nil {
-			fmt.Printf("Warning: Failed to register adapter %s: %v\n", id, err)
+			log.Warn().Str("adapter", id).Err(err).Msg("Failed to register adapter")
 		}
 	}
 
-	// Start bridge manager
 	if err := bridgeManager.Start(); err != nil {
 		return fmt.Errorf("failed to start bridge manager: %w", err)
 	}
 	defer bridgeManager.Stop()
 
-	// Handle signals
 	go func() {
 		<-sigChan
-		fmt.Println("\nShutting down...")
+		log.Info().Msg("Shutting down...")
 		cleanupDaemonInfo(daemonPath)
 		bridgeManager.Stop()
 		os.Exit(0)
 	}()
 
-	// Create API server config from config file
-	fmt.Printf("Configured Listen Address:%s\n", cfg.APIListen)
+	log.Info().Str("address", cfg.APIListen).Msg("Configured listen address")
 	apiCfg := &api.ServerConfig{
 		ListenAddr: cfg.APIListen,
 	}
 
-	// Get the already configured AuthManager from kernel
 	authManager := k.AuthManager()
 	if authManager == nil {
 		return fmt.Errorf("auth manager not initialized in kernel")
 	}
 	defer authManager.Close()
 
-	// Check if any users exist
 	userCount, err := authManager.UserCount()
 	if err != nil {
 		return fmt.Errorf("failed to count users: %w", err)
 	}
 
 	if userCount == 0 {
-		fmt.Println("\n========================================")
-		fmt.Println("  First time setup - No users found.")
-		fmt.Println("========================================")
+		log.Info().Msg("First time setup - No users found")
 
-		// Check for auto-create owner from env
 		ownerPassword := os.Getenv("FANGCLAW_OWNER_PASSWORD")
 		if ownerPassword != "" {
-			fmt.Println("Auto-creating owner user from FANGCLAW_OWNER_PASSWORD...")
+			log.Info().Msg("Auto-creating owner user from FANGCLAW_OWNER_PASSWORD")
 			_, err := authManager.CreateUser("owner", "", ownerPassword, auth.RoleOwner)
 			if err != nil {
 				return fmt.Errorf("failed to create owner user: %w", err)
 			}
-			fmt.Println("Owner user 'owner' created successfully!")
+			log.Info().Msg("Owner user created successfully")
 		} else {
-			fmt.Println("\n  Creating default owner user...")
-			fmt.Println("  Username: owner")
-			fmt.Println("  Password: owner123")
-			fmt.Println("")
-			fmt.Println("  IMPORTANT: Please change the password after first login!")
-			fmt.Println("")
+			log.Info().Msg("Creating default owner user (owner/owner123)")
 
 			_, err := authManager.CreateUser("owner", "", "owner123", auth.RoleOwner)
 			if err != nil {
 				return fmt.Errorf("failed to create default owner user: %w", err)
 			}
-			fmt.Println("Default owner user created successfully!")
-			fmt.Println("You can login with: owner / owner123")
+			log.Info().Msg("Default owner user created. Please change the password after first login")
 		}
 	}
 

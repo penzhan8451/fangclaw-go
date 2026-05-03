@@ -11,9 +11,9 @@ import (
 type contextKey string
 
 const (
-	UserIDKey    contextKey = "user_id"
-	UserRoleKey  contextKey = "user_role"
-	UsernameKey  contextKey = "username"
+	UserIDKey   contextKey = "user_id"
+	UserRoleKey contextKey = "user_role"
+	UsernameKey contextKey = "username"
 )
 
 func AuthMiddleware(authManager *auth.AuthManager) func(http.Handler) http.Handler {
@@ -146,6 +146,7 @@ func APIKeyAuthMiddleware(authManager *auth.AuthManager) func(http.Handler) http
 
 func extractTokenFromRequest(r *http.Request) string {
 	authHeader := r.Header.Get("Authorization")
+
 	if authHeader != "" {
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			return strings.TrimPrefix(authHeader, "Bearer ")

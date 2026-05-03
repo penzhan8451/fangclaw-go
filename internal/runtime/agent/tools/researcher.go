@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // ============ PDF Extract Tool (Researcher) ============
@@ -693,7 +695,7 @@ func (t *WebSearchTool) searchBaiduQianfan(ctx context.Context, query string, ma
 		})
 	}
 
-	fmt.Println("✅Return baidu qianfan search results")
+	log.Debug().Msg("Return baidu qianfan search results")
 	return results, nil
 }
 
@@ -762,7 +764,7 @@ func parseBaiduSearchResults(html string, max int) []SearchResult {
 		}
 	}
 
-	fmt.Println("✅Return baidu search results")
+	log.Debug().Msg("Return baidu search results")
 	return results
 }
 

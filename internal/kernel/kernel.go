@@ -33,6 +33,7 @@ import (
 	"github.com/penzhan8451/fangclaw-go/internal/mcp"
 	"github.com/penzhan8451/fangclaw-go/internal/memory"
 	"github.com/penzhan8451/fangclaw-go/internal/pairing"
+	"github.com/penzhan8451/fangclaw-go/internal/projects"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent/tools"
 	"github.com/penzhan8451/fangclaw-go/internal/runtime/agent_templates"
@@ -84,6 +85,8 @@ type Kernel struct {
 	a2aEventStore   *a2a.A2AEventStore
 	authManager     *auth.AuthManager
 	userDirMgr      *userdir.Manager
+	projectRegistry *projects.Registry
+	pmAgent         *projects.PMAgent
 	secrets         map[string]string
 	secretsMu       sync.RWMutex
 	mu              sync.RWMutex
@@ -239,6 +242,10 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 	workflowEngine := NewWorkflowEngine(dataDir)
 	log.Debug().Msg("WorkflowEngine created")
 
+	log.Debug().Str("dataDir", dataDir).Msg("Creating ProjectRegistry")
+	projectRegistry := projects.NewRegistry(dataDir)
+	log.Debug().Msg("ProjectRegistry created")
+
 	autoReplyConfig := autoreply.AutoReplyConfig{
 		Enabled:          true,
 		MaxConcurrent:    3,
@@ -270,6 +277,7 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 		deliveryTracker: deliveryTracker,
 		pairingManager:  pairingManager,
 		workflowEngine:  workflowEngine,
+		projectRegistry: projectRegistry,
 		autoReplyEngine: autoReplyEngine,
 		auditLog:        audit.NewAuditLog(),
 		a2aTaskStore:    a2a.NewA2ATaskStore(1000),
@@ -281,6 +289,11 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 		startTime:       time.Now(),
 		stopping:        make(chan struct{}),
 	}
+	// project pm agent
+	pmAgent := projects.NewPMAgent(projectRegistry, &kernelAgentRunner{k: k})
+	pmAgent.SetWorkflowEngine(&workflowEngineAdapter{engine: workflowEngine})
+	pmAgent.SetAgentFinder(&kernelAgentFinder{k: k})
+	k.pmAgent = pmAgent
 
 	authDBPath := kernelConfig.Auth.DBPath
 	if authDBPath == "" {
@@ -1227,6 +1240,14 @@ func (k *Kernel) AgentTemplates() *agent_templates.AgentTemplates {
 
 func (k *Kernel) WorkflowEngine() *WorkflowEngine {
 	return k.workflowEngine
+}
+
+func (k *Kernel) ProjectRegistry() *projects.Registry {
+	return k.projectRegistry
+}
+
+func (k *Kernel) GetPMAgent() *projects.PMAgent {
+	return k.pmAgent
 }
 
 func (k *Kernel) A2ATaskStore() *a2a.A2ATaskStore {
@@ -2525,4 +2546,123 @@ func manifestToCapabilities(manifest types.AgentManifest) []capabilities.Capabil
 	}
 
 	return caps
+}
+
+type kernelAgentRunner struct {
+	k *Kernel
+}
+
+func (r *kernelAgentRunner) RunAgent(ctx context.Context, agentID types.AgentID, prompt string) (string, error) {
+	result, err := r.k.SendMessage(ctx, agentID.String(), prompt)
+	if err != nil {
+		return "", err
+	}
+	return result, nil
+}
+
+type kernelAgentFinder struct {
+	k *Kernel
+}
+
+func (f *kernelAgentFinder) FindAgentByName(ctx context.Context, name string) (string, bool) {
+	return f.k.FindAgentByName(ctx, name)
+}
+
+type workflowEngineAdapter struct {
+	engine *WorkflowEngine
+}
+
+func (a *workflowEngineAdapter) CreateRun(workflowID string, input string) *string {
+	runID := a.engine.CreateRun(types.WorkflowID(workflowID), input)
+	if runID == nil {
+		return nil
+	}
+	id := string(*runID)
+	return &id
+}
+
+func (a *workflowEngineAdapter) ExecuteRun(runID string, resolver projects.AgentResolverFunc, sender projects.MessageSenderFunc) (string, error) {
+	kernelResolver := func(agent types.StepAgent) (string, string, bool) {
+		return resolver(projects.StepAgentRef{
+			ID:   agent.ID,
+			Name: agent.Name,
+		})
+	}
+
+	kernelSender := func(agentID, prompt string) (string, uint64, uint64, error) {
+		return sender(agentID, prompt)
+	}
+
+	return a.engine.ExecuteRun(types.WorkflowRunID(runID), kernelResolver, kernelSender)
+}
+
+func (a *workflowEngineAdapter) GetWorkflow(id string) *projects.WorkflowInfo {
+	wf := a.engine.GetWorkflow(types.WorkflowID(id))
+	if wf == nil {
+		return nil
+	}
+	steps := make([]projects.WorkflowStepInfo, 0, len(wf.Steps))
+	for _, s := range wf.Steps {
+		steps = append(steps, projects.WorkflowStepInfo{
+			Name: s.Name,
+			Agent: projects.StepAgentRef{
+				ID:   s.Agent.ID,
+				Name: s.Agent.Name,
+			},
+		})
+	}
+	return &projects.WorkflowInfo{
+		ID:          string(wf.ID),
+		Name:        wf.Name,
+		Description: wf.Description,
+		Steps:       steps,
+	}
+}
+
+func (a *workflowEngineAdapter) ListTemplates() []projects.TemplateInfo {
+	templates := a.engine.ListTemplates()
+	result := make([]projects.TemplateInfo, 0, len(templates))
+	for _, t := range templates {
+		result = append(result, projects.TemplateInfo{
+			ID:              string(t.ID),
+			Name:            t.Name,
+			Description:     t.Description,
+			Category:        t.Category,
+			TriggerKeywords: t.TriggerKeywords,
+			RequiredRoles:   t.RequiredRoles,
+			WorkflowID:      string(t.Workflow.ID),
+		})
+	}
+	return result
+}
+
+func (a *workflowEngineAdapter) GetTemplate(id string) *projects.TemplateInfo {
+	t := a.engine.GetTemplate(types.WorkflowTemplateID(id))
+	if t == nil {
+		return nil
+	}
+	return &projects.TemplateInfo{
+		ID:              string(t.ID),
+		Name:            t.Name,
+		Description:     t.Description,
+		Category:        t.Category,
+		TriggerKeywords: t.TriggerKeywords,
+		RequiredRoles:   t.RequiredRoles,
+		WorkflowID:      string(t.Workflow.ID),
+	}
+}
+
+func (a *workflowEngineAdapter) CreateWorkflowFromTemplate(templateID string) (string, error) {
+	template := a.engine.GetTemplate(types.WorkflowTemplateID(templateID))
+	if template == nil {
+		return "", fmt.Errorf("template not found: %s", templateID)
+	}
+
+	workflow := template.Workflow
+	if workflow.ID == "" {
+		workflow.ID = types.WorkflowID(fmt.Sprintf("wf-%s-%d", templateID, time.Now().UnixNano()))
+	}
+
+	a.engine.Register(workflow)
+	return string(workflow.ID), nil
 }

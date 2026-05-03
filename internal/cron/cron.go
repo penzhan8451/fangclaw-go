@@ -93,9 +93,22 @@ func (cs *CronScheduler) Load() (int, error) {
 		return 0, nil
 	}
 
+	// 检查文件是否为空或只有空白字符
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		log.Info().Msg("Cron jobs file is empty, starting with empty")
+		return 0, nil
+	}
+
+	// 检查是否是空数组 []
+	if trimmed == "[]" {
+		log.Info().Msg("Cron jobs file has empty array, starting with empty")
+		return 0, nil
+	}
+
 	var metas []JobMeta
 	if err := json.Unmarshal(data, &metas); err != nil {
-		log.Warn().Err(err).Msg("Failed to parse cron jobs file, backing up and starting fresh")
+		log.Warn().Err(err).Str("file_content", string(data)).Msg("Failed to parse cron jobs file, backing up and starting fresh")
 		backupPath := cs.persistPath + ".corrupted." + time.Now().Format("20060102-150405")
 		if err := os.Rename(cs.persistPath, backupPath); err != nil {
 			log.Warn().Err(err).Str("backup_path", backupPath).Msg("Failed to backup corrupted cron jobs file")

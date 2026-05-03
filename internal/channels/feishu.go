@@ -11,6 +11,7 @@ import (
 	larkdispatcher "github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
+	"github.com/rs/zerolog/log"
 )
 
 func init() {
@@ -22,7 +23,7 @@ func autoRegisterFeishu(registry *Registry, getSecret SecretGetter) error {
 	feishuAppSecret := getSecret("FEISHU_APP_SECRET")
 
 	if feishuAppID != "" && feishuAppSecret != "" {
-		fmt.Println("Auto-registering Feishu channel...")
+		log.Info().Msg("Auto-registering Feishu channel")
 		feishuChannel := &Channel{
 			Name:  "Feishu Bot",
 			Type:  ChannelTypeFeishu,
@@ -36,10 +37,10 @@ func autoRegisterFeishu(registry *Registry, getSecret SecretGetter) error {
 		}
 
 		if err := registry.RegisterChannel(feishuChannel); err != nil {
-			fmt.Printf("Warning: Failed to auto-register Feishu channel: %v\n", err)
+			log.Warn().Err(err).Msg("Failed to auto-register Feishu channel")
 			return err
 		}
-		fmt.Println("Feishu channel auto-registered successfully")
+		log.Info().Msg("Feishu channel auto-registered successfully")
 	}
 	return nil
 }
@@ -121,7 +122,7 @@ func (a *FeishuAdapter) Start() error {
 		return fmt.Errorf("feishu app id or app secret not configured (app_id=%q)", appID)
 	}
 
-	fmt.Printf("Starting Feishu adapter with app_id=%q\n", appID)
+	log.Info().Str("app_id", appID).Msg("Starting Feishu adapter")
 
 	a.client = lark.NewClient(appID, appSecret)
 
@@ -140,7 +141,7 @@ func (a *FeishuAdapter) Start() error {
 
 	go func() {
 		if err := a.wsClient.Start(a.ctx); err != nil {
-			fmt.Printf("Feishu WebSocket session error: %v\n", err)
+			log.Error().Err(err).Msg("Feishu WebSocket session error")
 			a.Channel.State = ChannelStateError
 		}
 	}()

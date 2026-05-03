@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/tencent-connect/botgo"
 	"github.com/tencent-connect/botgo/dto"
 	"github.com/tencent-connect/botgo/event"
@@ -23,7 +24,7 @@ func autoRegisterQQ(registry *Registry, getSecret SecretGetter) error {
 	qqAppSecret := getSecret("QQ_APP_SECRET")
 
 	if qqAppID != "" && qqAppSecret != "" {
-		fmt.Println("Auto-registering QQ channel...")
+		log.Info().Msg("Auto-registering QQ channel")
 		qqChannel := &Channel{
 			Name:  "QQ Bot",
 			Type:  ChannelTypeQQ,
@@ -37,10 +38,10 @@ func autoRegisterQQ(registry *Registry, getSecret SecretGetter) error {
 		}
 
 		if err := registry.RegisterChannel(qqChannel); err != nil {
-			fmt.Printf("Warning: Failed to auto-register QQ channel: %v\n", err)
+			log.Warn().Err(err).Msg("Failed to auto-register QQ channel")
 			return err
 		}
-		fmt.Println("QQ channel auto-registered successfully")
+		log.Info().Msg("QQ channel auto-registered successfully")
 	}
 	return nil
 }
@@ -148,7 +149,7 @@ func (a *QQAdapter) Start() error {
 
 	go func() {
 		if err := a.sessionManager.Start(wsInfo, a.tokenSource, &intent); err != nil {
-			fmt.Printf("QQ WebSocket session error: %v\n", err)
+			log.Error().Err(err).Msg("QQ WebSocket session error")
 			a.Channel.State = ChannelStateError
 		}
 	}()

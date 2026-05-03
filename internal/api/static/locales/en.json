@@ -121,7 +121,8 @@
     "monitor": "Monitor",
     "automation": "Automation",
     "extensions": "Extensions",
-    "system": "System"
+    "system": "System",
+    "projects": "Projects"
   },
   "setup": {
     "setupRequired": "SETUP REQUIRED",

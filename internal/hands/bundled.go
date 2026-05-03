@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // ResolvedSettings represents the result of resolving user-chosen settings against the schema.
@@ -123,13 +125,13 @@ func loadBundledHands() {
 		path := filepath.Join("bundled_hands", handID, handID+".json")
 		data, err := bundledHandsFS.ReadFile(path)
 		if err != nil {
-			fmt.Printf("Warning: Failed to read %s: %v\n", path, err)
+			log.Warn().Str("path", path).Err(err).Msg("Failed to read bundled hand")
 			continue
 		}
 
 		var hand HandDefinition
 		if err := json.Unmarshal(data, &hand); err != nil {
-			fmt.Printf("Warning: Failed to parse %s: %v\n", path, err)
+			log.Warn().Str("path", path).Err(err).Msg("Failed to parse bundled hand")
 			continue
 		}
 

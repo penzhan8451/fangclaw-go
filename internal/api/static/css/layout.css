@@ -292,6 +292,10 @@
   .main-content { padding: 0; }
   .table-wrap { font-size: 10px; }
   .modal { margin: 8px; max-height: calc(100vh - 16px); }
+  
+  /* Project header buttons: hide text, show only icon on mobile */
+  .project-action-btn-text { display: none; }
+  .project-action-btn { padding: 8px 10px; }
 }
 
 /* Touch-friendly tap targets */
@@ -300,6 +304,55 @@
   .nav-item { min-height: 44px; }
   .form-input, .form-select, .form-textarea { min-height: 44px; }
   .toggle { min-width: 44px; min-height: 28px; }
+}
+
+/* Project Sidebar Responsive */
+@media (max-width: 768px) {
+  .projects-layout {
+    grid-template-columns: 1fr !important;  /* 移动端只显示内容区 */
+    position: relative;
+  }
+  
+  .project-sidebar {
+    display: none !important;  /* 默认隐藏，强制覆盖 inline style */
+  }
+  
+  .project-sidebar.mobile-open {
+    display: flex !important;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 200;
+    transition: left 0.3s ease;
+    border-radius: 0;
+  }
+  
+  .project-sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 199;
+  }
+  
+  .project-sidebar-overlay.mobile-open {
+    display: block;
+  }
+  
+  .project-mobile-menu-btn {
+    display: flex !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .project-mobile-menu-btn {
+    display: none !important;
+  }
+  .project-sidebar-overlay {
+    display: none !important;
+  }
 }
 
 /* Focus mode — hide sidebar for distraction-free chat */

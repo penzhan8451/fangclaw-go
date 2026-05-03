@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/rs/zerolog/log"
 )
 
 // MemoryProvider is the interface that all memory providers must implement
@@ -95,7 +97,7 @@ func (mm *MemoryManager) AddProvider(provider MemoryProvider) {
 					break
 				}
 			}
-			fmt.Printf("Warning: Rejected memory provider '%s' — external provider '%s' is already registered\n", provider.Name(), existing)
+			log.Warn().Str("provider", provider.Name()).Str("existing", existing).Msg("Rejected memory provider — external provider already registered")
 			return
 		}
 		mm.hasExternal = true
@@ -109,12 +111,12 @@ func (mm *MemoryManager) AddProvider(provider MemoryProvider) {
 			if _, exists := mm.toolToProvider[toolName]; !exists {
 				mm.toolToProvider[toolName] = provider
 			} else {
-				fmt.Printf("Warning: Memory tool name conflict: '%s' already registered by %s\n", toolName, mm.toolToProvider[toolName].Name())
+				log.Warn().Str("tool", toolName).Str("existing_provider", mm.toolToProvider[toolName].Name()).Msg("Memory tool name conflict")
 			}
 		}
 	}
 
-	fmt.Printf("Memory provider '%s' registered\n", provider.Name())
+	log.Info().Str("provider", provider.Name()).Msg("Memory provider registered")
 }
 
 // Providers returns all registered providers
@@ -290,7 +292,7 @@ func (mm *MemoryManager) InitializeAll(sessionID string, ctx map[string]interfac
 
 	for _, p := range mm.providers {
 		if err := p.Initialize(sessionID, ctx); err != nil {
-			fmt.Printf("Warning: Memory provider '%s' initialize failed: %v\n", p.Name(), err)
+			log.Warn().Str("provider", p.Name()).Err(err).Msg("Memory provider initialize failed")
 		}
 	}
 }

@@ -121,7 +121,8 @@
     "monitor": "监控",
     "automation": "自动化",
     "extensions": "扩展",
-    "system": "系统"
+    "system": "系统",
+    "projects": "项目"
   },
   "setup": {
     "setupRequired": "需要设置",

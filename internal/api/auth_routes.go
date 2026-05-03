@@ -13,6 +13,7 @@ import (
 
 	"github.com/penzhan8451/fangclaw-go/internal/auth"
 	"github.com/penzhan8451/fangclaw-go/internal/userdir"
+	"github.com/rs/zerolog/log"
 )
 
 type AuthHandler struct {
@@ -146,6 +147,7 @@ func (h *AuthHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) HandleGetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("user_id")
+
 	if userID == nil {
 		respondError(w, http.StatusUnauthorized, "not authenticated")
 		return
@@ -384,7 +386,7 @@ func (h *AuthHandler) HandleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		mgr, err := userdir.GetDefaultManager()
 		if err == nil {
 			if err := mgr.DeleteUserDir(targetUser.Username); err != nil {
-				fmt.Printf("Warning: failed to delete user directory for %s: %v\n", targetUser.Username, err)
+				log.Warn().Err(err).Str("user", targetUser.Username).Msg("Failed to delete user directory")
 			}
 		}
 	}
@@ -417,7 +419,7 @@ func (h *AuthHandler) HandleDeleteCurrentUser(w http.ResponseWriter, r *http.Req
 		mgr, err := userdir.GetDefaultManager()
 		if err == nil {
 			if err := mgr.DeleteUserDir(user.Username); err != nil {
-				fmt.Printf("Warning: failed to delete user directory for %s: %v\n", user.Username, err)
+				log.Warn().Err(err).Str("user", user.Username).Msg("Failed to delete user directory")
 			}
 		}
 	}
@@ -574,6 +576,7 @@ func (h *AuthHandler) HandleGitHubCallback(w http.ResponseWriter, r *http.Reques
 
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
+
 	if state == "" || code == "" {
 		respondError(w, http.StatusBadRequest, "missing state or code")
 		return

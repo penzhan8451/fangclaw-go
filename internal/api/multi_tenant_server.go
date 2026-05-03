@@ -358,14 +358,14 @@ func (s *MultiTenantServer) setupStaticFiles(mux *http.ServeMux) {
 }
 
 func (s *MultiTenantServer) Start() error {
-	fmt.Printf("Starting multi-tenant API server on %s...\n", s.config.ListenAddr)
-	fmt.Printf("BridgeManager is nil: %v\n", s.bridgeManager == nil)
+	log.Info().Str("addr", s.config.ListenAddr).Msg("Starting multi-tenant API server")
+	log.Debug().Bool("bridge_manager_nil", s.bridgeManager == nil).Msg("BridgeManager status")
 
 	if s.bridgeManager != nil {
-		fmt.Println("Loading all user channels...")
+		log.Info().Msg("Loading all user channels")
 		s.loadAllUserChannels()
 	} else {
-		fmt.Println("WARNING: BridgeManager is nil, skipping user channel loading")
+		log.Warn().Msg("BridgeManager is nil, skipping user channel loading")
 	}
 
 	go func() {
@@ -400,11 +400,11 @@ func (s *MultiTenantServer) loadAllUserChannels() {
 			if err := s.bridgeManager.RegisterAdapter(id, adapter); err != nil {
 				log.Warn().Err(err).Str("adapter", id).Str("user", user.Username).Msg("Failed to register adapter to bridge manager")
 			} else {
-				fmt.Printf("Registered adapter %s for user %s to bridge manager\n", id, user.Username)
+				log.Info().Str("adapter", id).Str("user", user.Username).Msg("Registered adapter to bridge manager")
 			}
 		}
 
-		fmt.Printf("Loaded channels for user: %s\n", user.Username)
+		log.Info().Str("user", user.Username).Msg("Loaded channels for user")
 	}
 }
 
@@ -427,16 +427,16 @@ func (s *MultiTenantServer) WaitForShutdown() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	fmt.Println("\nShutting down server...")
+	log.Info().Msg("Shutting down server...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := s.Stop(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Error during shutdown: %v\n", err)
+		log.Error().Err(err).Msg("Error during shutdown")
 	}
 
-	fmt.Println("Server stopped")
+	log.Info().Msg("Server stopped")
 }
 
 func RunMultiTenantServer(baseKernel *kernel.Kernel, authManager *auth.AuthManager, cfg *ServerConfig, defaultAgentID string, bridgeManager *channels.BridgeManager) error {
@@ -458,9 +458,9 @@ func RunMultiTenantServer(baseKernel *kernel.Kernel, authManager *auth.AuthManag
 	go func() {
 		select {
 		case <-sigChan:
-			fmt.Println("\nShutting down...")
+			log.Info().Msg("Shutting down (signal)...")
 		case <-WaitForShutdown():
-			fmt.Println("\nShutdown requested via API...")
+			log.Info().Msg("Shutting down (API request)...")
 		}
 		cancel()
 		server.Stop(context.Background())
