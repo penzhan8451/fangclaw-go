@@ -72,15 +72,24 @@ func cleanupDaemonInfo(daemonPath string) {
 }
 
 func setupLogFile() error {
-	logFile := logging.DefaultLogFilePath()
-
 	logLevel := "info"
 	cfg, err := config.Load("")
 	if err == nil && cfg.Log.Level != "" {
 		logLevel = cfg.Log.Level
 	}
-	if cfg != nil && cfg.Log.File != "" {
-		logFile = cfg.Log.File
+
+	var logFile string
+	if cfg != nil {
+		switch cfg.Log.File {
+		case "off", "none", "discard":
+			logFile = ""
+		case "":
+			logFile = logging.DefaultLogFilePath()
+		default:
+			logFile = cfg.Log.File
+		}
+	} else {
+		logFile = logging.DefaultLogFilePath()
 	}
 
 	if err := logging.SetupFileOnly(logLevel, logFile); err != nil {
