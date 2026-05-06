@@ -30,7 +30,11 @@ function schedulerPage() {
       cron: '',
       agent_id: '',
       message: '',
-      enabled: true
+      enabled: true,
+      delivery_kind: 'last_channel',
+      delivery_channel_name: '',
+      delivery_recipient: '',
+      delivery_webhook_url: ''
     },
     creating: false,
 
@@ -42,7 +46,11 @@ function schedulerPage() {
       cron: '',
       agent_id: '',
       message: '',
-      enabled: true
+      enabled: true,
+      delivery_kind: 'none',
+      delivery_channel_name: '',
+      delivery_recipient: '',
+      delivery_webhook_url: ''
     },
     editing: false,
 
@@ -62,6 +70,9 @@ function schedulerPage() {
 
     // -- Run Now state --
     runningJobId: '',
+
+    // -- Channels for delivery --
+    channels: [],
 
     // Cron presets
     cronPresets: [
@@ -85,6 +96,7 @@ function schedulerPage() {
       this.loadError = '';
       try {
         await this.loadJobs();
+        await this.loadChannels();
       } catch(e) {
         this.loadError = e.message || 'Could not load scheduler data.';
       }
@@ -112,6 +124,7 @@ function schedulerPage() {
           last_run: j.last_run,
           next_run: j.next_run,
           delivery: j.delivery ? j.delivery.kind || '' : '',
+          _raw_delivery: j.delivery || null,
           created_at: j.created_at
         };
       });
@@ -128,6 +141,15 @@ function schedulerPage() {
         this.trigLoadError = e.message || 'Could not load triggers.';
       }
       this.trigLoading = false;
+    },
+
+    async loadChannels() {
+      try {
+        var data = await FangClawGoAPI.get('/api/channels');
+        this.channels = Array.isArray(data) ? data : [];
+      } catch(e) {
+        this.channels = [];
+      }
     },
 
     async loadHistory() {
@@ -195,17 +217,24 @@ function schedulerPage() {
       this.creating = true;
       try {
         var jobName = this.newJob.name;
+        var delivery = { kind: this.newJob.delivery_kind };
+        if (this.newJob.delivery_kind === 'channel') {
+          delivery.channel_name = this.newJob.delivery_channel_name;
+          if (this.newJob.delivery_recipient) delivery.recipient = this.newJob.delivery_recipient;
+        } else if (this.newJob.delivery_kind === 'webhook') {
+          delivery.url = this.newJob.delivery_webhook_url;
+        }
         var body = {
           agent_id: this.newJob.agent_id,
           name: this.newJob.name,
           schedule: { kind: 'cron', expr: this.newJob.cron },
           action: { kind: 'agent_turn', message: this.newJob.message || 'Scheduled task: ' + this.newJob.name },
-          delivery: { kind: 'last_channel' },
+          delivery: delivery,
           enabled: this.newJob.enabled
         };
         await FangClawGoAPI.post('/api/cron/jobs', body);
         this.showCreateForm = false;
-        this.newJob = { name: '', cron: '', agent_id: '', message: '', enabled: true };
+        this.newJob = { name: '', cron: '', agent_id: '', message: '', enabled: true, delivery_kind: 'last_channel', delivery_channel_name: '', delivery_recipient: '', delivery_webhook_url: '' };
         FangClawGoToast.success('Schedule "' + jobName + '" created');
         await this.loadJobs();
       } catch(e) {
@@ -259,12 +288,25 @@ function schedulerPage() {
 
     openEditForm(job) {
       this.editingJobId = job.id;
+      var deliveryKind = job.delivery || 'none';
+      var channelName = '';
+      var recipient = '';
+      var webhookUrl = '';
+      if (job._raw_delivery) {
+        channelName = job._raw_delivery.channel_name || '';
+        recipient = job._raw_delivery.recipient || '';
+        webhookUrl = job._raw_delivery.url || '';
+      }
       this.editJob = {
         name: job.name || '',
         cron: job.cron || '',
         agent_id: job.agent_id || '',
         message: job.message || '',
-        enabled: job.enabled !== false
+        enabled: job.enabled !== false,
+        delivery_kind: deliveryKind,
+        delivery_channel_name: channelName,
+        delivery_recipient: recipient,
+        delivery_webhook_url: webhookUrl
       };
       this.showEditForm = true;
     },
@@ -281,6 +323,13 @@ function schedulerPage() {
 
       this.editing = true;
       try {
+        var delivery = { kind: this.editJob.delivery_kind };
+        if (this.editJob.delivery_kind === 'channel') {
+          delivery.channel_name = this.editJob.delivery_channel_name;
+          if (this.editJob.delivery_recipient) delivery.recipient = this.editJob.delivery_recipient;
+        } else if (this.editJob.delivery_kind === 'webhook') {
+          delivery.url = this.editJob.delivery_webhook_url;
+        }
         await FangClawGoAPI.put('/api/schedules/' + this.editingJobId, {
           agent_id: this.editJob.agent_id,
           name: this.editJob.name,
@@ -293,9 +342,7 @@ function schedulerPage() {
             kind: 'agent_turn',
             message: this.editJob.message
           },
-          delivery: {
-            kind: 'none'
-          }
+          delivery: delivery
         });
         FangClawGoToast.success('Schedule updated successfully');
         this.showEditForm = false;

@@ -134,6 +134,7 @@ const (
 	CronDeliveryKindChannel     CronDeliveryKind = "channel"
 	CronDeliveryKindLastChannel CronDeliveryKind = "last_channel"
 	CronDeliveryKindWebhook     CronDeliveryKind = "webhook"
+	CronDeliveryKindProject     CronDeliveryKind = "project"
 )
 
 type CronDelivery struct {
@@ -141,6 +142,7 @@ type CronDelivery struct {
 	ChannelName *string          `json:"channel_name,omitempty"`
 	Recipient   *string          `json:"recipient,omitempty"`
 	Url         *string          `json:"url,omitempty"`
+	ProjectID   *string          `json:"project_id,omitempty"`
 }
 
 func NewCronDeliveryNone() CronDelivery {
@@ -167,6 +169,13 @@ func NewCronDeliveryWebhook(url string) CronDelivery {
 	return CronDelivery{
 		Kind: CronDeliveryKindWebhook,
 		Url:  &url,
+	}
+}
+
+func NewCronDeliveryProject(projectID string) CronDelivery {
+	return CronDelivery{
+		Kind:      CronDeliveryKindProject,
+		ProjectID: &projectID,
 	}
 }
 
@@ -304,6 +313,7 @@ func (d *CronDelivery) Validate() error {
 		if len(*d.Url) > MAX_WEBHOOK_URL_LENGTH {
 			return fmt.Errorf("url too long (max %d chars)", MAX_WEBHOOK_URL_LENGTH)
 		}
+	case CronDeliveryKindProject:
 	default:
 		return fmt.Errorf("unknown delivery kind: %s", d.Kind)
 	}
@@ -454,6 +464,12 @@ func UnmarshalCronDelivery(data []byte) (CronDelivery, error) {
 			return CronDelivery{}, fmt.Errorf("missing or invalid url field")
 		}
 		return NewCronDeliveryWebhook(url), nil
+	case CronDeliveryKindProject:
+		projectID, ok := raw["project_id"].(string)
+		if !ok {
+			return CronDelivery{}, fmt.Errorf("missing or invalid project_id field")
+		}
+		return NewCronDeliveryProject(projectID), nil
 	default:
 		return CronDelivery{}, fmt.Errorf("unknown delivery kind: %s", kind)
 	}

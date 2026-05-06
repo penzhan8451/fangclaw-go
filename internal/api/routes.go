@@ -590,6 +590,12 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects/{id}/workflows/{workflowId}/run", r.handleRunProjectWorkflow)
 	mux.HandleFunc("POST /api/projects/{id}/generate-workflow", r.handleGenerateWorkflow)
 
+	mux.HandleFunc("GET /api/projects/{id}/crons", r.handleListProjectCrons)
+	mux.HandleFunc("GET /api/projects/{id}/crons/results", r.handleListProjectCronResults)
+	mux.HandleFunc("POST /api/projects/{id}/crons", r.handleBindProjectCron)
+	mux.HandleFunc("PATCH /api/projects/{id}/crons/{jobId}", r.handleUpdateProjectCron)
+	mux.HandleFunc("DELETE /api/projects/{id}/crons/{jobId}", r.handleUnbindProjectCron)
+
 	// Skill endpoints
 	mux.HandleFunc("GET /api/v1/skills", r.handleListSkills)
 	mux.HandleFunc("POST /api/v1/skills", r.handleInstallSkill)
@@ -1018,6 +1024,172 @@ func (r *Router) handleListAgents(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 	respondJSON(w, http.StatusOK, result)
+}
+
+func (r *Router) handleListProjectCrons(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	pmAgent := r.getKernel(req).GetPMAgent()
+	bindings := pmAgent.ListCronBindings(req.Context(), projectID)
+
+	respondJSON(w, http.StatusOK, bindings)
+}
+
+func (r *Router) handleListProjectCronResults(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	project := r.getKernel(req).ProjectRegistry().Get(projectID)
+	if project == nil {
+		respondError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, project.CronResults)
+}
+
+func (r *Router) handleBindProjectCron(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	var reqBody struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if reqBody.JobID == "" {
+		respondError(w, http.StatusBadRequest, "job_id is required")
+		return
+	}
+
+	cronScheduler := r.getKernel(req).CronScheduler()
+	job := cronScheduler.GetJob(types.CronJobID(reqBody.JobID))
+	if job == nil {
+		respondError(w, http.StatusNotFound, "cron job not found")
+		return
+	}
+
+	project := r.getKernel(req).ProjectRegistry().Get(projectID)
+	if project == nil {
+		respondError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	isMember := false
+	for _, m := range project.Members {
+		if m.Active && m.ID == job.AgentID {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		respondError(w, http.StatusConflict, fmt.Sprintf("agent %s is not a project member. Add the agent as a member first", job.AgentID))
+		return
+	}
+
+	binding := projects.ProjectCronBinding{
+		JobID:   reqBody.JobID,
+		JobName: job.Name,
+		Enabled: true,
+		Status:  projects.CronBindingActive,
+	}
+
+	if err := r.getKernel(req).ProjectRegistry().BindCron(projectID, binding); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to bind cron job: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "bound"})
+}
+
+func (r *Router) handleUpdateProjectCron(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	jobID := req.PathValue("jobId")
+	if jobID == "" {
+		respondError(w, http.StatusBadRequest, "job ID is required")
+		return
+	}
+
+	var reqBody struct {
+		Enabled *bool `json:"enabled,omitempty"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	project := r.getKernel(req).ProjectRegistry().Get(projectID)
+	if project == nil {
+		respondError(w, http.StatusNotFound, "project not found")
+		return
+	}
+
+	var found *projects.ProjectCronBinding
+	for i := range project.CronBindings {
+		if project.CronBindings[i].JobID == jobID {
+			found = &project.CronBindings[i]
+			break
+		}
+	}
+	if found == nil {
+		respondError(w, http.StatusNotFound, "cron binding not found")
+		return
+	}
+
+	if reqBody.Enabled != nil {
+		found.Enabled = *reqBody.Enabled
+	}
+
+	if err := r.getKernel(req).ProjectRegistry().BindCron(projectID, *found); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to update cron binding: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (r *Router) handleUnbindProjectCron(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	jobID := req.PathValue("jobId")
+	if jobID == "" {
+		respondError(w, http.StatusBadRequest, "job ID is required")
+		return
+	}
+
+	if err := r.getKernel(req).ProjectRegistry().UnbindCron(projectID, jobID); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to unbind cron job: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "unbound"})
 }
 
 func (r *Router) handleGenerateWorkflow(w http.ResponseWriter, req *http.Request) {

@@ -394,7 +394,9 @@
     "budget": "预算",
     "system": "系统",
     "migration": "迁移",
-    "account": "账号"
+    "account": "账号",
+    "llmProviders": "LLM提供商",
+    "llmProvidersDesc": "Fanggo 支持多个 LLM 提供商。配置 API 密钥以解锁每个提供商的模型。使用下方表单直接保存密钥。"
   },
   "logs": {
     "title": "日志",

@@ -2037,6 +2037,42 @@
                     </label>
                   </div>
 
+                  <div class="form-group">
+                    <label>Result Delivery</label>
+                    <select class="form-select" x-model="newJob.delivery_kind">
+                      <option value="none">None (no delivery)</option>
+                      <option value="last_channel">Last Channel (reply to last conversation)</option>
+                      <option value="channel">Channel (send to specific channel)</option>
+                      <option value="webhook">Webhook (POST to URL)</option>
+                    </select>
+                    <div class="text-xs text-dim mt-1">How to deliver the agent's response after each run.</div>
+                  </div>
+
+                  <template x-if="newJob.delivery_kind === 'channel'">
+                    <div>
+                      <div class="form-group">
+                        <label>Channel</label>
+                        <select class="form-select" x-model="newJob.delivery_channel_name">
+                          <option value="">Select a channel...</option>
+                          <template x-for="ch in channels" :key="ch.name">
+                            <option :value="ch.name" x-text="ch.name"></option>
+                          </template>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label>Recipient (optional)</label>
+                        <input class="form-input" x-model="newJob.delivery_recipient" placeholder="e.g., user@example.com">
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="newJob.delivery_kind === 'webhook'">
+                    <div class="form-group">
+                      <label>Webhook URL</label>
+                      <input class="form-input" x-model="newJob.delivery_webhook_url" placeholder="https://hooks.example.com/...">
+                    </div>
+                  </template>
+
                   <button class="btn btn-primary btn-block mt-4" @click="createJob()" :disabled="creating">
                     <span x-show="!creating">Create Schedule</span>
                     <span x-show="creating">Creating...</span>
@@ -2098,6 +2134,42 @@
                       <span x-text="editJob.enabled ? 'Enabled (will start running immediately)' : 'Disabled (paused)'"></span>
                     </label>
                   </div>
+
+                  <div class="form-group">
+                    <label>Result Delivery</label>
+                    <select class="form-select" x-model="editJob.delivery_kind">
+                      <option value="none">None (no delivery)</option>
+                      <option value="last_channel">Last Channel (reply to last conversation)</option>
+                      <option value="channel">Channel (send to specific channel)</option>
+                      <option value="webhook">Webhook (POST to URL)</option>
+                    </select>
+                    <div class="text-xs text-dim mt-1">How to deliver the agent's response after each run.</div>
+                  </div>
+
+                  <template x-if="editJob.delivery_kind === 'channel'">
+                    <div>
+                      <div class="form-group">
+                        <label>Channel</label>
+                        <select class="form-select" x-model="editJob.delivery_channel_name">
+                          <option value="">Select a channel...</option>
+                          <template x-for="ch in channels" :key="ch.name">
+                            <option :value="ch.name" x-text="ch.name"></option>
+                          </template>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label>Recipient (optional)</label>
+                        <input class="form-input" x-model="editJob.delivery_recipient" placeholder="e.g., user@example.com">
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="editJob.delivery_kind === 'webhook'">
+                    <div class="form-group">
+                      <label>Webhook URL</label>
+                      <input class="form-input" x-model="editJob.delivery_webhook_url" placeholder="https://hooks.example.com/...">
+                    </div>
+                  </template>
 
                   <button class="btn btn-primary btn-block mt-4" @click="updateJob()" :disabled="editing">
                     <span x-show="!editing">Update Schedule</span>
@@ -2693,6 +2765,7 @@
                   <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;">
                     <button class="btn btn-ghost btn-sm" :style="projectTab === 'chat' ? 'border-bottom:2px solid var(--accent);font-weight:600;' : ''" @click="projectTab = 'chat'" style="padding:8px 16px;">Chat</button>
                     <button class="btn btn-ghost btn-sm" :style="projectTab === 'workflows' ? 'border-bottom:2px solid var(--accent);font-weight:600;' : ''" @click="projectTab = 'workflows'" style="padding:8px 16px;">Workflows</button>
+                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'schedules' ? 'border-bottom:2px solid var(--accent);font-weight:600;' : ''" @click="projectTab = 'schedules'; loadCronBindings(); loadAvailableCronJobs();" style="padding:8px 16px;">Schedules</button>
                   </div>
 
                   <!-- Chat Tab -->
@@ -2858,6 +2931,105 @@
                       </template>
                     </div>
                   </template>
+
+                  <!-- Schedules Tab -->
+                  <template x-if="projectTab === 'schedules'">
+                    <div style="flex:1;overflow:auto;padding:16px;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                        <h4 style="margin:0;font-size:0.9rem;">Bound Schedules</h4>
+                        <button class="btn btn-primary btn-sm" @click="showBindCronModal = true; loadAvailableCronJobs();">+ Bind Schedule</button>
+                      </div>
+
+                      <template x-if="(cronBindings || []).length > 0">
+                        <div>
+                          <template x-for="cb in cronBindings" :key="cb.job_id">
+                            <div style="padding:14px;background:var(--bg-secondary);border-radius:8px;margin-bottom:8px;" :style="!cb.enabled || cb.status !== 'active' ? 'opacity:0.6;' : ''">
+                              <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <div>
+                                  <span style="font-weight:600;" x-text="cb.job_name || cb.job_id"></span>
+                                  <template x-if="cb.status === 'orphaned'">
+                                    <span class="badge" style="background:var(--error);color:#fff;margin-left:6px;font-size:0.65rem;">Deleted</span>
+                                  </template>
+                                  <template x-if="cb.status === 'agent_mismatch'">
+                                    <span class="badge" style="background:var(--warning);color:#000;margin-left:6px;font-size:0.65rem;">Agent Mismatch</span>
+                                  </template>
+                                  <template x-if="cb.status === 'active' && cb.enabled">
+                                    <span class="badge" style="background:var(--success);color:#fff;margin-left:6px;font-size:0.65rem;">Active</span>
+                                  </template>
+                                </div>
+                                <div class="flex gap-1">
+                                  <template x-if="cb.status === 'agent_mismatch'">
+                                    <button class="btn btn-ghost btn-sm" @click="addCronAgentAsMember(cb)" title="Add agent as member">+ Add Member</button>
+                                  </template>
+                                  <button class="btn btn-ghost btn-sm" @click="toggleCronBindingEnabled(cb)" :title="cb.enabled ? 'Disable' : 'Enable'">
+                                    <template x-if="cb.enabled">
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 11-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                                    </template>
+                                    <template x-if="!cb.enabled">
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                                    </template>
+                                  </button>
+                                  <button class="btn btn-ghost btn-sm" @click="unbindCron(cb.job_id)" title="Unbind schedule">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                  </button>
+                                </div>
+                              </div>
+                              <div style="font-size:0.75rem;color:var(--text-dim);margin-top:4px;">
+                                <span x-text="'Job ID: ' + cb.job_id.substring(0, 8) + '...'"></span>
+                                <span x-text="cb.enabled ? ' • Enabled' : ' • Disabled'" :style="cb.enabled ? 'color:var(--success);' : 'color:var(--text-dim);'"></span>
+                              </div>
+                              <template x-if="cb.status === 'orphaned'">
+                                <div style="font-size:0.75rem;color:var(--error);margin-top:4px;">This schedule has been deleted. Please unbind it.</div>
+                              </template>
+                              <template x-if="cb.status === 'agent_mismatch'">
+                                <div style="font-size:0.75rem;color:var(--warning);margin-top:4px;">The agent for this schedule is no longer a project member.</div>
+                              </template>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+                      <template x-if="!(cronBindings || []).length">
+                        <p class="text-dim" style="text-align:center;padding:24px;">No schedules bound to this project. Click "Bind Schedule" to add one.
+                          <br>To create new, go to the <a href="#" @click.prevent="navigate('scheduler')">Scheduler</a> page to create.
+                        </p>
+                      </template>
+
+                      <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                          <h4 style="margin:0;font-size:0.9rem;">Execution History</h4>
+                          <button class="btn btn-ghost btn-sm" @click="loadCronResults()">Refresh</button>
+                        </div>
+                        <template x-if="(cronResults || []).length > 0">
+                          <div>
+                            <template x-for="cr in (cronResults || []).slice().reverse().slice(0, 20)" :key="cr.id">
+                              <div style="padding:12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:6px;font-size:0.8rem;">
+                                <div style="display:flex;align-items:center;justify-content:space-between;">
+                                  <div style="display:flex;align-items:center;gap:6px;">
+                                    <template x-if="cr.status === 'success'">
+                                      <span style="color:var(--success);font-weight:600;">✓</span>
+                                    </template>
+                                    <template x-if="cr.status !== 'success'">
+                                      <span style="color:var(--error);font-weight:600;">✗</span>
+                                    </template>
+                                    <span style="font-weight:600;" x-text="cr.job_name || cr.job_id.substring(0, 8) + '...'"></span>
+                                    <span class="badge badge-dim" x-text="cr.agent_name || 'unknown'"></span>
+                                  </div>
+                                  <span style="color:var(--text-dim);font-size:0.7rem;" x-text="formatDate(cr.fired_at)"></span>
+                                </div>
+                                <details style="margin-top:6px;">
+                                  <summary style="cursor:pointer;color:var(--text-dim);font-size:0.7rem;">View Result</summary>
+                                  <pre style="margin-top:4px;padding:8px;background:var(--bg);border-radius:6px;font-size:0.7rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;" x-text="cr.result"></pre>
+                                </details>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                        <template x-if="!(cronResults || []).length">
+                          <p class="text-dim" style="text-align:center;padding:16px;font-size:0.8rem;">No execution results yet. Results will appear here when bound schedules are triggered.</p>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
                 </div>
               </template>
             </div>
@@ -3013,6 +3185,46 @@
                 <div class="modal-footer">
                   <button class="btn btn-ghost" @click="showEditWorkflowModal = false">Cancel</button>
                   <button class="btn btn-primary" @click="saveWorkflowBinding()">Save Changes</button>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Bind Cron Schedule Modal -->
+          <template x-if="showBindCronModal">
+            <div class="modal-overlay" @click.self="showBindCronModal = false">
+              <div class="modal">
+                <div class="modal-header">
+                  <h3>Bind Schedule to Project</h3>
+                  <button class="modal-close" @click="showBindCronModal = false">&times;</button>
+                </div>
+                <div class="modal-body">
+                  <div class="form-group">
+                    <label>Schedule Job</label>
+                    <select class="form-input" x-model="bindCronJobId" @change="onCronJobSelect()">
+                      <option value="">Select a schedule...</option>
+                      <template x-for="job in availableCronJobs" :key="job.id">
+                        <option :value="job.id" x-text="job.name + ' (' + (job.agent_id || '').substring(0, 8) + '...)'"></option>
+                      </template>
+                    </select>
+                  </div>
+                  <template x-if="bindCronJobId && getCronJobDetail(bindCronJobId)">
+                    <div style="padding:12px;background:var(--bg-secondary);border-radius:8px;font-size:0.8rem;">
+                      <div><strong>Name:</strong> <span x-text="getCronJobDetail(bindCronJobId).name"></span></div>
+                      <div><strong>Agent:</strong> <span x-text="(getCronJobDetail(bindCronJobId).agent_id || '').substring(0, 12) + '...'"></span></div>
+                      <div><strong>Schedule:</strong> <span x-text="formatCronSchedule(getCronJobDetail(bindCronJobId).schedule)"></span></div>
+                      <div><strong>Enabled:</strong> <span x-text="getCronJobDetail(bindCronJobId).enabled ? 'Yes' : 'No'"></span></div>
+                    </div>
+                  </template>
+                  <template x-if="bindCronJobId && !isCronAgentMember(bindCronJobId)">
+                    <div style="padding:8px;background:var(--warning-bg, #fff3cd);border-radius:6px;font-size:0.8rem;color:var(--warning, #856404);margin-top:8px;">
+                      The agent for this schedule is not a project member. Please add the agent as a member first, or choose a different schedule.
+                    </div>
+                  </template>
+                </div>
+                <div class="modal-footer">
+                  <button class="btn btn-ghost" @click="showBindCronModal = false">Cancel</button>
+                  <button class="btn btn-primary" @click="bindCron()" :disabled="!bindCronJobId || !isCronAgentMember(bindCronJobId)">Bind Schedule</button>
                 </div>
               </div>
             </div>
@@ -3931,8 +4143,8 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <div x-show="!loading && !loadError">
           <div class="tabs" role="tablist">
             <div class="tab" role="tab" :class="{ active: tab === 'providers' }" @click="tab = 'providers'" x-i18n="settings.providers">Providers</div>
-            <div class="tab" role="tab" :class="{ active: tab === 'models' }" @click="tab = 'models'" x-i18n="settings.models">Models</div>
             <div class="tab" role="tab" :class="{ active: tab === 'config' }" @click="tab = 'config'; if (!configSchema) loadConfigSchema()" x-i18n="settings.config">Config</div>
+            <div class="tab" role="tab" :class="{ active: tab === 'models' }" @click="tab = 'models'" x-i18n="settings.models">Models</div>
             <div class="tabs-separator"></div>
             <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'account' }" @click="tab = 'account'" x-i18n="settings.account">Account</div>
             <div class="tab tab-secondary" role="tab" :class="{ active: tab === 'approvals' }" @click="tab = 'approvals'; if (!tools.length) loadTools(); if (!approvalPolicy.require_approval) loadApprovalPolicy()" x-i18n="settings.approvals">Approvals</div>
@@ -4010,7 +4222,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
           <div x-show="tab === 'providers'">
             <div class="info-card">
               <h4 x-i18n="settings.llmProviders">LLM Providers</h4>
-              <p x-i18n="settings.llmProvidersDesc">FangClaw-go supports 12 LLM providers out of the box. Configure API keys to unlock models from each provider. Set environment variables and restart, or use the form below to save keys directly.</p>
+              <p x-i18n="settings.llmProvidersDesc">Fanggo supports many LLM providers out of the box. Configure API keys to unlock models from each provider. Use the form below to save keys directly.</p>
             </div>
             <div class="card-grid">
               <template x-for="p in providers" :key="p.id">

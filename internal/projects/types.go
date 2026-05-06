@@ -36,6 +36,8 @@ type Project struct {
 	PMKeywords       []string                 `json:"pm_keywords,omitempty"`
 	WorkflowID       *string                  `json:"workflow_id,omitempty"`
 	WorkflowBindings []ProjectWorkflowBinding `json:"workflow_bindings,omitempty"`
+	CronBindings     []ProjectCronBinding     `json:"cron_bindings,omitempty"`
+	CronResults      []CronResult             `json:"cron_results,omitempty"`
 
 	Workspace string `json:"workspace"`
 }
@@ -84,4 +86,30 @@ type ProjectWorkflowBinding struct {
 	TriggerMode  WorkflowTriggerMode `json:"trigger_mode"`
 	Keywords     []string            `json:"keywords,omitempty"`
 	Enabled      bool                `json:"enabled"`
+}
+
+type CronBindingStatus string
+
+const (
+	CronBindingActive        CronBindingStatus = "active"
+	CronBindingOrphaned      CronBindingStatus = "orphaned"
+	CronBindingAgentMismatch CronBindingStatus = "agent_mismatch"
+)
+
+type ProjectCronBinding struct {
+	JobID   string            `json:"job_id"`
+	JobName string            `json:"job_name"`
+	Enabled bool              `json:"enabled"`
+	Status  CronBindingStatus `json:"status"`
+}
+
+type CronResult struct {
+	ID        string    `json:"id"`
+	JobID     string    `json:"job_id"`
+	JobName   string    `json:"job_name"`
+	AgentID   string    `json:"agent_id"`
+	AgentName string    `json:"agent_name"`
+	Result    string    `json:"result"`
+	Status    string    `json:"status"`
+	FiredAt   time.Time `json:"fired_at"`
 }

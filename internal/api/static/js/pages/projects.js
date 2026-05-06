@@ -34,6 +34,11 @@ function projectsPage() {
     selectedCommandWorkflow: null,
     hoverCommandIndex: -1,
     showProjectSidebar: false,
+    cronBindings: [],
+    availableCronJobs: [],
+    showBindCronModal: false,
+    bindCronJobId: '',
+    cronResults: [],
 
     async init() {
       await this.refresh();
@@ -511,6 +516,142 @@ function projectsPage() {
       }
 
       this.runWorkflow(wf.workflow_id);
+    },
+
+    async loadCronBindings() {
+      if (!this.currentProject) return;
+      try {
+        this.cronBindings = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id + '/crons');
+      } catch (e) {
+        console.error('Failed to load cron bindings:', e);
+        this.cronBindings = [];
+      }
+      await this.loadCronResults();
+    },
+
+    async loadCronResults() {
+      if (!this.currentProject) return;
+      try {
+        this.cronResults = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id + '/crons/results');
+      } catch (e) {
+        console.error('Failed to load cron results:', e);
+        this.cronResults = [];
+      }
+    },
+
+    async loadAvailableCronJobs() {
+      try {
+        var data = await FangClawGoAPI.get('/api/cron/jobs');
+        var jobs = data.jobs || [];
+        var boundIds = (this.cronBindings || []).map(function(b) { return b.job_id; });
+        this.availableCronJobs = jobs.filter(function(j) {
+          return boundIds.indexOf(j.id) === -1;
+        });
+      } catch (e) {
+        console.error('Failed to load cron jobs:', e);
+        this.availableCronJobs = [];
+      }
+    },
+
+    getCronJobDetail(jobId) {
+      return this.availableCronJobs.find(function(j) { return j.id === jobId; });
+    },
+
+    isCronAgentMember(jobId) {
+      var job = this.getCronJobDetail(jobId);
+      if (!job || !this.currentProject) return false;
+      var members = this.currentProject.members || [];
+      return members.some(function(m) { return m.active && m.id === job.agent_id; });
+    },
+
+    formatCronSchedule(schedule) {
+      if (!schedule) return '-';
+      if (schedule.kind === 'cron') return schedule.expr || '-';
+      if (schedule.kind === 'every') return 'every ' + schedule.every_secs + 's';
+      if (schedule.kind === 'at') return 'at ' + (schedule.at || '-');
+      return '-';
+    },
+
+    onCronJobSelect() {
+    },
+
+    async bindCron() {
+      if (!this.bindCronJobId) {
+        FangClawGoToast.error('Please select a schedule');
+        return;
+      }
+
+      try {
+        await FangClawGoAPI.post('/api/projects/' + this.currentProject.id + '/crons', {
+          job_id: this.bindCronJobId
+        });
+
+        await this.loadCronBindings();
+        this.showBindCronModal = false;
+        this.bindCronJobId = '';
+        FangClawGoToast.success('Schedule bound to project');
+      } catch (e) {
+        console.error('Failed to bind cron:', e);
+        FangClawGoToast.error('Failed to bind schedule: ' + (e.message || 'Unknown error'));
+      }
+    },
+
+    async unbindCron(jobId) {
+      if (!confirm('Unbind this schedule from the project?')) return;
+
+      try {
+        await FangClawGoAPI.delete('/api/projects/' + this.currentProject.id + '/crons/' + encodeURIComponent(jobId));
+        await this.loadCronBindings();
+        FangClawGoToast.success('Schedule unbound');
+      } catch (e) {
+        console.error('Failed to unbind cron:', e);
+        FangClawGoToast.error('Failed to unbind schedule');
+      }
+    },
+
+    async toggleCronBindingEnabled(cb) {
+      try {
+        await FangClawGoAPI.patch('/api/projects/' + this.currentProject.id + '/crons/' + encodeURIComponent(cb.job_id), {
+          enabled: !cb.enabled
+        });
+        await this.loadCronBindings();
+        FangClawGoToast.success(cb.enabled ? 'Schedule disabled' : 'Schedule enabled');
+      } catch (e) {
+        console.error('Failed to toggle cron binding:', e);
+        FangClawGoToast.error('Failed to update schedule');
+      }
+    },
+
+    async addCronAgentAsMember(cb) {
+      try {
+        var data = await FangClawGoAPI.get('/api/cron/jobs');
+        var jobs = data.jobs || [];
+        var job = jobs.find(function(j) { return j.id === cb.job_id; });
+        if (!job) {
+          FangClawGoToast.error('Cron job not found');
+          return;
+        }
+
+        var agents = window.Alpine ? Alpine.store('app').agents : [];
+        var agent = agents.find(function(a) { return a.id === job.agent_id; });
+        var agentName = agent ? agent.name : job.agent_id;
+        var role = this.inferRoleFromName(agentName) || 'member';
+
+        await FangClawGoAPI.post('/api/projects/' + this.currentProject.id + '/members', {
+          agent_id: job.agent_id,
+          name: agentName,
+          role: role
+        });
+
+        var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);
+        this.currentProject = updatedProject;
+        this.projects = this.projects.map(function(p) { return p.id === updatedProject.id ? updatedProject : p; });
+        await this.loadCronBindings();
+        FangClawGoToast.success('Agent added as member');
+      } catch (e) {
+        console.error('Failed to add agent as member:', e);
+        FangClawGoToast.error('Failed to add agent as member');
+      }
     }
   };
 }

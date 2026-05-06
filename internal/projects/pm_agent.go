@@ -59,10 +59,17 @@ type AgentFinder interface {
 	FindAgentByName(ctx context.Context, name string) (string, bool)
 }
 
+type CronJobManager interface {
+	GetJob(id types.CronJobID) *types.CronJob
+	ListJobs(agentID types.AgentID) []types.CronJob
+	ListAllJobs() []types.CronJob
+}
+
 type PMAgent struct {
 	registry       *Registry
 	runner         AgentRunner
 	workflowEngine WorkflowExecutor
+	cronManager    CronJobManager
 	agentFinder    AgentFinder
 	eventChan      chan ProjectEvent
 }
@@ -81,6 +88,46 @@ func (pm *PMAgent) SetWorkflowEngine(engine WorkflowExecutor) {
 
 func (pm *PMAgent) SetAgentFinder(finder AgentFinder) {
 	pm.agentFinder = finder
+}
+
+func (pm *PMAgent) SetCronManager(manager CronJobManager) {
+	pm.cronManager = manager
+}
+
+func (pm *PMAgent) ListCronBindings(ctx context.Context, projectID ProjectID) []ProjectCronBinding {
+	project := pm.registry.Get(projectID)
+	if project == nil {
+		return nil
+	}
+
+	var result []ProjectCronBinding
+	for _, binding := range project.CronBindings {
+		if pm.cronManager != nil {
+			job := pm.cronManager.GetJob(types.CronJobID(binding.JobID))
+			if job == nil {
+				binding.Status = CronBindingOrphaned
+				binding.Enabled = false
+			} else {
+				isMember := false
+				for _, m := range project.Members {
+					if m.Active && m.ID == job.AgentID {
+						isMember = true
+						break
+					}
+				}
+				if !isMember {
+					binding.Status = CronBindingAgentMismatch
+				} else {
+					binding.Status = CronBindingActive
+				}
+			}
+		} else {
+			binding.Status = CronBindingActive
+		}
+		result = append(result, binding)
+	}
+
+	return result
 }
 
 func (pm *PMAgent) HandleUserInput(ctx context.Context, projectID ProjectID, userInput string) (*ChatMessage, error) {
@@ -112,6 +159,7 @@ func (pm *PMAgent) HandleUserInput(ctx context.Context, projectID ProjectID, use
 					binding.Enabled = false
 					pm.registry.BindWorkflow(projectID, *binding)
 				}
+				log.Debug().Str("workflowName", binding.WorkflowName).Msg("[HandleUserInput]binding workflow triggered")
 				return pm.executeWorkflow(ctx, projectID, binding.WorkflowID, userInput, project)
 			}
 		}
@@ -133,7 +181,7 @@ func (pm *PMAgent) HandleUserInput(ctx context.Context, projectID ProjectID, use
 				Enabled:      false,
 			}
 			pm.registry.BindWorkflow(projectID, binding)
-
+			log.Debug().Str("workflowName", matchedTemplate.Name).Msg("[HandleUserInput]workflow created from template")
 			return pm.executeWorkflow(ctx, projectID, workflowID, userInput, project)
 		}
 	}

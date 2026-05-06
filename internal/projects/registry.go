@@ -314,3 +314,87 @@ func (r *Registry) UnbindWorkflow(projectID ProjectID, workflowID string) error 
 	project.UpdatedAt = time.Now()
 	return r.saveProject(project)
 }
+
+func (r *Registry) BindCron(projectID ProjectID, binding ProjectCronBinding) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	project, exists := r.projects[projectID]
+	if !exists {
+		return fmt.Errorf("project not found: %s", projectID)
+	}
+
+	for i, b := range project.CronBindings {
+		if b.JobID == binding.JobID {
+			project.CronBindings[i] = binding
+			project.UpdatedAt = time.Now()
+			return r.saveProject(project)
+		}
+	}
+
+	project.CronBindings = append(project.CronBindings, binding)
+	project.UpdatedAt = time.Now()
+	return r.saveProject(project)
+}
+
+func (r *Registry) UnbindCron(projectID ProjectID, jobID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	project, exists := r.projects[projectID]
+	if !exists {
+		return fmt.Errorf("project not found: %s", projectID)
+	}
+
+	newBindings := make([]ProjectCronBinding, 0, len(project.CronBindings))
+	found := false
+	for _, b := range project.CronBindings {
+		if b.JobID == jobID {
+			found = true
+			continue
+		}
+		newBindings = append(newBindings, b)
+	}
+
+	if !found {
+		return fmt.Errorf("cron job not bound to project: %s", jobID)
+	}
+
+	project.CronBindings = newBindings
+	project.UpdatedAt = time.Now()
+	return r.saveProject(project)
+}
+
+func (r *Registry) AddCronResult(projectID ProjectID, result CronResult) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	project, exists := r.projects[projectID]
+	if !exists {
+		return fmt.Errorf("project not found: %s", projectID)
+	}
+
+	const maxResultsPerJob = 100
+	var resultsForJob []CronResult
+	for _, cr := range project.CronResults {
+		if cr.JobID == result.JobID {
+			resultsForJob = append(resultsForJob, cr)
+		}
+	}
+	if len(resultsForJob) >= maxResultsPerJob {
+		newResults := make([]CronResult, 0, len(project.CronResults))
+		removed := false
+		for _, cr := range project.CronResults {
+			if !removed && cr.JobID == result.JobID {
+				removed = true
+				continue
+			}
+			newResults = append(newResults, cr)
+		}
+		project.CronResults = newResults
+	}
+
+	project.CronResults = append(project.CronResults, result)
+	project.UpdatedAt = time.Now()
+	return r.saveProject(project)
+}

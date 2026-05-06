@@ -292,6 +292,7 @@ func NewKernelWithShared(kernelConfig types.KernelConfig, sharedModelCatalog *mo
 	// project pm agent
 	pmAgent := projects.NewPMAgent(projectRegistry, &kernelAgentRunner{k: k})
 	pmAgent.SetWorkflowEngine(&workflowEngineAdapter{engine: workflowEngine})
+	pmAgent.SetCronManager(&cronManagerAdapter{scheduler: cronScheduler})
 	pmAgent.SetAgentFinder(&kernelAgentFinder{k: k})
 	k.pmAgent = pmAgent
 
@@ -613,6 +614,7 @@ func (k *Kernel) Start(ctx context.Context) error {
 									log.Info().Str("job", jobName).Str("result", res.result).Msg("Cron job completed successfully")
 									k.cronScheduler.RecordSuccess(jobID)
 									k.cronDeliverResponse(job.AgentID, res.result, &delivery)
+									k.deliverCronResultToProjects(jobID, jobName, job.AgentID, res.result, "success")
 
 									payload := map[string]interface{}{
 										"type":         fmt.Sprintf("cron.%s", jobName),
@@ -721,6 +723,7 @@ func (k *Kernel) Start(ctx context.Context) error {
 										fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n(无输出)", command, strings.Join(args, " "))
 									}
 									k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
+									k.deliverCronResultToProjects(jobID, jobName, job.AgentID, fullResult, "success")
 								}
 							}
 						}
@@ -1110,6 +1113,7 @@ func (k *Kernel) RunCronJob(ctx context.Context, jobID types.CronJobID) error {
 					log.Info().Str("job", job.Name).Str("result", res.result).Msg("Cron job completed successfully")
 					k.cronScheduler.RecordSuccess(jobID)
 					k.cronDeliverResponse(job.AgentID, res.result, &delivery)
+					k.deliverCronResultToProjects(jobID, job.Name, job.AgentID, res.result, "success")
 
 					payload := map[string]interface{}{
 						"type":         fmt.Sprintf("cron.%s", job.Name),
@@ -1218,6 +1222,7 @@ func (k *Kernel) RunCronJob(ctx context.Context, jobID types.CronJobID) error {
 						fullResult = fmt.Sprintf("✅ 命令执行成功\n\n📝 命令: %s %s\n\n(无输出)", command, strings.Join(args, " "))
 					}
 					k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
+					k.deliverCronResultToProjects(jobID, job.Name, job.AgentID, fullResult, "success")
 				}
 			}
 		}
@@ -2257,6 +2262,85 @@ func (k *Kernel) cronDeliverResponse(agentID types.AgentID, response string, del
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			log.Warn().Int("status", resp.StatusCode).Msg("Cron delivery: webhook returned non-success status")
 		}
+
+	case types.CronDeliveryKindProject:
+		if delivery.ProjectID != nil {
+			k.deliverCronResultToProject(*delivery.ProjectID, agentID, response, "success")
+		}
+	}
+}
+
+func (k *Kernel) deliverCronResultToProjects(jobID types.CronJobID, jobName string, agentID types.AgentID, result string, status string) {
+	if k.projectRegistry == nil {
+		return
+	}
+
+	for _, project := range k.projectRegistry.List() {
+		for _, binding := range project.CronBindings {
+			if binding.JobID == jobID.String() && binding.Enabled {
+				agentName := ""
+				for _, m := range project.Members {
+					if m.ID == agentID {
+						agentName = m.Name
+						break
+					}
+				}
+
+				cronResult := projects.CronResult{
+					ID:        fmt.Sprintf("cron-result-%d", time.Now().UnixNano()),
+					JobID:     jobID.String(),
+					JobName:   jobName,
+					AgentID:   agentID.String(),
+					AgentName: agentName,
+					Result:    result,
+					Status:    status,
+					FiredAt:   time.Now().UTC(),
+				}
+
+				if err := k.projectRegistry.AddCronResult(project.ID, cronResult); err != nil {
+					log.Warn().Err(err).Str("project", project.ID.String()).Msg("Failed to add cron result to project")
+				} else {
+					log.Info().Str("project", project.ID.String()).Str("job", jobName).Msg("Cron result delivered to project")
+				}
+			}
+		}
+	}
+}
+
+func (k *Kernel) deliverCronResultToProject(projectIDStr string, agentID types.AgentID, result string, status string) {
+	projectID, err := projects.ParseProjectID(projectIDStr)
+	if err != nil {
+		log.Warn().Str("project_id", projectIDStr).Msg("Invalid project ID in cron delivery")
+		return
+	}
+
+	project := k.projectRegistry.Get(projectID)
+	if project == nil {
+		log.Warn().Str("project_id", projectIDStr).Msg("Project not found for cron delivery")
+		return
+	}
+
+	agentName := ""
+	for _, m := range project.Members {
+		if m.ID == agentID {
+			agentName = m.Name
+			break
+		}
+	}
+
+	cronResult := projects.CronResult{
+		ID:        fmt.Sprintf("cron-result-%d", time.Now().UnixNano()),
+		JobID:     "",
+		JobName:   "",
+		AgentID:   agentID.String(),
+		AgentName: agentName,
+		Result:    result,
+		Status:    status,
+		FiredAt:   time.Now().UTC(),
+	}
+
+	if err := k.projectRegistry.AddCronResult(projectID, cronResult); err != nil {
+		log.Warn().Err(err).Str("project", projectIDStr).Msg("Failed to add cron result to project")
 	}
 }
 
@@ -2665,4 +2749,20 @@ func (a *workflowEngineAdapter) CreateWorkflowFromTemplate(templateID string) (s
 
 	a.engine.Register(workflow)
 	return string(workflow.ID), nil
+}
+
+type cronManagerAdapter struct {
+	scheduler *cron.CronScheduler
+}
+
+func (a *cronManagerAdapter) GetJob(id types.CronJobID) *types.CronJob {
+	return a.scheduler.GetJob(id)
+}
+
+func (a *cronManagerAdapter) ListJobs(agentID types.AgentID) []types.CronJob {
+	return a.scheduler.ListJobs(agentID)
+}
+
+func (a *cronManagerAdapter) ListAllJobs() []types.CronJob {
+	return a.scheduler.ListAllJobs()
 }

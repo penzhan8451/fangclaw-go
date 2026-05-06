@@ -394,7 +394,9 @@
     "budget": "Budget",
     "system": "System",
     "migration": "Migration",
-    "account": "Account"
+    "account": "Account",
+    "llmProviders": "LLM Providers",
+    "llmProvidersDesc": "Fanggo supports many LLM providers out of the box. Configure API keys to unlock models from each provider. Use the form below to save keys directly."
   },
   "logs": {
     "title": "Logs",
