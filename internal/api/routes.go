@@ -29,6 +29,7 @@ import (
 	deliv "github.com/penzhan8451/fangclaw-go/internal/delivery"
 	"github.com/penzhan8451/fangclaw-go/internal/hands"
 	"github.com/penzhan8451/fangclaw-go/internal/kernel"
+	"github.com/penzhan8451/fangclaw-go/internal/mcp"
 	"github.com/penzhan8451/fangclaw-go/internal/mediaprocessing"
 	"github.com/penzhan8451/fangclaw-go/internal/pairing"
 	"github.com/penzhan8451/fangclaw-go/internal/projects"
@@ -688,7 +689,11 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/providers/{name}/test", r.handleTestProvider)
 	mux.HandleFunc("PUT /api/providers/{name}/url", r.handleSetProviderURL)
 	mux.HandleFunc("GET /api/mcp/servers", r.handleMcpServers)
-	mux.HandleFunc("POST /api/mcp/servers/:id/reconnect", r.handleMcpServerReconnect)
+	mux.HandleFunc("POST /api/mcp/servers", r.handleMcpServerCreate)
+	mux.HandleFunc("PUT /api/mcp/servers/{name}", r.handleMcpServerUpdate)
+	mux.HandleFunc("DELETE /api/mcp/servers/{name}", r.handleMcpServerDelete)
+	mux.HandleFunc("POST /api/mcp/servers/{name}/reconnect", r.handleMcpServerReconnect)
+	mux.HandleFunc("GET /api/mcp/templates", r.handleMcpTemplates)
 	mux.HandleFunc("GET /api/profiles", r.handleProfiles)
 	mux.HandleFunc("PATCH /api/agents/{id}/config", r.handlePatchAgentConfig)
 	mux.HandleFunc("GET /api/agents/{id}/files", r.handleListAgentFiles)
@@ -732,6 +737,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/cron/jobs/{id}", r.handleDeleteCronJob)
 	mux.HandleFunc("GET /api/cron/jobs/{id}/status", r.handleCronJobStatus)
 	mux.HandleFunc("POST /api/cron/jobs/{id}/run", r.handleRunCronJob)
+	mux.HandleFunc("GET /api/cron/shell-security", r.handleCronShellSecurity)
 
 	// Schedules endpoints (aliases for cron jobs for backward compatibility)
 	mux.HandleFunc("GET /api/schedules", r.handleListCronJobs)
@@ -4046,6 +4052,229 @@ func (r *Router) handleMcpServerReconnect(w http.ResponseWriter, req *http.Reque
 	})
 }
 
+func (r *Router) handleMcpServerCreate(w http.ResponseWriter, req *http.Request) {
+	user := GetUserFromContext(req.Context())
+	if user == nil {
+		respondError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var serverConfig types.McpServerConfig
+	if err := json.NewDecoder(req.Body).Decode(&serverConfig); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
+		return
+	}
+
+	if serverConfig.Name == "" {
+		respondError(w, http.StatusBadRequest, "server name is required")
+		return
+	}
+
+	if serverConfig.Transport.Type == "" {
+		serverConfig.Transport.Type = "stdio"
+	}
+
+	var userCfg *config.Config
+	var err error
+	if IsOwner(user) || IsAdmin(user) {
+		userCfg, err = config.Load("")
+	} else {
+		userCfg, err = config.LoadUserConfig(user.Username)
+	}
+	if err != nil {
+		log.Warn().Err(err).Str("user", user.Username).Msg("Failed to load user config")
+		userCfg = config.DefaultConfig()
+	}
+
+	for _, existing := range userCfg.McpServers {
+		if existing.Name == serverConfig.Name {
+			respondError(w, http.StatusConflict, fmt.Sprintf("server with name %s already exists", serverConfig.Name))
+			return
+		}
+	}
+
+	userCfg.McpServers = append(userCfg.McpServers, serverConfig)
+
+	if IsOwner(user) || IsAdmin(user) {
+		if err := config.Save(userCfg, ""); err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save config: %v", err))
+			return
+		}
+	} else {
+		if err := config.SaveUserConfig(user.Username, userCfg); err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save user config: %v", err))
+			return
+		}
+	}
+
+	k := r.getKernel(req)
+	if k != nil {
+		if err := k.AddMcpServer(req.Context(), serverConfig); err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("failed to connect to MCP server: %v", err))
+			return
+		}
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"status": "created",
+		"server": serverConfig.Name,
+	})
+}
+
+func (r *Router) handleMcpServerUpdate(w http.ResponseWriter, req *http.Request) {
+	user := GetUserFromContext(req.Context())
+	if user == nil {
+		respondError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	serverName := req.PathValue("name")
+	if serverName == "" {
+		respondError(w, http.StatusBadRequest, "server name is required")
+		return
+	}
+
+	var serverConfig types.McpServerConfig
+	if err := json.NewDecoder(req.Body).Decode(&serverConfig); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
+		return
+	}
+
+	if serverConfig.Name == "" {
+		respondError(w, http.StatusBadRequest, "server name is required")
+		return
+	}
+
+	if serverConfig.Transport.Type == "" {
+		serverConfig.Transport.Type = "stdio"
+	}
+
+	var userCfg *config.Config
+	var err error
+	if IsOwner(user) || IsAdmin(user) {
+		userCfg, err = config.Load("")
+	} else {
+		userCfg, err = config.LoadUserConfig(user.Username)
+	}
+	if err != nil {
+		log.Warn().Err(err).Str("user", user.Username).Msg("Failed to load user config")
+		userCfg = config.DefaultConfig()
+	}
+
+	found := false
+	for i, existing := range userCfg.McpServers {
+		if existing.Name == serverName {
+			found = true
+			userCfg.McpServers[i] = serverConfig
+			break
+		}
+	}
+
+	if !found {
+		respondError(w, http.StatusNotFound, fmt.Sprintf("server %s not found", serverName))
+		return
+	}
+
+	if IsOwner(user) || IsAdmin(user) {
+		if err := config.Save(userCfg, ""); err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save config: %v", err))
+			return
+		}
+	} else {
+		if err := config.SaveUserConfig(user.Username, userCfg); err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save user config: %v", err))
+			return
+		}
+	}
+
+	k := r.getKernel(req)
+	if k != nil {
+		if err := k.UpdateMcpServer(req.Context(), serverName, serverConfig); err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("failed to reconnect MCP server: %v", err))
+			return
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "updated",
+		"server": serverConfig.Name,
+	})
+}
+
+func (r *Router) handleMcpServerDelete(w http.ResponseWriter, req *http.Request) {
+	user := GetUserFromContext(req.Context())
+	if user == nil {
+		respondError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	serverName := req.PathValue("name")
+	if serverName == "" {
+		respondError(w, http.StatusBadRequest, "server name is required")
+		return
+	}
+
+	var userCfg *config.Config
+	var err error
+	if IsOwner(user) || IsAdmin(user) {
+		userCfg, err = config.Load("")
+	} else {
+		userCfg, err = config.LoadUserConfig(user.Username)
+	}
+	if err != nil {
+		log.Warn().Err(err).Str("user", user.Username).Msg("Failed to load user config")
+		userCfg = config.DefaultConfig()
+	}
+
+	found := false
+	for i, existing := range userCfg.McpServers {
+		if existing.Name == serverName {
+			found = true
+			userCfg.McpServers = append(userCfg.McpServers[:i], userCfg.McpServers[i+1:]...)
+			break
+		}
+	}
+
+	if !found {
+		respondError(w, http.StatusNotFound, fmt.Sprintf("server %s not found", serverName))
+		return
+	}
+
+	if IsOwner(user) || IsAdmin(user) {
+		if err := config.Save(userCfg, ""); err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save config: %v", err))
+			return
+		}
+	} else {
+		if err := config.SaveUserConfig(user.Username, userCfg); err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save user config: %v", err))
+			return
+		}
+	}
+
+	k := r.getKernel(req)
+	if k != nil {
+		if err := k.RemoveMcpServer(req.Context(), serverName); err != nil {
+			log.Warn().Err(err).Str("server", serverName).Msg("Failed to remove MCP server from kernel")
+		}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "deleted",
+		"server": serverName,
+	})
+}
+
+func (r *Router) handleMcpTemplates(w http.ResponseWriter, req *http.Request) {
+	templates := mcp.GetDefaultMcpTemplates()
+	categories := mcp.GetMcpTemplateCategories()
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"templates":  templates,
+		"categories": categories,
+	})
+}
+
 func (r *Router) handleProfiles(w http.ResponseWriter, req *http.Request) {
 	profiles := []types.Profile{
 		{Name: string(types.ToolProfileMinimal), Tools: types.ToolProfileMinimal.Tools()},
@@ -5048,6 +5277,11 @@ func (r *Router) handleDeleteCustomModel(w http.ResponseWriter, req *http.Reques
 	respondJSON(w, http.StatusOK, map[string]string{
 		"status": "ok",
 	})
+}
+
+func (r *Router) handleCronShellSecurity(w http.ResponseWriter, req *http.Request) {
+	config := r.getKernel(req).Config().CronShellSecurity
+	respondJSON(w, http.StatusOK, config)
 }
 
 func (r *Router) handleListCronJobs(w http.ResponseWriter, req *http.Request) {

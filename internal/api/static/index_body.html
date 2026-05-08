@@ -2014,21 +2014,74 @@
                   </div>
 
                   <div class="form-group">
-                    <label>Target Agent</label>
-                    <select class="form-select" x-model="newJob.agent_id">
-                      <option value="">Any available agent</option>
-                      <template x-for="a in availableAgents" :key="a.id">
-                        <option :value="a.id" x-text="a.name + ' (' + (a.model_provider || 'unknown') + ':' + (a.model_name || 'unknown') + ')'"></option>
-                      </template>
+                    <label>Action Type</label>
+                    <select class="form-select" x-model="newJob.action_kind">
+                      <option value="agent_turn">Agent Turn (send message to an agent)</option>
+                      <option value="system_event">System Event (broadcast an event)</option>
+                      <option value="execute_shell">Execute Shell (run a command)</option>
                     </select>
-                    <div class="text-xs text-dim mt-1" x-show="!availableAgents.length">No agents running. <a href="#agents" style="color:var(--accent)">Spawn one first.</a></div>
+                    <div class="text-xs text-dim mt-1">What to do each time this job triggers.</div>
                   </div>
 
-                  <div class="form-group">
-                    <label>Message to Send</label>
-                    <textarea class="form-textarea" x-model="newJob.message" placeholder="Generate and email the daily status report..." rows="3"></textarea>
-                    <div class="text-xs text-dim mt-1">The message sent to the agent each time this job runs.</div>
-                  </div>
+                  <template x-if="newJob.action_kind === 'agent_turn'">
+                    <div>
+                      <div class="form-group">
+                        <label>Target Agent</label>
+                        <select class="form-select" x-model="newJob.agent_id">
+                          <option value="">Any available agent</option>
+                          <template x-for="a in availableAgents" :key="a.id">
+                            <option :value="a.id" x-text="a.name + ' (' + (a.model_provider || 'unknown') + ':' + (a.model_name || 'unknown') + ')'"></option>
+                          </template>
+                        </select>
+                        <div class="text-xs text-dim mt-1" x-show="!availableAgents.length">No agents running. <a href="#agents" style="color:var(--accent)">Spawn one first.</a></div>
+                      </div>
+
+                      <div class="form-group">
+                        <label>Message to Send</label>
+                        <textarea class="form-textarea" x-model="newJob.message" placeholder="Generate and email the daily status report..." rows="3"></textarea>
+                        <div class="text-xs text-dim mt-1">The message sent to the agent each time this job runs.</div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="newJob.action_kind === 'system_event'">
+                    <div class="form-group">
+                      <label>Event Text</label>
+                      <textarea class="form-textarea" x-model="newJob.event_text" placeholder="Daily health check completed..." rows="3"></textarea>
+                      <div class="text-xs text-dim mt-1">The text payload of the system event broadcast. Can be picked up by event triggers.</div>
+                    </div>
+                  </template>
+
+                  <template x-if="newJob.action_kind === 'execute_shell'">
+                    <div>
+                      <div class="form-group">
+                        <label>Command</label>
+                        <input class="form-input" x-model="newJob.shell_command" placeholder="df" style="font-family:monospace">
+                        <div class="text-xs text-dim mt-1">The executable command (not a shell string). E.g. <code>df</code>, <code>ls</code>, <code>uptime</code>.</div>
+                      </div>
+                      <div class="form-group">
+                        <label>Arguments (space-separated)</label>
+                        <input class="form-input" x-model="newJob.shell_args" placeholder="-h" style="font-family:monospace">
+                        <div class="text-xs text-dim mt-1">Optional. E.g. <code>-la /tmp</code></div>
+                      </div>
+                      <template x-if="shellSecurity">
+                        <div style="padding:8px 12px;background:var(--bg-secondary);border-radius:8px;font-size:0.75rem;margin-bottom:8px;">
+                          <template x-if="!shellSecurity.enable_execute_shell">
+                            <span style="color:var(--error);">⚠️ Shell execution is disabled in server configuration. This job will be blocked.</span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'strict'">
+                            <span style="color:var(--warning);">🔒 Security mode: <strong>strict</strong> — only allowed commands: <span x-text="shellSecurity.allowed_commands.join(', ')"></span></span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'path'">
+                            <span style="color:var(--warning);">🔒 Security mode: <strong>path</strong> — commands must be in: <span x-text="shellSecurity.allowed_paths.join(', ')"></span></span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'none'">
+                            <span style="color:var(--error);">⚠️ Security mode: <strong>none</strong> — all commands are allowed. Use with caution.</span>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
 
                   <div class="form-group">
                     <label class="flex items-center gap-2">
@@ -2112,21 +2165,74 @@
                   </div>
 
                   <div class="form-group">
-                    <label>Target Agent</label>
-                    <select class="form-select" x-model="editJob.agent_id">
-                      <option value="">Any available agent</option>
-                      <template x-for="a in availableAgents" :key="a.id">
-                        <option :value="a.id" x-text="a.name + ' (' + (a.model_provider || 'unknown') + ':' + (a.model_name || 'unknown') + ')'"></option>
-                      </template>
+                    <label>Action Type</label>
+                    <select class="form-select" x-model="editJob.action_kind">
+                      <option value="agent_turn">Agent Turn (send message to an agent)</option>
+                      <option value="system_event">System Event (broadcast an event)</option>
+                      <option value="execute_shell">Execute Shell (run a command)</option>
                     </select>
-                    <div class="text-xs text-dim mt-1" x-show="!availableAgents.length">No agents running. <a href="#agents" style="color:var(--accent)">Spawn one first.</a></div>
+                    <div class="text-xs text-dim mt-1">What to do each time this job triggers.</div>
                   </div>
 
-                  <div class="form-group">
-                    <label>Message to Send</label>
-                    <textarea class="form-textarea" x-model="editJob.message" placeholder="Generate and email the daily status report..." rows="3"></textarea>
-                    <div class="text-xs text-dim mt-1">The message sent to the agent each time this job runs.</div>
-                  </div>
+                  <template x-if="editJob.action_kind === 'agent_turn'">
+                    <div>
+                      <div class="form-group">
+                        <label>Target Agent</label>
+                        <select class="form-select" x-model="editJob.agent_id">
+                          <option value="">Any available agent</option>
+                          <template x-for="a in availableAgents" :key="a.id">
+                            <option :value="a.id" x-text="a.name + ' (' + (a.model_provider || 'unknown') + ':' + (a.model_name || 'unknown') + ')'"></option>
+                          </template>
+                        </select>
+                        <div class="text-xs text-dim mt-1" x-show="!availableAgents.length">No agents running. <a href="#agents" style="color:var(--accent)">Spawn one first.</a></div>
+                      </div>
+
+                      <div class="form-group">
+                        <label>Message to Send</label>
+                        <textarea class="form-textarea" x-model="editJob.message" placeholder="Generate and email the daily status report..." rows="3"></textarea>
+                        <div class="text-xs text-dim mt-1">The message sent to the agent each time this job runs.</div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="editJob.action_kind === 'system_event'">
+                    <div class="form-group">
+                      <label>Event Text</label>
+                      <textarea class="form-textarea" x-model="editJob.event_text" placeholder="Daily health check completed..." rows="3"></textarea>
+                      <div class="text-xs text-dim mt-1">The text payload of the system event broadcast. Can be picked up by event triggers.</div>
+                    </div>
+                  </template>
+
+                  <template x-if="editJob.action_kind === 'execute_shell'">
+                    <div>
+                      <div class="form-group">
+                        <label>Command</label>
+                        <input class="form-input" x-model="editJob.shell_command" placeholder="df" style="font-family:monospace">
+                        <div class="text-xs text-dim mt-1">The executable command (not a shell string). E.g. <code>df</code>, <code>ls</code>, <code>uptime</code>.</div>
+                      </div>
+                      <div class="form-group">
+                        <label>Arguments (space-separated)</label>
+                        <input class="form-input" x-model="editJob.shell_args" placeholder="-h" style="font-family:monospace">
+                        <div class="text-xs text-dim mt-1">Optional. E.g. <code>-la /tmp</code></div>
+                      </div>
+                      <template x-if="shellSecurity">
+                        <div style="padding:8px 12px;background:var(--bg-secondary);border-radius:8px;font-size:0.75rem;margin-bottom:8px;">
+                          <template x-if="!shellSecurity.enable_execute_shell">
+                            <span style="color:var(--error);">⚠️ Shell execution is disabled in server configuration. This job will be blocked.</span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'strict'">
+                            <span style="color:var(--warning);">🔒 Security mode: <strong>strict</strong> — only allowed commands: <span x-text="shellSecurity.allowed_commands.join(', ')"></span></span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'path'">
+                            <span style="color:var(--warning);">🔒 Security mode: <strong>path</strong> — commands must be in: <span x-text="shellSecurity.allowed_paths.join(', ')"></span></span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'none'">
+                            <span style="color:var(--error);">⚠️ Security mode: <strong>none</strong> — all commands are allowed. Use with caution.</span>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
 
                   <div class="form-group">
                     <label class="flex items-center gap-2">
@@ -2762,10 +2868,10 @@
                   </div>
 
                   <!-- Tab Navigation -->
-                  <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;">
-                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'chat' ? 'border-bottom:2px solid var(--accent);font-weight:600;' : ''" @click="projectTab = 'chat'" style="padding:8px 16px;">Chat</button>
-                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'workflows' ? 'border-bottom:2px solid var(--accent);font-weight:600;' : ''" @click="projectTab = 'workflows'" style="padding:8px 16px;">Workflows</button>
-                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'schedules' ? 'border-bottom:2px solid var(--accent);font-weight:600;' : ''" @click="projectTab = 'schedules'; loadCronBindings(); loadAvailableCronJobs();" style="padding:8px 16px;">Schedules</button>
+                  <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;padding:8px 12px;gap:8px;">
+                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'chat' ? 'background:var(--accent);color:white;border:none;border-radius:8px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:var(--bg-secondary);border:none;border-radius:8px;transition:all 0.2s ease;'" @click="projectTab = 'chat'" style="padding:10px 18px;">Chat</button>
+                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'workflows' ? 'background:var(--accent);color:white;border:none;border-radius:8px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:var(--bg-secondary);border:none;border-radius:8px;transition:all 0.2s ease;'" @click="projectTab = 'workflows'" style="padding:10px 18px;">Workflows</button>
+                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'schedules' ? 'background:var(--accent);color:white;border:none;border-radius:8px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:var(--bg-secondary);border:none;border-radius:8px;transition:all 0.2s ease;'" @click="projectTab = 'schedules'; loadCronBindings(); loadAvailableCronJobs();" style="padding:10px 18px;">Schedules</button>
                   </div>
 
                   <!-- Chat Tab -->
@@ -2935,11 +3041,11 @@
                   <!-- Schedules Tab -->
                   <template x-if="projectTab === 'schedules'">
                     <div style="flex:1;overflow:auto;padding:16px;">
-                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                         <h4 style="margin:0;font-size:0.9rem;">Bound Schedules</h4>
                         <button class="btn btn-primary btn-sm" @click="showBindCronModal = true; loadAvailableCronJobs();">+ Bind Schedule</button>
                       </div>
-
+                      <p style="margin-bottom: 8px;">Note: Bound cron 'Enable' status will receive the result of cron's operation; otherwise, it will not</p>
                       <template x-if="(cronBindings || []).length > 0">
                         <div>
                           <template x-for="cb in cronBindings" :key="cb.job_id">
@@ -3405,9 +3511,16 @@
           <!-- TAB: MCP Servers -->
           <div x-show="tab === 'mcp'">
             <div class="info-card">
-              <h4>MCP Servers (Model Context Protocol)</h4>
-              <p>MCP servers provide external tools to your agents &mdash; GitHub, filesystem, databases, APIs, and more. FangClaw-go is compatible with all OpenClaw MCP servers.</p>
-              <p class="mt-2" style="font-size:0.8rem;color:var(--text-dim)">Configure MCP servers in your <code>config.toml</code> under <code>[mcp_servers]</code>.</p>
+              <div class="flex justify-between items-center">
+                <div>
+                  <h4>MCP Servers (Model Context Protocol)</h4>
+                  <p>MCP servers provide external tools to your agents &mdash; GitHub, filesystem, databases, APIs, and more.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" @click="openAddMcpModal(); loadMcpTemplates()" style="margin-left:16px">
+                  <span x-show="!mcpTemplatesLoading">+ Add Server</span>
+                  <span x-show="mcpTemplatesLoading">Loading...</span>
+                </button>
+              </div>
             </div>
             <div x-show="mcpLoading" class="loading-state"><div class="spinner"></div><span>Loading MCP servers...</span></div>
             <div x-show="!mcpLoading">
@@ -3444,7 +3557,11 @@
                     <div class="card card-unconfigured">
                       <div class="flex justify-between items-center mb-2">
                         <div class="card-header" style="margin:0" x-text="srv.name"></div>
-                        <span class="badge badge-dim" x-text="srv.transport.type"></span>
+                        <div class="flex items-center gap-2">
+                          <button class="btn btn-ghost btn-xs" @click="openEditMcpModal(srv)" title="Edit">✏️</button>
+                          <button class="btn btn-ghost btn-xs" @click="deleteMcpServer(srv.name)" title="Delete">🗑️</button>
+                          <span class="badge badge-dim" x-text="srv.transport.type"></span>
+                        </div>
                       </div>
                       <div class="text-xs" x-show="srv.transport.type === 'stdio'">
                         <code x-text="srv.transport.command + ' ' + (srv.transport.args || []).join(' ')" style="font-size:0.7rem"></code>
@@ -3470,6 +3587,101 @@ type = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 <p class="hint mt-2" style="font-size:0.75rem">FangClaw-go supports all OpenClaw-compatible MCP servers.</p>
+              </div>
+            </div>
+
+            <!-- MCP Server Add/Edit Modal -->
+            <div class="modal-overlay" x-show="showMcpModal" @click.self="showMcpModal = false" @keydown.escape.window="showMcpModal = false">
+              <div class="modal" style="max-width:600px;max-height:90vh;overflow-y:auto">
+                <div class="modal-header">
+                  <h3 x-text="editingMcpServer ? 'Edit MCP Server' : 'Add MCP Server'"></h3>
+                  <button class="modal-close" @click="showMcpModal = false">&times;</button>
+                </div>
+
+                <!-- Templates Section -->
+                <div x-show="!editingMcpServer && mcpTemplates.length > 0" class="mb-4">
+                  <div class="text-sm font-bold mb-2" style="color:var(--text-dim)">QUICK START TEMPLATES</div>
+                  <div class="card-grid" style="grid-template-columns:repeat(auto-fill, minmax(140px, 1fr))">
+                    <template x-for="tmpl in mcpTemplates" :key="tmpl.name">
+                      <div class="card card-sm" style="cursor:pointer" @click="applyMcpTemplate(tmpl)">
+                        <div class="text-sm" style="margin-bottom:4px" x-text="tmpl.logo + ' ' + tmpl.name"></div>
+                        <div class="text-xs text-dim" x-text="tmpl.category"></div>
+                      </div>
+                    </template>
+                  </div>
+                  <hr style="margin:16px 0;border-color:var(--border-color)">
+                </div>
+
+                <!-- Form -->
+                <div class="form-group">
+                  <label>Server Name *</label>
+                  <input class="form-input" type="text" x-model="mcpForm.name" placeholder="e.g., github, filesystem, postgres" :disabled="editingMcpServer">
+                </div>
+
+                <div class="form-group">
+                  <label>Transport Type</label>
+                  <div class="flex gap-4">
+                    <label class="flex items-center gap-2">
+                      <input type="radio" x-model="mcpForm.transport_type" value="stdio"> stdio
+                    </label>
+                    <label class="flex items-center gap-2">
+                      <input type="radio" x-model="mcpForm.transport_type" value="sse"> SSE
+                    </label>
+                  </div>
+                </div>
+
+                <!-- stdio transport fields -->
+                <div x-show="mcpForm.transport_type === 'stdio'">
+                  <div class="form-group">
+                    <label>Command *</label>
+                    <input class="form-input" type="text" x-model="mcpForm.command" placeholder="e.g., npx, python, node">
+                  </div>
+                  <div class="form-group">
+                    <label>Arguments</label>
+                    <template x-for="(arg, i) in mcpForm.args" :key="i">
+                      <div class="flex gap-2 mb-1">
+                        <input class="form-input" type="text" x-model="mcpForm.args[i]" placeholder="e.g., -y, @modelcontextprotocol/server-github">
+                        <button class="btn btn-ghost btn-sm" @click="removeMcpArg(i)" x-show="mcpForm.args.length > 1">-</button>
+                      </div>
+                    </template>
+                    <button class="btn btn-ghost btn-sm" @click="addMcpArg()">+ Add Argument</button>
+                  </div>
+                </div>
+
+                <!-- sse transport fields -->
+                <div x-show="mcpForm.transport_type === 'sse'">
+                  <div class="form-group">
+                    <label>URL *</label>
+                    <input class="form-input" type="text" x-model="mcpForm.url" placeholder="e.g., https://mcp.example.com/sse">
+                  </div>
+                </div>
+
+                <!-- Environment variables -->
+                <div class="form-group">
+                  <label>Environment Variables</label>
+                  <template x-for="(env, i) in mcpForm.env" :key="i">
+                    <div class="flex gap-2 mb-1 items-center">
+                      <input class="form-input" type="text" x-model="env.key" placeholder="KEY" style="width:120px">
+                      <span>=</span>
+                      <input class="form-input" type="text" x-model="env.value" placeholder="value" style="flex:1">
+                      <button class="btn btn-ghost btn-sm" @click="removeMcpEnv(i)">-</button>
+                    </div>
+                  </template>
+                  <button class="btn btn-ghost btn-sm" @click="addMcpEnv()">+ Add Environment Variable</button>
+                </div>
+
+                <!-- Timeout -->
+                <div class="form-group">
+                  <label>Timeout (seconds)</label>
+                  <input class="form-input" type="number" x-model="mcpForm.timeout_secs" min="1" max="300">
+                </div>
+
+                <div class="flex justify-end gap-2 mt-4">
+                  <button class="btn btn-ghost" @click="showMcpModal = false">Cancel</button>
+                  <button class="btn btn-primary" @click="saveMcpServer()">
+                    <span x-text="editingMcpServer ? 'Update' : 'Add'"></span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

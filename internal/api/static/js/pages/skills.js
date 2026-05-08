@@ -31,6 +31,19 @@ function skillsPage() {
     // MCP servers
     mcpServers: [],
     mcpLoading: false,
+    mcpTemplates: [],
+    mcpTemplatesLoading: false,
+    showMcpModal: false,
+    editingMcpServer: null,
+    mcpForm: {
+      name: '',
+      transport_type: 'stdio',
+      command: '',
+      args: [''],
+      url: '',
+      env: [],
+      timeout_secs: 30
+    },
 
     // Upload state
     uploading: false,
@@ -356,6 +369,152 @@ function skillsPage() {
         this.mcpServers = { configured: [], connected: [], total_configured: 0, total_connected: 0 };
       }
       this.mcpLoading = false;
+    },
+
+    // Load MCP templates
+    async loadMcpTemplates() {
+      this.mcpTemplatesLoading = true;
+      try {
+        var data = await FangClawGoAPI.get('/api/mcp/templates');
+        this.mcpTemplates = data.templates || [];
+      } catch(e) {
+        this.mcpTemplates = [];
+      }
+      this.mcpTemplatesLoading = false;
+    },
+
+    // Open add MCP server modal
+    openAddMcpModal: function() {
+      this.editingMcpServer = null;
+      this.mcpForm = {
+        name: '',
+        transport_type: 'stdio',
+        command: '',
+        args: [''],
+        url: '',
+        env: [],
+        timeout_secs: 30
+      };
+      this.showMcpModal = true;
+    },
+
+    // Open edit MCP server modal
+    openEditMcpModal: function(server) {
+      this.editingMcpServer = server;
+      this.mcpForm = {
+        name: server.name,
+        transport_type: server.transport.type || 'stdio',
+        command: server.transport.command || '',
+        args: server.transport.args ? server.transport.args.slice() : [''],
+        url: server.transport.url || '',
+        env: server.env ? server.env.slice() : [],
+        timeout_secs: server.timeout_secs || 30
+      };
+      this.showMcpModal = true;
+    },
+
+    // Apply template to form
+    applyMcpTemplate: function(template) {
+      this.mcpForm.name = template.name;
+      this.mcpForm.transport_type = template.transport.type || 'stdio';
+      this.mcpForm.command = template.transport.command || '';
+      this.mcpForm.args = template.transport.args ? template.transport.args.slice() : [''];
+      this.mcpForm.timeout_secs = template.timeout_secs || 30;
+
+      if (template.fields && template.fields.length > 0) {
+        this.mcpForm.env = template.fields.map(function(f) {
+          return { key: f.name, value: '' };
+        });
+      } else if (template.env && template.env.length > 0) {
+        this.mcpForm.env = template.env.map(function(e) {
+          var parts = e.split('=');
+          return { key: parts[0] || '', value: parts.slice(1).join('=') || '' };
+        });
+      } else {
+        this.mcpForm.env = [];
+      }
+    },
+
+    // Add arg to MCP form
+    addMcpArg: function() {
+      this.mcpForm.args.push('');
+    },
+
+    // Remove arg from MCP form
+    removeMcpArg: function(index) {
+      if (this.mcpForm.args.length > 1) {
+        this.mcpForm.args.splice(index, 1);
+      }
+    },
+
+    // Add env to MCP form
+    addMcpEnv: function() {
+      this.mcpForm.env.push({ key: '', value: '' });
+    },
+
+    // Remove env from MCP form
+    removeMcpEnv: function(index) {
+      this.mcpForm.env.splice(index, 1);
+    },
+
+    // Save MCP server (create or update)
+    async saveMcpServer() {
+      if (!this.mcpForm.name || !this.mcpForm.name.trim()) {
+        FangClawGoToast.error('Server name is required');
+        return;
+      }
+
+      if (this.mcpForm.transport_type === 'stdio' && !this.mcpForm.command) {
+        FangClawGoToast.error('Command is required for stdio transport');
+        return;
+      }
+
+      if (this.mcpForm.transport_type === 'sse' && !this.mcpForm.url) {
+        FangClawGoToast.error('URL is required for SSE transport');
+        return;
+      }
+
+      var serverConfig = {
+        name: this.mcpForm.name.trim(),
+        transport: {
+          type: this.mcpForm.transport_type,
+          command: this.mcpForm.command,
+          args: this.mcpForm.args.filter(function(a) { return a.trim(); }),
+          url: this.mcpForm.url
+        },
+        timeout_secs: this.mcpForm.timeout_secs,
+        env: this.mcpForm.env
+          .filter(function(e) { return e.key && e.value; })
+          .map(function(e) { return e.key + '=' + e.value; })
+      };
+
+      try {
+        if (this.editingMcpServer) {
+          await FangClawGoAPI.put('/api/mcp/servers/' + encodeURIComponent(this.editingMcpServer.name), serverConfig);
+          FangClawGoToast.success('MCP server updated');
+        } else {
+          await FangClawGoAPI.post('/api/mcp/servers', serverConfig);
+          FangClawGoToast.success('MCP server added');
+        }
+        this.showMcpModal = false;
+        await this.loadMcpServers();
+      } catch(e) {
+        FangClawGoToast.error('Failed to save MCP server: ' + e.message);
+      }
+    },
+
+    // Delete MCP server
+    async deleteMcpServer(serverName) {
+      if (!confirm('Are you sure you want to delete the MCP server "' + serverName + '"?')) {
+        return;
+      }
+      try {
+        await FangClawGoAPI.delete('/api/mcp/servers/' + encodeURIComponent(serverName));
+        FangClawGoToast.success('MCP server deleted');
+        await this.loadMcpServers();
+      } catch(e) {
+        FangClawGoToast.error('Failed to delete MCP server: ' + e.message);
+      }
     },
 
     // Category search on ClawHub

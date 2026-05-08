@@ -2101,6 +2101,132 @@ func (k *Kernel) GetMcpServers() map[string]interface{} {
 	}
 }
 
+func (k *Kernel) AddMcpServer(ctx context.Context, serverConfig types.McpServerConfig) error {
+	if serverConfig.Name == "" {
+		return fmt.Errorf("server name cannot be empty")
+	}
+
+	for _, existing := range k.config.McpServers {
+		if existing.Name == serverConfig.Name {
+			return fmt.Errorf("server with name %s already exists", serverConfig.Name)
+		}
+	}
+
+	conn, err := mcp.Connect(ctx, serverConfig)
+	if err != nil {
+		return fmt.Errorf("failed to connect to MCP server %s: %w", serverConfig.Name, err)
+	}
+
+	k.mcpConnections.Store(serverConfig.Name, conn)
+	k.mcpTools.Store(serverConfig.Name, conn.Tools())
+
+	k.config.McpServers = append(k.config.McpServers, serverConfig)
+
+	log.Info().Str("server", serverConfig.Name).Msg("Added MCP server")
+	return nil
+}
+
+func (k *Kernel) UpdateMcpServer(ctx context.Context, serverName string, serverConfig types.McpServerConfig) error {
+	found := false
+	for i, existing := range k.config.McpServers {
+		if existing.Name == serverName {
+			found = true
+
+			if oldConn, ok := k.mcpConnections.LoadAndDelete(serverName); ok {
+				if conn, ok := oldConn.(*mcp.McpConnection); ok {
+					conn.Close()
+				}
+			}
+
+			conn, err := mcp.Connect(ctx, serverConfig)
+			if err != nil {
+				k.config.McpServers[i] = existing
+				return fmt.Errorf("failed to reconnect MCP server %s: %w", serverName, err)
+			}
+
+			k.mcpConnections.Store(serverName, conn)
+			k.mcpTools.Store(serverName, conn.Tools())
+
+			k.config.McpServers[i] = serverConfig
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("server %s not found", serverName)
+	}
+
+	log.Info().Str("server", serverName).Msg("Updated MCP server")
+	return nil
+}
+
+func (k *Kernel) RemoveMcpServer(ctx context.Context, serverName string) error {
+	found := false
+	for i, existing := range k.config.McpServers {
+		if existing.Name == serverName {
+			found = true
+
+			if oldConn, ok := k.mcpConnections.LoadAndDelete(serverName); ok {
+				if conn, ok := oldConn.(*mcp.McpConnection); ok {
+					conn.Close()
+				}
+			}
+			k.mcpTools.Delete(serverName)
+
+			k.config.McpServers = append(k.config.McpServers[:i], k.config.McpServers[i+1:]...)
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("server %s not found", serverName)
+	}
+
+	log.Info().Str("server", serverName).Msg("Removed MCP server")
+	return nil
+}
+
+func (k *Kernel) ReloadUserMcpConfig(ctx context.Context) error {
+	if k.config.Username == "" {
+		return fmt.Errorf("no username associated with this kernel")
+	}
+
+	userConfig, err := config.LoadUserConfig(k.config.Username)
+	if err != nil {
+		return fmt.Errorf("failed to load user config: %w", err)
+	}
+
+	k.mcpConnections.Range(func(key, value interface{}) bool {
+		if conn, ok := value.(*mcp.McpConnection); ok {
+			conn.Close()
+		}
+		k.mcpConnections.Delete(key)
+		return true
+	})
+	k.mcpTools.Range(func(key, value interface{}) bool {
+		k.mcpTools.Delete(key)
+		return true
+	})
+
+	k.config.McpServers = userConfig.McpServers
+
+	for _, serverConfig := range k.config.McpServers {
+		conn, err := mcp.Connect(ctx, serverConfig)
+		if err != nil {
+			log.Warn().Str("server", serverConfig.Name).Err(err).Msg("Failed to connect to MCP server during reload")
+			continue
+		}
+
+		k.mcpConnections.Store(serverConfig.Name, conn)
+		k.mcpTools.Store(serverConfig.Name, conn.Tools())
+
+		log.Debug().Str("server", serverConfig.Name).Int("tools", len(conn.Tools())).Msg("Reloaded MCP server")
+	}
+
+	log.Info().Str("user", k.config.Username).Int("count", len(k.config.McpServers)).Msg("Reloaded user MCP config")
+	return nil
+}
+
 // cronDeliverResponse delivers the response from an agent turn to the configured destination.
 func (k *Kernel) cronDeliverResponse(agentID types.AgentID, response string, delivery *types.CronDelivery) {
 	log.Info().

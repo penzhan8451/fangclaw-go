@@ -6147,21 +6147,74 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   </div>
 
                   <div class="form-group">
-                    <label>Target Agent</label>
-                    <select class="form-select" x-model="newJob.agent_id">
-                      <option value="">Any available agent</option>
-                      <template x-for="a in availableAgents" :key="a.id">
-                        <option :value="a.id" x-text="a.name + ' (' + (a.model_provider || 'unknown') + ':' + (a.model_name || 'unknown') + ')'"></option>
-                      </template>
+                    <label>Action Type</label>
+                    <select class="form-select" x-model="newJob.action_kind">
+                      <option value="agent_turn">Agent Turn (send message to an agent)</option>
+                      <option value="system_event">System Event (broadcast an event)</option>
+                      <option value="execute_shell">Execute Shell (run a command)</option>
                     </select>
-                    <div class="text-xs text-dim mt-1" x-show="!availableAgents.length">No agents running. <a href="#agents" style="color:var(--accent)">Spawn one first.</a></div>
+                    <div class="text-xs text-dim mt-1">What to do each time this job triggers.</div>
                   </div>
 
-                  <div class="form-group">
-                    <label>Message to Send</label>
-                    <textarea class="form-textarea" x-model="newJob.message" placeholder="Generate and email the daily status report..." rows="3"></textarea>
-                    <div class="text-xs text-dim mt-1">The message sent to the agent each time this job runs.</div>
-                  </div>
+                  <template x-if="newJob.action_kind === 'agent_turn'">
+                    <div>
+                      <div class="form-group">
+                        <label>Target Agent</label>
+                        <select class="form-select" x-model="newJob.agent_id">
+                          <option value="">Any available agent</option>
+                          <template x-for="a in availableAgents" :key="a.id">
+                            <option :value="a.id" x-text="a.name + ' (' + (a.model_provider || 'unknown') + ':' + (a.model_name || 'unknown') + ')'"></option>
+                          </template>
+                        </select>
+                        <div class="text-xs text-dim mt-1" x-show="!availableAgents.length">No agents running. <a href="#agents" style="color:var(--accent)">Spawn one first.</a></div>
+                      </div>
+
+                      <div class="form-group">
+                        <label>Message to Send</label>
+                        <textarea class="form-textarea" x-model="newJob.message" placeholder="Generate and email the daily status report..." rows="3"></textarea>
+                        <div class="text-xs text-dim mt-1">The message sent to the agent each time this job runs.</div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="newJob.action_kind === 'system_event'">
+                    <div class="form-group">
+                      <label>Event Text</label>
+                      <textarea class="form-textarea" x-model="newJob.event_text" placeholder="Daily health check completed..." rows="3"></textarea>
+                      <div class="text-xs text-dim mt-1">The text payload of the system event broadcast. Can be picked up by event triggers.</div>
+                    </div>
+                  </template>
+
+                  <template x-if="newJob.action_kind === 'execute_shell'">
+                    <div>
+                      <div class="form-group">
+                        <label>Command</label>
+                        <input class="form-input" x-model="newJob.shell_command" placeholder="df" style="font-family:monospace">
+                        <div class="text-xs text-dim mt-1">The executable command (not a shell string). E.g. <code>df</code>, <code>ls</code>, <code>uptime</code>.</div>
+                      </div>
+                      <div class="form-group">
+                        <label>Arguments (space-separated)</label>
+                        <input class="form-input" x-model="newJob.shell_args" placeholder="-h" style="font-family:monospace">
+                        <div class="text-xs text-dim mt-1">Optional. E.g. <code>-la /tmp</code></div>
+                      </div>
+                      <template x-if="shellSecurity">
+                        <div style="padding:8px 12px;background:var(--bg-secondary);border-radius:8px;font-size:0.75rem;margin-bottom:8px;">
+                          <template x-if="!shellSecurity.enable_execute_shell">
+                            <span style="color:var(--error);">⚠️ Shell execution is disabled in server configuration. This job will be blocked.</span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'strict'">
+                            <span style="color:var(--warning);">🔒 Security mode: <strong>strict</strong> — only allowed commands: <span x-text="shellSecurity.allowed_commands.join(', ')"></span></span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'path'">
+                            <span style="color:var(--warning);">🔒 Security mode: <strong>path</strong> — commands must be in: <span x-text="shellSecurity.allowed_paths.join(', ')"></span></span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'none'">
+                            <span style="color:var(--error);">⚠️ Security mode: <strong>none</strong> — all commands are allowed. Use with caution.</span>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
 
                   <div class="form-group">
                     <label class="flex items-center gap-2">
@@ -6245,21 +6298,74 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   </div>
 
                   <div class="form-group">
-                    <label>Target Agent</label>
-                    <select class="form-select" x-model="editJob.agent_id">
-                      <option value="">Any available agent</option>
-                      <template x-for="a in availableAgents" :key="a.id">
-                        <option :value="a.id" x-text="a.name + ' (' + (a.model_provider || 'unknown') + ':' + (a.model_name || 'unknown') + ')'"></option>
-                      </template>
+                    <label>Action Type</label>
+                    <select class="form-select" x-model="editJob.action_kind">
+                      <option value="agent_turn">Agent Turn (send message to an agent)</option>
+                      <option value="system_event">System Event (broadcast an event)</option>
+                      <option value="execute_shell">Execute Shell (run a command)</option>
                     </select>
-                    <div class="text-xs text-dim mt-1" x-show="!availableAgents.length">No agents running. <a href="#agents" style="color:var(--accent)">Spawn one first.</a></div>
+                    <div class="text-xs text-dim mt-1">What to do each time this job triggers.</div>
                   </div>
 
-                  <div class="form-group">
-                    <label>Message to Send</label>
-                    <textarea class="form-textarea" x-model="editJob.message" placeholder="Generate and email the daily status report..." rows="3"></textarea>
-                    <div class="text-xs text-dim mt-1">The message sent to the agent each time this job runs.</div>
-                  </div>
+                  <template x-if="editJob.action_kind === 'agent_turn'">
+                    <div>
+                      <div class="form-group">
+                        <label>Target Agent</label>
+                        <select class="form-select" x-model="editJob.agent_id">
+                          <option value="">Any available agent</option>
+                          <template x-for="a in availableAgents" :key="a.id">
+                            <option :value="a.id" x-text="a.name + ' (' + (a.model_provider || 'unknown') + ':' + (a.model_name || 'unknown') + ')'"></option>
+                          </template>
+                        </select>
+                        <div class="text-xs text-dim mt-1" x-show="!availableAgents.length">No agents running. <a href="#agents" style="color:var(--accent)">Spawn one first.</a></div>
+                      </div>
+
+                      <div class="form-group">
+                        <label>Message to Send</label>
+                        <textarea class="form-textarea" x-model="editJob.message" placeholder="Generate and email the daily status report..." rows="3"></textarea>
+                        <div class="text-xs text-dim mt-1">The message sent to the agent each time this job runs.</div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="editJob.action_kind === 'system_event'">
+                    <div class="form-group">
+                      <label>Event Text</label>
+                      <textarea class="form-textarea" x-model="editJob.event_text" placeholder="Daily health check completed..." rows="3"></textarea>
+                      <div class="text-xs text-dim mt-1">The text payload of the system event broadcast. Can be picked up by event triggers.</div>
+                    </div>
+                  </template>
+
+                  <template x-if="editJob.action_kind === 'execute_shell'">
+                    <div>
+                      <div class="form-group">
+                        <label>Command</label>
+                        <input class="form-input" x-model="editJob.shell_command" placeholder="df" style="font-family:monospace">
+                        <div class="text-xs text-dim mt-1">The executable command (not a shell string). E.g. <code>df</code>, <code>ls</code>, <code>uptime</code>.</div>
+                      </div>
+                      <div class="form-group">
+                        <label>Arguments (space-separated)</label>
+                        <input class="form-input" x-model="editJob.shell_args" placeholder="-h" style="font-family:monospace">
+                        <div class="text-xs text-dim mt-1">Optional. E.g. <code>-la /tmp</code></div>
+                      </div>
+                      <template x-if="shellSecurity">
+                        <div style="padding:8px 12px;background:var(--bg-secondary);border-radius:8px;font-size:0.75rem;margin-bottom:8px;">
+                          <template x-if="!shellSecurity.enable_execute_shell">
+                            <span style="color:var(--error);">⚠️ Shell execution is disabled in server configuration. This job will be blocked.</span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'strict'">
+                            <span style="color:var(--warning);">🔒 Security mode: <strong>strict</strong> — only allowed commands: <span x-text="shellSecurity.allowed_commands.join(', ')"></span></span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'path'">
+                            <span style="color:var(--warning);">🔒 Security mode: <strong>path</strong> — commands must be in: <span x-text="shellSecurity.allowed_paths.join(', ')"></span></span>
+                          </template>
+                          <template x-if="shellSecurity.enable_execute_shell && shellSecurity.security_mode === 'none'">
+                            <span style="color:var(--error);">⚠️ Security mode: <strong>none</strong> — all commands are allowed. Use with caution.</span>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
 
                   <div class="form-group">
                     <label class="flex items-center gap-2">
@@ -6895,10 +7001,10 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   </div>
 
                   <!-- Tab Navigation -->
-                  <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;">
-                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'chat' ? 'border-bottom:2px solid var(--accent);font-weight:600;' : ''" @click="projectTab = 'chat'" style="padding:8px 16px;">Chat</button>
-                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'workflows' ? 'border-bottom:2px solid var(--accent);font-weight:600;' : ''" @click="projectTab = 'workflows'" style="padding:8px 16px;">Workflows</button>
-                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'schedules' ? 'border-bottom:2px solid var(--accent);font-weight:600;' : ''" @click="projectTab = 'schedules'; loadCronBindings(); loadAvailableCronJobs();" style="padding:8px 16px;">Schedules</button>
+                  <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;padding:8px 12px;gap:8px;">
+                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'chat' ? 'background:var(--accent);color:white;border:none;border-radius:8px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:var(--bg-secondary);border:none;border-radius:8px;transition:all 0.2s ease;'" @click="projectTab = 'chat'" style="padding:10px 18px;">Chat</button>
+                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'workflows' ? 'background:var(--accent);color:white;border:none;border-radius:8px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:var(--bg-secondary);border:none;border-radius:8px;transition:all 0.2s ease;'" @click="projectTab = 'workflows'" style="padding:10px 18px;">Workflows</button>
+                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'schedules' ? 'background:var(--accent);color:white;border:none;border-radius:8px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:var(--bg-secondary);border:none;border-radius:8px;transition:all 0.2s ease;'" @click="projectTab = 'schedules'; loadCronBindings(); loadAvailableCronJobs();" style="padding:10px 18px;">Schedules</button>
                   </div>
 
                   <!-- Chat Tab -->
@@ -7068,11 +7174,11 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                   <!-- Schedules Tab -->
                   <template x-if="projectTab === 'schedules'">
                     <div style="flex:1;overflow:auto;padding:16px;">
-                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                         <h4 style="margin:0;font-size:0.9rem;">Bound Schedules</h4>
                         <button class="btn btn-primary btn-sm" @click="showBindCronModal = true; loadAvailableCronJobs();">+ Bind Schedule</button>
                       </div>
-
+                      <p style="margin-bottom: 8px;">Note: Bound cron 'Enable' status will receive the result of cron's operation; otherwise, it will not</p>
                       <template x-if="(cronBindings || []).length > 0">
                         <div>
                           <template x-for="cb in cronBindings" :key="cb.job_id">
@@ -7123,7 +7229,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                       </template>
                       <template x-if="!(cronBindings || []).length">
                         <p class="text-dim" style="text-align:center;padding:24px;">No schedules bound to this project. Click "Bind Schedule" to add one.
-                          <br>To create new, go to the <a href="#" @click.prevent="navigate('scheduler')">Schedules</a> page to create.
+                          <br>To create new, go to the <a href="#" @click.prevent="navigate('scheduler')">Scheduler</a> page to create.
                         </p>
                       </template>
 
@@ -7538,9 +7644,16 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
           <!-- TAB: MCP Servers -->
           <div x-show="tab === 'mcp'">
             <div class="info-card">
-              <h4>MCP Servers (Model Context Protocol)</h4>
-              <p>MCP servers provide external tools to your agents &mdash; GitHub, filesystem, databases, APIs, and more. FangClaw-go is compatible with all OpenClaw MCP servers.</p>
-              <p class="mt-2" style="font-size:0.8rem;color:var(--text-dim)">Configure MCP servers in your <code>config.toml</code> under <code>[mcp_servers]</code>.</p>
+              <div class="flex justify-between items-center">
+                <div>
+                  <h4>MCP Servers (Model Context Protocol)</h4>
+                  <p>MCP servers provide external tools to your agents &mdash; GitHub, filesystem, databases, APIs, and more.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" @click="openAddMcpModal(); loadMcpTemplates()" style="margin-left:16px">
+                  <span x-show="!mcpTemplatesLoading">+ Add Server</span>
+                  <span x-show="mcpTemplatesLoading">Loading...</span>
+                </button>
+              </div>
             </div>
             <div x-show="mcpLoading" class="loading-state"><div class="spinner"></div><span>Loading MCP servers...</span></div>
             <div x-show="!mcpLoading">
@@ -7577,7 +7690,11 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                     <div class="card card-unconfigured">
                       <div class="flex justify-between items-center mb-2">
                         <div class="card-header" style="margin:0" x-text="srv.name"></div>
-                        <span class="badge badge-dim" x-text="srv.transport.type"></span>
+                        <div class="flex items-center gap-2">
+                          <button class="btn btn-ghost btn-xs" @click="openEditMcpModal(srv)" title="Edit">✏️</button>
+                          <button class="btn btn-ghost btn-xs" @click="deleteMcpServer(srv.name)" title="Delete">🗑️</button>
+                          <span class="badge badge-dim" x-text="srv.transport.type"></span>
+                        </div>
                       </div>
                       <div class="text-xs" x-show="srv.transport.type === 'stdio'">
                         <code x-text="srv.transport.command + ' ' + (srv.transport.args || []).join(' ')" style="font-size:0.7rem"></code>
@@ -7603,6 +7720,101 @@ type = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                 <p class="hint mt-2" style="font-size:0.75rem">FangClaw-go supports all OpenClaw-compatible MCP servers.</p>
+              </div>
+            </div>
+
+            <!-- MCP Server Add/Edit Modal -->
+            <div class="modal-overlay" x-show="showMcpModal" @click.self="showMcpModal = false" @keydown.escape.window="showMcpModal = false">
+              <div class="modal" style="max-width:600px;max-height:90vh;overflow-y:auto">
+                <div class="modal-header">
+                  <h3 x-text="editingMcpServer ? 'Edit MCP Server' : 'Add MCP Server'"></h3>
+                  <button class="modal-close" @click="showMcpModal = false">&times;</button>
+                </div>
+
+                <!-- Templates Section -->
+                <div x-show="!editingMcpServer && mcpTemplates.length > 0" class="mb-4">
+                  <div class="text-sm font-bold mb-2" style="color:var(--text-dim)">QUICK START TEMPLATES</div>
+                  <div class="card-grid" style="grid-template-columns:repeat(auto-fill, minmax(140px, 1fr))">
+                    <template x-for="tmpl in mcpTemplates" :key="tmpl.name">
+                      <div class="card card-sm" style="cursor:pointer" @click="applyMcpTemplate(tmpl)">
+                        <div class="text-sm" style="margin-bottom:4px" x-text="tmpl.logo + ' ' + tmpl.name"></div>
+                        <div class="text-xs text-dim" x-text="tmpl.category"></div>
+                      </div>
+                    </template>
+                  </div>
+                  <hr style="margin:16px 0;border-color:var(--border-color)">
+                </div>
+
+                <!-- Form -->
+                <div class="form-group">
+                  <label>Server Name *</label>
+                  <input class="form-input" type="text" x-model="mcpForm.name" placeholder="e.g., github, filesystem, postgres" :disabled="editingMcpServer">
+                </div>
+
+                <div class="form-group">
+                  <label>Transport Type</label>
+                  <div class="flex gap-4">
+                    <label class="flex items-center gap-2">
+                      <input type="radio" x-model="mcpForm.transport_type" value="stdio"> stdio
+                    </label>
+                    <label class="flex items-center gap-2">
+                      <input type="radio" x-model="mcpForm.transport_type" value="sse"> SSE
+                    </label>
+                  </div>
+                </div>
+
+                <!-- stdio transport fields -->
+                <div x-show="mcpForm.transport_type === 'stdio'">
+                  <div class="form-group">
+                    <label>Command *</label>
+                    <input class="form-input" type="text" x-model="mcpForm.command" placeholder="e.g., npx, python, node">
+                  </div>
+                  <div class="form-group">
+                    <label>Arguments</label>
+                    <template x-for="(arg, i) in mcpForm.args" :key="i">
+                      <div class="flex gap-2 mb-1">
+                        <input class="form-input" type="text" x-model="mcpForm.args[i]" placeholder="e.g., -y, @modelcontextprotocol/server-github">
+                        <button class="btn btn-ghost btn-sm" @click="removeMcpArg(i)" x-show="mcpForm.args.length > 1">-</button>
+                      </div>
+                    </template>
+                    <button class="btn btn-ghost btn-sm" @click="addMcpArg()">+ Add Argument</button>
+                  </div>
+                </div>
+
+                <!-- sse transport fields -->
+                <div x-show="mcpForm.transport_type === 'sse'">
+                  <div class="form-group">
+                    <label>URL *</label>
+                    <input class="form-input" type="text" x-model="mcpForm.url" placeholder="e.g., https://mcp.example.com/sse">
+                  </div>
+                </div>
+
+                <!-- Environment variables -->
+                <div class="form-group">
+                  <label>Environment Variables</label>
+                  <template x-for="(env, i) in mcpForm.env" :key="i">
+                    <div class="flex gap-2 mb-1 items-center">
+                      <input class="form-input" type="text" x-model="env.key" placeholder="KEY" style="width:120px">
+                      <span>=</span>
+                      <input class="form-input" type="text" x-model="env.value" placeholder="value" style="flex:1">
+                      <button class="btn btn-ghost btn-sm" @click="removeMcpEnv(i)">-</button>
+                    </div>
+                  </template>
+                  <button class="btn btn-ghost btn-sm" @click="addMcpEnv()">+ Add Environment Variable</button>
+                </div>
+
+                <!-- Timeout -->
+                <div class="form-group">
+                  <label>Timeout (seconds)</label>
+                  <input class="form-input" type="number" x-model="mcpForm.timeout_secs" min="1" max="300">
+                </div>
+
+                <div class="flex justify-end gap-2 mt-4">
+                  <button class="btn btn-ghost" @click="showMcpModal = false">Cancel</button>
+                  <button class="btn btn-primary" @click="saveMcpServer()">
+                    <span x-text="editingMcpServer ? 'Update' : 'Add'"></span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -16653,6 +16865,19 @@ function skillsPage() {
     // MCP servers
     mcpServers: [],
     mcpLoading: false,
+    mcpTemplates: [],
+    mcpTemplatesLoading: false,
+    showMcpModal: false,
+    editingMcpServer: null,
+    mcpForm: {
+      name: '',
+      transport_type: 'stdio',
+      command: '',
+      args: [''],
+      url: '',
+      env: [],
+      timeout_secs: 30
+    },
 
     // Upload state
     uploading: false,
@@ -16978,6 +17203,152 @@ function skillsPage() {
         this.mcpServers = { configured: [], connected: [], total_configured: 0, total_connected: 0 };
       }
       this.mcpLoading = false;
+    },
+
+    // Load MCP templates
+    async loadMcpTemplates() {
+      this.mcpTemplatesLoading = true;
+      try {
+        var data = await FangClawGoAPI.get('/api/mcp/templates');
+        this.mcpTemplates = data.templates || [];
+      } catch(e) {
+        this.mcpTemplates = [];
+      }
+      this.mcpTemplatesLoading = false;
+    },
+
+    // Open add MCP server modal
+    openAddMcpModal: function() {
+      this.editingMcpServer = null;
+      this.mcpForm = {
+        name: '',
+        transport_type: 'stdio',
+        command: '',
+        args: [''],
+        url: '',
+        env: [],
+        timeout_secs: 30
+      };
+      this.showMcpModal = true;
+    },
+
+    // Open edit MCP server modal
+    openEditMcpModal: function(server) {
+      this.editingMcpServer = server;
+      this.mcpForm = {
+        name: server.name,
+        transport_type: server.transport.type || 'stdio',
+        command: server.transport.command || '',
+        args: server.transport.args ? server.transport.args.slice() : [''],
+        url: server.transport.url || '',
+        env: server.env ? server.env.slice() : [],
+        timeout_secs: server.timeout_secs || 30
+      };
+      this.showMcpModal = true;
+    },
+
+    // Apply template to form
+    applyMcpTemplate: function(template) {
+      this.mcpForm.name = template.name;
+      this.mcpForm.transport_type = template.transport.type || 'stdio';
+      this.mcpForm.command = template.transport.command || '';
+      this.mcpForm.args = template.transport.args ? template.transport.args.slice() : [''];
+      this.mcpForm.timeout_secs = template.timeout_secs || 30;
+
+      if (template.fields && template.fields.length > 0) {
+        this.mcpForm.env = template.fields.map(function(f) {
+          return { key: f.name, value: '' };
+        });
+      } else if (template.env && template.env.length > 0) {
+        this.mcpForm.env = template.env.map(function(e) {
+          var parts = e.split('=');
+          return { key: parts[0] || '', value: parts.slice(1).join('=') || '' };
+        });
+      } else {
+        this.mcpForm.env = [];
+      }
+    },
+
+    // Add arg to MCP form
+    addMcpArg: function() {
+      this.mcpForm.args.push('');
+    },
+
+    // Remove arg from MCP form
+    removeMcpArg: function(index) {
+      if (this.mcpForm.args.length > 1) {
+        this.mcpForm.args.splice(index, 1);
+      }
+    },
+
+    // Add env to MCP form
+    addMcpEnv: function() {
+      this.mcpForm.env.push({ key: '', value: '' });
+    },
+
+    // Remove env from MCP form
+    removeMcpEnv: function(index) {
+      this.mcpForm.env.splice(index, 1);
+    },
+
+    // Save MCP server (create or update)
+    async saveMcpServer() {
+      if (!this.mcpForm.name || !this.mcpForm.name.trim()) {
+        FangClawGoToast.error('Server name is required');
+        return;
+      }
+
+      if (this.mcpForm.transport_type === 'stdio' && !this.mcpForm.command) {
+        FangClawGoToast.error('Command is required for stdio transport');
+        return;
+      }
+
+      if (this.mcpForm.transport_type === 'sse' && !this.mcpForm.url) {
+        FangClawGoToast.error('URL is required for SSE transport');
+        return;
+      }
+
+      var serverConfig = {
+        name: this.mcpForm.name.trim(),
+        transport: {
+          type: this.mcpForm.transport_type,
+          command: this.mcpForm.command,
+          args: this.mcpForm.args.filter(function(a) { return a.trim(); }),
+          url: this.mcpForm.url
+        },
+        timeout_secs: this.mcpForm.timeout_secs,
+        env: this.mcpForm.env
+          .filter(function(e) { return e.key && e.value; })
+          .map(function(e) { return e.key + '=' + e.value; })
+      };
+
+      try {
+        if (this.editingMcpServer) {
+          await FangClawGoAPI.put('/api/mcp/servers/' + encodeURIComponent(this.editingMcpServer.name), serverConfig);
+          FangClawGoToast.success('MCP server updated');
+        } else {
+          await FangClawGoAPI.post('/api/mcp/servers', serverConfig);
+          FangClawGoToast.success('MCP server added');
+        }
+        this.showMcpModal = false;
+        await this.loadMcpServers();
+      } catch(e) {
+        FangClawGoToast.error('Failed to save MCP server: ' + e.message);
+      }
+    },
+
+    // Delete MCP server
+    async deleteMcpServer(serverName) {
+      if (!confirm('Are you sure you want to delete the MCP server "' + serverName + '"?')) {
+        return;
+      }
+      try {
+        await FangClawGoAPI.delete('/api/mcp/servers/' + encodeURIComponent(serverName));
+        FangClawGoToast.success('MCP server deleted');
+        await this.loadMcpServers();
+      } catch(e) {
+        FangClawGoToast.error('Failed to delete MCP server: ' + e.message);
+      }
     },
 
     // Category search on ClawHub
@@ -17606,8 +17977,12 @@ function schedulerPage() {
     newJob: {
       name: '',
       cron: '',
+      action_kind: 'agent_turn',
       agent_id: '',
       message: '',
+      event_text: '',
+      shell_command: '',
+      shell_args: '',
       enabled: true,
       delivery_kind: 'last_channel',
       delivery_channel_name: '',
@@ -17622,8 +17997,12 @@ function schedulerPage() {
     editJob: {
       name: '',
       cron: '',
+      action_kind: 'agent_turn',
       agent_id: '',
       message: '',
+      event_text: '',
+      shell_command: '',
+      shell_args: '',
       enabled: true,
       delivery_kind: 'none',
       delivery_channel_name: '',
@@ -17652,6 +18031,9 @@ function schedulerPage() {
     // -- Channels for delivery --
     channels: [],
 
+    // -- Shell security config --
+    shellSecurity: null,
+
     // Cron presets
     cronPresets: [
       { label: 'Every minute', cron: '* * * * *' },
@@ -17675,6 +18057,7 @@ function schedulerPage() {
       try {
         await this.loadJobs();
         await this.loadChannels();
+        await this.loadShellSecurity();
       } catch(e) {
         this.loadError = e.message || 'Could not load scheduler data.';
       }
@@ -17703,6 +18086,7 @@ function schedulerPage() {
           next_run: j.next_run,
           delivery: j.delivery ? j.delivery.kind || '' : '',
           _raw_delivery: j.delivery || null,
+          _raw_action: j.action || null,
           created_at: j.created_at
         };
       });
@@ -17727,6 +18111,14 @@ function schedulerPage() {
         this.channels = Array.isArray(data) ? data : [];
       } catch(e) {
         this.channels = [];
+      }
+    },
+
+    async loadShellSecurity() {
+      try {
+        this.shellSecurity = await FangClawGoAPI.get('/api/cron/shell-security');
+      } catch(e) {
+        this.shellSecurity = null;
       }
     },
 
@@ -17795,6 +18187,27 @@ function schedulerPage() {
       this.creating = true;
       try {
         var jobName = this.newJob.name;
+        var action = { kind: this.newJob.action_kind };
+        if (this.newJob.action_kind === 'agent_turn') {
+          action.message = this.newJob.message || 'Scheduled task: ' + this.newJob.name;
+        } else if (this.newJob.action_kind === 'system_event') {
+          if (!this.newJob.event_text.trim()) {
+            FangClawGoToast.warn('Please enter event text');
+            this.creating = false;
+            return;
+          }
+          action.text = this.newJob.event_text;
+        } else if (this.newJob.action_kind === 'execute_shell') {
+          if (!this.newJob.shell_command.trim()) {
+            FangClawGoToast.warn('Please enter a command');
+            this.creating = false;
+            return;
+          }
+          action.command = this.newJob.shell_command;
+          if (this.newJob.shell_args.trim()) {
+            action.args = this.newJob.shell_args.trim().split(/\s+/);
+          }
+        }
         var delivery = { kind: this.newJob.delivery_kind };
         if (this.newJob.delivery_kind === 'channel') {
           delivery.channel_name = this.newJob.delivery_channel_name;
@@ -17803,16 +18216,16 @@ function schedulerPage() {
           delivery.url = this.newJob.delivery_webhook_url;
         }
         var body = {
-          agent_id: this.newJob.agent_id,
+          agent_id: this.newJob.action_kind === 'agent_turn' ? this.newJob.agent_id : '',
           name: this.newJob.name,
           schedule: { kind: 'cron', expr: this.newJob.cron },
-          action: { kind: 'agent_turn', message: this.newJob.message || 'Scheduled task: ' + this.newJob.name },
+          action: action,
           delivery: delivery,
           enabled: this.newJob.enabled
         };
         await FangClawGoAPI.post('/api/cron/jobs', body);
         this.showCreateForm = false;
-        this.newJob = { name: '', cron: '', agent_id: '', message: '', enabled: true, delivery_kind: 'last_channel', delivery_channel_name: '', delivery_recipient: '', delivery_webhook_url: '' };
+        this.newJob = { name: '', cron: '', action_kind: 'agent_turn', agent_id: '', message: '', event_text: '', shell_command: '', shell_args: '', enabled: true, delivery_kind: 'last_channel', delivery_channel_name: '', delivery_recipient: '', delivery_webhook_url: '' };
         FangClawGoToast.success('Schedule "' + jobName + '" created');
         await this.loadJobs();
       } catch(e) {
@@ -17875,11 +18288,27 @@ function schedulerPage() {
         recipient = job._raw_delivery.recipient || '';
         webhookUrl = job._raw_delivery.url || '';
       }
+      var actionKind = 'agent_turn';
+      var message = job.message || '';
+      var eventText = '';
+      var shellCommand = '';
+      var shellArgs = '';
+      if (job._raw_action) {
+        actionKind = job._raw_action.kind || 'agent_turn';
+        if (job._raw_action.message) message = job._raw_action.message;
+        if (job._raw_action.text) eventText = job._raw_action.text;
+        if (job._raw_action.command) shellCommand = job._raw_action.command;
+        if (job._raw_action.args && job._raw_action.args.length) shellArgs = job._raw_action.args.join(' ');
+      }
       this.editJob = {
         name: job.name || '',
         cron: job.cron || '',
+        action_kind: actionKind,
         agent_id: job.agent_id || '',
-        message: job.message || '',
+        message: message,
+        event_text: eventText,
+        shell_command: shellCommand,
+        shell_args: shellArgs,
         enabled: job.enabled !== false,
         delivery_kind: deliveryKind,
         delivery_channel_name: channelName,
@@ -17901,6 +18330,17 @@ function schedulerPage() {
 
       this.editing = true;
       try {
+        var action = { kind: this.editJob.action_kind };
+        if (this.editJob.action_kind === 'agent_turn') {
+          action.message = this.editJob.message || 'Scheduled task: ' + this.editJob.name;
+        } else if (this.editJob.action_kind === 'system_event') {
+          action.text = this.editJob.event_text;
+        } else if (this.editJob.action_kind === 'execute_shell') {
+          action.command = this.editJob.shell_command;
+          if (this.editJob.shell_args.trim()) {
+            action.args = this.editJob.shell_args.trim().split(/\s+/);
+          }
+        }
         var delivery = { kind: this.editJob.delivery_kind };
         if (this.editJob.delivery_kind === 'channel') {
           delivery.channel_name = this.editJob.delivery_channel_name;
@@ -17909,17 +18349,14 @@ function schedulerPage() {
           delivery.url = this.editJob.delivery_webhook_url;
         }
         await FangClawGoAPI.put('/api/schedules/' + this.editingJobId, {
-          agent_id: this.editJob.agent_id,
+          agent_id: this.editJob.action_kind === 'agent_turn' ? this.editJob.agent_id : '',
           name: this.editJob.name,
           enabled: this.editJob.enabled,
           schedule: {
             kind: 'cron',
             expr: this.editJob.cron
           },
-          action: {
-            kind: 'agent_turn',
-            message: this.editJob.message
-          },
+          action: action,
           delivery: delivery
         });
         FangClawGoToast.success('Schedule updated successfully');

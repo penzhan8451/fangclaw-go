@@ -79,7 +79,7 @@ var RolePermissions = map[Role][]Permission{
 		PermChannelRead, PermChannelWrite,
 		PermSkillInstall,
 		PermHandActivate, PermHandDeactivate,
-		PermMCPRead, PermBudgetRead,
+		PermMCPRead, PermMCPWrite, PermBudgetRead,
 	},
 	RoleGuest: {
 		PermAgentRead, PermChannelRead,
