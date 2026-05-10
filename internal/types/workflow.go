@@ -162,16 +162,17 @@ const (
 )
 
 type WorkflowRun struct {
-	ID           WorkflowRunID    `json:"id"`
-	WorkflowID   WorkflowID       `json:"workflow_id"`
-	WorkflowName string           `json:"workflow_name"`
-	Input        string           `json:"input"`
-	State        WorkflowRunState `json:"state"`
-	StepResults  []StepResult     `json:"step_results"`
-	Output       *string          `json:"output,omitempty"`
-	Error        *string          `json:"error,omitempty"`
-	StartedAt    time.Time        `json:"started_at"`
-	CompletedAt  *time.Time       `json:"completed_at,omitempty"`
+	ID            WorkflowRunID    `json:"id"`
+	WorkflowID    WorkflowID       `json:"workflow_id"`
+	WorkflowName  string           `json:"workflow_name"`
+	Input         string           `json:"input"`
+	State         WorkflowRunState `json:"state"`
+	StepResults   []StepResult     `json:"step_results"`
+	Output        *string          `json:"output,omitempty"`
+	Error         *string          `json:"error,omitempty"`
+	StartedAt     time.Time        `json:"started_at"`
+	CompletedAt   *time.Time       `json:"completed_at,omitempty"`
+	TriggerSource *string          `json:"trigger_source,omitempty"`
 }
 
 type StepResult struct {

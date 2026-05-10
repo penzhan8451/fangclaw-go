@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -756,6 +757,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/workflows/{id}", r.handleDeleteWorkflow)
 	mux.HandleFunc("POST /api/workflows/{id}/run", r.handleRunWorkflow)
 	mux.HandleFunc("GET /api/workflows/{id}/runs", r.handleListWorkflowRuns)
+	mux.HandleFunc("GET /api/workflow-runs", r.handleListAllWorkflowRuns)
 	// Workflow templates endpoints
 	mux.HandleFunc("GET /api/workflow-templates", r.handleListWorkflowTemplates)
 	mux.HandleFunc("GET /api/workflow-templates/{id}", r.handleGetWorkflowTemplate)
@@ -1060,7 +1062,17 @@ func (r *Router) handleListProjectCronResults(w http.ResponseWriter, req *http.R
 		return
 	}
 
-	respondJSON(w, http.StatusOK, project.CronResults)
+	results := project.CronResults
+	slices.SortFunc(results, func(a, b projects.CronResult) int {
+		if a.FiredAt.After(b.FiredAt) {
+			return -1
+		}
+		if a.FiredAt.Before(b.FiredAt) {
+			return 1
+		}
+		return 0
+	})
+	respondJSON(w, http.StatusOK, results)
 }
 
 func (r *Router) handleBindProjectCron(w http.ResponseWriter, req *http.Request) {
@@ -1097,16 +1109,18 @@ func (r *Router) handleBindProjectCron(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	isMember := false
-	for _, m := range project.Members {
-		if m.Active && m.ID == job.AgentID {
-			isMember = true
-			break
+	if job.Action.Kind == types.CronActionKindAgentTurn {
+		isMember := false
+		for _, m := range project.Members {
+			if m.Active && m.ID == job.AgentID {
+				isMember = true
+				break
+			}
 		}
-	}
-	if !isMember {
-		respondError(w, http.StatusConflict, fmt.Sprintf("agent %s is not a project member. Add the agent as a member first", job.AgentID))
-		return
+		if !isMember {
+			respondError(w, http.StatusConflict, fmt.Sprintf("agent %s is not a project member. Add the agent as a member first", job.AgentID))
+			return
+		}
 	}
 
 	binding := projects.ProjectCronBinding{
@@ -5330,10 +5344,22 @@ func (r *Router) handleCreateCronJob(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	agentID, err := types.ParseAgentID(reqBody.AgentID)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid agent ID")
-		return
+	var agentID types.AgentID
+	if reqBody.Action.Kind == types.CronActionKindAgentTurn {
+		var err error
+		agentID, err = types.ParseAgentID(reqBody.AgentID)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid agent ID")
+			return
+		}
+	} else {
+		if reqBody.AgentID != "" {
+			var err error
+			agentID, err = types.ParseAgentID(reqBody.AgentID)
+			if err != nil {
+				agentID = uuid.Nil
+			}
+		}
 	}
 
 	job := types.NewCronJob(
@@ -5378,10 +5404,22 @@ func (r *Router) handleUpdateCronJob(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	agentID, err := types.ParseAgentID(reqBody.AgentID)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid agent ID")
-		return
+	var agentID types.AgentID
+	if reqBody.Action.Kind == types.CronActionKindAgentTurn {
+		var err error
+		agentID, err = types.ParseAgentID(reqBody.AgentID)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid agent ID")
+			return
+		}
+	} else {
+		if reqBody.AgentID != "" {
+			var err error
+			agentID, err = types.ParseAgentID(reqBody.AgentID)
+			if err != nil {
+				agentID = uuid.Nil
+			}
+		}
 	}
 
 	job := types.NewCronJob(
@@ -6368,6 +6406,52 @@ func (r *Router) handleListWorkflowRuns(w http.ResponseWriter, req *http.Request
 			"started_at":      run.StartedAt.Format(time.RFC3339),
 			"completed_at":    completedAt,
 		})
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (r *Router) handleListAllWorkflowRuns(w http.ResponseWriter, req *http.Request) {
+	runs := r.getKernel(req).WorkflowEngine().ListRuns(nil, nil)
+	result := make([]map[string]interface{}, 0)
+	for _, run := range runs {
+		var completedAt *string
+		if run.CompletedAt != nil {
+			ca := run.CompletedAt.Format(time.RFC3339)
+			completedAt = &ca
+		}
+		stepResults := make([]map[string]interface{}, 0)
+		for _, sr := range run.StepResults {
+			stepResults = append(stepResults, map[string]interface{}{
+				"step_name":     sr.StepName,
+				"agent_id":      sr.AgentID,
+				"agent_name":    sr.AgentName,
+				"output":        sr.Output,
+				"input_tokens":  sr.InputTokens,
+				"output_tokens": sr.OutputTokens,
+				"duration_ms":   sr.DurationMS,
+			})
+		}
+		entry := map[string]interface{}{
+			"id":              run.ID,
+			"workflow_id":     run.WorkflowID,
+			"workflow_name":   run.WorkflowName,
+			"input":           run.Input,
+			"state":           run.State,
+			"step_results":    stepResults,
+			"steps_completed": len(run.StepResults),
+			"started_at":      run.StartedAt.Format(time.RFC3339),
+			"completed_at":    completedAt,
+		}
+		if run.Output != nil {
+			entry["output"] = *run.Output
+		}
+		if run.Error != nil {
+			entry["error"] = *run.Error
+		}
+		if run.TriggerSource != nil {
+			entry["trigger_source"] = *run.TriggerSource
+		}
+		result = append(result, entry)
 	}
 	respondJSON(w, http.StatusOK, result)
 }

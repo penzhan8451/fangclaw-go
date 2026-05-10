@@ -374,7 +374,7 @@ func (r *Registry) AddCronResult(projectID ProjectID, result CronResult) error {
 		return fmt.Errorf("project not found: %s", projectID)
 	}
 
-	const maxResultsPerJob = 100
+	const maxResultsPerJob = 50
 	var resultsForJob []CronResult
 	for _, cr := range project.CronResults {
 		if cr.JobID == result.JobID {

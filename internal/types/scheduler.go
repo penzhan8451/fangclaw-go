@@ -90,6 +90,7 @@ const (
 	CronActionKindSystemEvent  CronActionKind = "system_event"
 	CronActionKindAgentTurn    CronActionKind = "agent_turn"
 	CronActionKindExecuteShell CronActionKind = "execute_shell"
+	CronActionKindWorkflow     CronActionKind = "workflow"
 )
 
 type CronAction struct {
@@ -100,6 +101,8 @@ type CronAction struct {
 	TimeoutSecs   *uint64        `json:"timeout_secs,omitempty"`
 	Command       *string        `json:"command,omitempty"`
 	Args          []string       `json:"args,omitempty"`
+	WorkflowID    *string        `json:"workflow_id,omitempty"`
+	WorkflowInput *string        `json:"workflow_input,omitempty"`
 }
 
 func NewCronActionSystemEvent(text string) CronAction {
@@ -124,6 +127,14 @@ func NewCronActionExecuteShell(command string, args []string, timeoutSecs *uint6
 		Command:     &command,
 		Args:        args,
 		TimeoutSecs: timeoutSecs,
+	}
+}
+
+func NewCronActionWorkflow(workflowID string, workflowInput *string) CronAction {
+	return CronAction{
+		Kind:          CronActionKindWorkflow,
+		WorkflowID:    &workflowID,
+		WorkflowInput: workflowInput,
 	}
 }
 
@@ -286,6 +297,10 @@ func (a *CronAction) Validate() error {
 		if a.TimeoutSecs != nil && *a.TimeoutSecs == 0 {
 			return fmt.Errorf("timeout_secs must be positive")
 		}
+	case CronActionKindWorkflow:
+		if a.WorkflowID == nil || len(*a.WorkflowID) == 0 {
+			return fmt.Errorf("workflow_id is required for workflow action")
+		}
 	default:
 		return fmt.Errorf("unknown action kind: %s", a.Kind)
 	}
@@ -426,6 +441,19 @@ func UnmarshalCronAction(data []byte) (CronAction, error) {
 			}
 		}
 		return NewCronActionExecuteShell(command, args, timeoutSecs), nil
+	case CronActionKindWorkflow:
+		workflowID, ok := raw["workflow_id"].(string)
+		if !ok {
+			return CronAction{}, fmt.Errorf("missing or invalid workflow_id field")
+		}
+		var workflowInput *string
+		if wiVal, ok := raw["workflow_input"]; ok && wiVal != nil {
+			wiStr, ok := wiVal.(string)
+			if ok {
+				workflowInput = &wiStr
+			}
+		}
+		return NewCronActionWorkflow(workflowID, workflowInput), nil
 	default:
 		return CronAction{}, fmt.Errorf("unknown action kind: %s", kind)
 	}

@@ -2019,6 +2019,7 @@
                       <option value="agent_turn">Agent Turn (send message to an agent)</option>
                       <option value="system_event">System Event (broadcast an event)</option>
                       <option value="execute_shell">Execute Shell (run a command)</option>
+                      <option value="workflow">Run Workflow (execute a multi-step workflow)</option>
                     </select>
                     <div class="text-xs text-dim mt-1">What to do each time this job triggers.</div>
                   </div>
@@ -2080,6 +2081,28 @@
                           </template>
                         </div>
                       </template>
+                    </div>
+                  </template>
+
+                  <template x-if="newJob.action_kind === 'workflow'">
+                    <div>
+                      <div class="form-group">
+                        <label>Workflow</label>
+                        <select class="form-select" x-model="newJob.workflow_id">
+                          <option value="">Select a workflow...</option>
+                          <template x-for="wf in availableWorkflows" :key="wf.id">
+                            <option :value="wf.id" x-text="wf.name + (wf.description ? ' — ' + wf.description : '')"></option>
+                          </template>
+                        </select>
+                        <div class="text-xs text-dim mt-1" x-show="!availableWorkflows.length">
+                          No workflows available. <a href="#" @click.prevent="navigate('skills')" style="color:var(--accent)">Create one first.</a>
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label>Input (optional)</label>
+                        <textarea class="form-textarea" x-model="newJob.workflow_input" placeholder="Input data for the workflow..." rows="2"></textarea>
+                        <div class="text-xs text-dim mt-1">This text will be passed as input to the first step of the workflow.</div>
+                      </div>
                     </div>
                   </template>
 
@@ -2170,6 +2193,7 @@
                       <option value="agent_turn">Agent Turn (send message to an agent)</option>
                       <option value="system_event">System Event (broadcast an event)</option>
                       <option value="execute_shell">Execute Shell (run a command)</option>
+                      <option value="workflow">Run Workflow (execute a multi-step workflow)</option>
                     </select>
                     <div class="text-xs text-dim mt-1">What to do each time this job triggers.</div>
                   </div>
@@ -2231,6 +2255,28 @@
                           </template>
                         </div>
                       </template>
+                    </div>
+                  </template>
+
+                  <template x-if="editJob.action_kind === 'workflow'">
+                    <div>
+                      <div class="form-group">
+                        <label>Workflow</label>
+                        <select class="form-select" x-model="editJob.workflow_id">
+                          <option value="">Select a workflow...</option>
+                          <template x-for="wf in availableWorkflows" :key="wf.id">
+                            <option :value="wf.id" x-text="wf.name + (wf.description ? ' — ' + wf.description : '')"></option>
+                          </template>
+                        </select>
+                        <div class="text-xs text-dim mt-1" x-show="!availableWorkflows.length">
+                          No workflows available. <a href="#" @click.prevent="navigate('skills')" style="color:var(--accent)">Create one first.</a>
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label>Input (optional)</label>
+                        <textarea class="form-textarea" x-model="editJob.workflow_input" placeholder="Input data for the workflow..." rows="2"></textarea>
+                        <div class="text-xs text-dim mt-1">This text will be passed as input to the first step of the workflow.</div>
+                      </div>
                     </div>
                   </template>
 
@@ -2870,7 +2916,7 @@
                   <!-- Tab Navigation -->
                   <div style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;padding:8px 12px;gap:8px;">
                     <button class="btn btn-ghost btn-sm" :style="projectTab === 'chat' ? 'background:var(--accent);color:white;border:none;border-radius:8px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:var(--bg-secondary);border:none;border-radius:8px;transition:all 0.2s ease;'" @click="projectTab = 'chat'" style="padding:10px 18px;">Chat</button>
-                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'workflows' ? 'background:var(--accent);color:white;border:none;border-radius:8px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:var(--bg-secondary);border:none;border-radius:8px;transition:all 0.2s ease;'" @click="projectTab = 'workflows'" style="padding:10px 18px;">Workflows</button>
+                    <button class="btn btn-ghost btn-sm" :style="projectTab === 'workflows' ? 'background:var(--accent);color:white;border:none;border-radius:8px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:var(--bg-secondary);border:none;border-radius:8px;transition:all 0.2s ease;'" @click="projectTab = 'workflows'; loadWorkflowRunHistory();" style="padding:10px 18px;">Workflows</button>
                     <button class="btn btn-ghost btn-sm" :style="projectTab === 'schedules' ? 'background:var(--accent);color:white;border:none;border-radius:8px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,0.1);' : 'background:var(--bg-secondary);border:none;border-radius:8px;transition:all 0.2s ease;'" @click="projectTab = 'schedules'; loadCronBindings(); loadAvailableCronJobs();" style="padding:10px 18px;">Schedules</button>
                   </div>
 
@@ -3035,6 +3081,77 @@
                       <template x-if="!(currentProject.workflow_bindings || []).length">
                         <p class="text-dim" style="text-align:center;padding:24px;">No workflows bound to this project yet. Drop a workflow file or bind one from existing workflows.</p>
                       </template>
+
+                      <!-- Workflow Run History -->
+                      <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                          <h4 style="margin:0;font-size:0.9rem;">Run History</h4>
+                          <button class="btn btn-ghost btn-sm" @click="loadWorkflowRunHistory()">Refresh</button>
+                        </div>
+                        <template x-if="(workflowRunHistory || []).length > 0">
+                          <div>
+                            <template x-for="run in (workflowRunHistory || []).slice(0, 20)" :key="run.id">
+                              <div style="padding:12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:6px;font-size:0.8rem;">
+                                <div style="display:flex;align-items:center;justify-content:space-between;">
+                                  <div style="display:flex;align-items:center;gap:6px;">
+                                    <template x-if="run.state === 'completed'">
+                                      <span style="color:var(--success);font-weight:600;">✅</span>
+                                    </template>
+                                    <template x-if="run.state === 'failed'">
+                                      <span style="color:var(--error);font-weight:600;">❌</span>
+                                    </template>
+                                    <template x-if="run.state === 'running'">
+                                      <span style="color:var(--accent);font-weight:600;">🔄</span>
+                                    </template>
+                                    <template x-if="run.state === 'pending'">
+                                      <span style="color:var(--text-dim);font-weight:600;">⏳</span>
+                                    </template>
+                                    <span style="font-weight:600;" x-text="run.workflow_name || run.workflow_id"></span>
+                                    <span class="badge badge-dim" x-text="run.id.substring(0, 12) + '...'"></span>
+                                  </div>
+                                  <span class="text-xs text-dim" x-text="formatDate(run.started_at)"></span>
+                                </div>
+                                <template x-if="run.trigger_source">
+                                  <div style="font-size:0.7rem;color:var(--text-dim);margin-top:2px;">
+                                    Triggered by: <span x-text="run.trigger_source"></span>
+                                  </div>
+                                </template>
+                                <template x-if="run.input">
+                                  <div style="font-size:0.7rem;color:var(--text-dim);margin-top:2px;">
+                                    Input: <span x-text="run.input.length > 100 ? run.input.substring(0, 100) + '...' : run.input"></span>
+                                  </div>
+                                </template>
+                                <template x-if="run.step_results && run.step_results.length > 0">
+                                  <div style="margin-top:6px;">
+                                    <template x-for="(step, idx) in run.step_results" :key="idx">
+                                      <div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:0.7rem;">
+                                        <span style="color:var(--accent);" x-text="(idx + 1) + '.'"></span>
+                                        <span x-text="step.step_name"></span>
+                                        <span class="badge badge-dim" x-text="step.agent_name || step.agent_id"></span>
+                                        <template x-if="step.duration_ms">
+                                          <span style="color:var(--text-dim);" x-text="(step.duration_ms / 1000).toFixed(1) + 's'"></span>
+                                        </template>
+                                      </div>
+                                    </template>
+                                  </div>
+                                </template>
+                                <template x-if="run.output">
+                                  <details style="margin-top:6px;">
+                                    <summary style="font-size:0.7rem;color:var(--text-dim);cursor:pointer;">Output</summary>
+                                    <pre style="margin-top:4px;padding:8px;background:var(--bg);border-radius:6px;font-size:0.7rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;" x-text="run.output"></pre>
+                                  </details>
+                                </template>
+                                <template x-if="run.error">
+                                  <div style="margin-top:4px;font-size:0.7rem;color:var(--error);" x-text="run.error"></div>
+                                </template>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                        <template x-if="!(workflowRunHistory || []).length">
+                          <p class="text-dim" style="text-align:center;padding:16px;font-size:0.8rem;">No workflow runs yet.</p>
+                        </template>
+                      </div>
                     </div>
                   </template>
 
@@ -3054,13 +3171,13 @@
                                 <div>
                                   <span style="font-weight:600;" x-text="cb.job_name || cb.job_id"></span>
                                   <template x-if="cb.status === 'orphaned'">
-                                    <span class="badge" style="background:var(--error);color:#fff;margin-left:6px;font-size:0.65rem;">Deleted</span>
+                                    <span class="badge" style="background:var(--error);color:#fff;margin-left:6px;font-size:0.55rem;padding:2px 6px;">Deleted</span>
                                   </template>
                                   <template x-if="cb.status === 'agent_mismatch'">
-                                    <span class="badge" style="background:var(--warning);color:#000;margin-left:6px;font-size:0.65rem;">Agent Mismatch</span>
+                                    <span class="badge" style="background:var(--warning);color:#000;margin-left:6px;font-size:0.55rem;padding:2px 6px;">Agent Mismatch</span>
                                   </template>
                                   <template x-if="cb.status === 'active' && cb.enabled">
-                                    <span class="badge" style="background:var(--success);color:#fff;margin-left:6px;font-size:0.65rem;">Active</span>
+                                    <span class="badge" style="text-transform:none;background:var(--success);color:#fff;margin-left:6px;font-size:0.55rem;padding:2px 6px;">Active</span>
                                   </template>
                                 </div>
                                 <div class="flex gap-1">
@@ -3107,7 +3224,7 @@
                         </div>
                         <template x-if="(cronResults || []).length > 0">
                           <div>
-                            <template x-for="cr in (cronResults || []).slice().reverse().slice(0, 20)" :key="cr.id">
+                            <template x-for="cr in (cronResults || []).slice(0, 20)" :key="cr.id">
                               <div style="padding:12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:6px;font-size:0.8rem;">
                                 <div style="display:flex;align-items:center;justify-content:space-between;">
                                   <div style="display:flex;align-items:center;gap:6px;">
@@ -3118,14 +3235,27 @@
                                       <span style="color:var(--error);font-weight:600;">✗</span>
                                     </template>
                                     <span style="font-weight:600;" x-text="cr.job_name || cr.job_id.substring(0, 8) + '...'"></span>
-                                    <span class="badge badge-dim" x-text="cr.agent_name || 'unknown'"></span>
+                                    <template x-if="cr.agent_name && cr.agent_name !== ''">
+                                      <span class="badge badge-dim" x-text="cr.agent_name"></span>
+                                    </template>
+                                    <template x-if="cr.result && cr.result.startsWith('✅ Workflow')">
+                                      <span class="badge" style="text-transform:none;background:var(--accent);color:white;font-size:0.55rem;padding:2px 6px;">workflow</span>
+                                    </template>
                                   </div>
                                   <span style="color:var(--text-dim);font-size:0.7rem;" x-text="formatDate(cr.fired_at)"></span>
                                 </div>
-                                <details style="margin-top:6px;">
-                                  <summary style="cursor:pointer;color:var(--text-dim);font-size:0.7rem;">View Result</summary>
-                                  <pre style="margin-top:4px;padding:8px;background:var(--bg);border-radius:6px;font-size:0.7rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;" x-text="cr.result"></pre>
-                                </details>
+                                <template x-if="cr.result && cr.result.startsWith('✅ Workflow')">
+                                  <div style="margin-top:6px;">
+                                    <span style="font-size:0.75rem;color:var(--text-dim);" x-text="cr.result"></span>
+                                    <a href="#" @click.prevent="projectTab = 'workflows'; loadWorkflowRunHistory();" style="font-size:0.75rem;color:var(--accent);margin-left:6px;text-decoration:underline;">View in Workflows →</a>
+                                  </div>
+                                </template>
+                                <template x-if="!(cr.result && cr.result.startsWith('✅ Workflow'))">
+                                  <details style="margin-top:6px;">
+                                    <summary style="cursor:pointer;color:var(--text-dim);font-size:0.7rem;">View Result</summary>
+                                    <pre style="margin-top:4px;padding:8px;background:var(--bg);border-radius:6px;font-size:0.7rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;" x-text="cr.result"></pre>
+                                  </details>
+                                </template>
                               </div>
                             </template>
                           </div>
@@ -3310,19 +3440,30 @@
                     <select class="form-input" x-model="bindCronJobId" @change="onCronJobSelect()">
                       <option value="">Select a schedule...</option>
                       <template x-for="job in availableCronJobs" :key="job.id">
-                        <option :value="job.id" x-text="job.name + ' (' + (job.agent_id || '').substring(0, 8) + '...)'"></option>
+                        <option :value="job.id" x-text="job.name + (job.action && job.action.kind === 'agent_turn' && job.agent_id ? ' (' + job.agent_id.substring(0, 8) + '...)' : (job.action && job.action.kind === 'workflow' ? ' (workflow)' : (job.action && job.action.kind === 'system_event' ? ' (event)' : (job.action && job.action.kind === 'execute_shell' ? ' (shell)' : ''))))"></option>
                       </template>
                     </select>
                   </div>
                   <template x-if="bindCronJobId && getCronJobDetail(bindCronJobId)">
                     <div style="padding:12px;background:var(--bg-secondary);border-radius:8px;font-size:0.8rem;">
                       <div><strong>Name:</strong> <span x-text="getCronJobDetail(bindCronJobId).name"></span></div>
-                      <div><strong>Agent:</strong> <span x-text="(getCronJobDetail(bindCronJobId).agent_id || '').substring(0, 12) + '...'"></span></div>
+                      <template x-if="getCronJobDetail(bindCronJobId).action && getCronJobDetail(bindCronJobId).action.kind === 'agent_turn'">
+                        <div><strong>Agent:</strong> <span x-text="(getCronJobDetail(bindCronJobId).agent_id || '').substring(0, 12) + '...'"></span></div>
+                      </template>
+                      <template x-if="getCronJobDetail(bindCronJobId).action && getCronJobDetail(bindCronJobId).action.kind === 'workflow'">
+                        <div><strong>Action:</strong> Run Workflow <span x-text="getCronJobDetail(bindCronJobId).action.workflow_id || ''"></span></div>
+                      </template>
+                      <template x-if="getCronJobDetail(bindCronJobId).action && getCronJobDetail(bindCronJobId).action.kind === 'system_event'">
+                        <div><strong>Action:</strong> System Event</div>
+                      </template>
+                      <template x-if="getCronJobDetail(bindCronJobId).action && getCronJobDetail(bindCronJobId).action.kind === 'execute_shell'">
+                        <div><strong>Action:</strong> Execute Shell</div>
+                      </template>
                       <div><strong>Schedule:</strong> <span x-text="formatCronSchedule(getCronJobDetail(bindCronJobId).schedule)"></span></div>
                       <div><strong>Enabled:</strong> <span x-text="getCronJobDetail(bindCronJobId).enabled ? 'Yes' : 'No'"></span></div>
                     </div>
                   </template>
-                  <template x-if="bindCronJobId && !isCronAgentMember(bindCronJobId)">
+                  <template x-if="bindCronJobId && getCronJobDetail(bindCronJobId) && getCronJobDetail(bindCronJobId).action && getCronJobDetail(bindCronJobId).action.kind === 'agent_turn' && !isCronAgentMember(bindCronJobId)">
                     <div style="padding:8px;background:var(--warning-bg, #fff3cd);border-radius:6px;font-size:0.8rem;color:var(--warning, #856404);margin-top:8px;">
                       The agent for this schedule is not a project member. Please add the agent as a member first, or choose a different schedule.
                     </div>

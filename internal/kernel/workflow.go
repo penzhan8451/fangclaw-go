@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -269,6 +270,10 @@ func (e *WorkflowEngine) RemoveWorkflow(id types.WorkflowID) bool {
 }
 
 func (e *WorkflowEngine) CreateRun(workflowID types.WorkflowID, input string) *types.WorkflowRunID {
+	return e.CreateRunWithTrigger(workflowID, input, nil)
+}
+
+func (e *WorkflowEngine) CreateRunWithTrigger(workflowID types.WorkflowID, input string, triggerSource *string) *types.WorkflowRunID {
 	e.mu.Lock()
 
 	workflow, ok := e.workflows[workflowID]
@@ -279,13 +284,14 @@ func (e *WorkflowEngine) CreateRun(workflowID types.WorkflowID, input string) *t
 
 	runID := types.WorkflowRunID(fmt.Sprintf("wf-run-%d", time.Now().UnixNano()))
 	run := types.WorkflowRun{
-		ID:           runID,
-		WorkflowID:   workflowID,
-		WorkflowName: workflow.Name,
-		Input:        input,
-		State:        types.WorkflowRunStatePending,
-		StepResults:  []types.StepResult{},
-		StartedAt:    time.Now(),
+		ID:            runID,
+		WorkflowID:    workflowID,
+		WorkflowName:  workflow.Name,
+		Input:         input,
+		State:         types.WorkflowRunStatePending,
+		StepResults:   []types.StepResult{},
+		StartedAt:     time.Now(),
+		TriggerSource: triggerSource,
 	}
 
 	e.runs[runID] = run
@@ -389,6 +395,15 @@ func (e *WorkflowEngine) ListRuns(stateFilter *string, workflowID *types.Workflo
 			runs = append(runs, run)
 		}
 	}
+	slices.SortFunc(runs, func(a, b types.WorkflowRun) int {
+		if a.StartedAt.After(b.StartedAt) {
+			return -1
+		}
+		if a.StartedAt.Before(b.StartedAt) {
+			return 1
+		}
+		return 0
+	})
 	return runs
 }
 

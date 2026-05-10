@@ -727,6 +727,124 @@ func (k *Kernel) Start(ctx context.Context) error {
 								}
 							}
 						}
+					case types.CronActionKindWorkflow:
+						log.Info().Str("job", jobName).Msg("Cron: firing workflow")
+						if job.Action.WorkflowID != nil {
+							workflowID := types.WorkflowID(*job.Action.WorkflowID)
+							input := ""
+							if job.Action.WorkflowInput != nil {
+								input = *job.Action.WorkflowInput
+							}
+
+							triggerSource := fmt.Sprintf("cron:%s", jobName)
+							runID := k.workflowEngine.CreateRunWithTrigger(workflowID, input, &triggerSource)
+							if runID == nil {
+								errMsg := fmt.Sprintf("workflow not found: %s", workflowID)
+								log.Warn().Str("job", jobName).Str("workflow_id", string(workflowID)).Msg(errMsg)
+								k.cronScheduler.RecordFailure(jobID, errMsg)
+								continue
+							}
+
+							timeoutSecs := uint64(300)
+							if job.Action.TimeoutSecs != nil {
+								timeoutSecs = *job.Action.TimeoutSecs
+							}
+							timeout := time.Duration(timeoutSecs) * time.Second
+							ctxTimeout, cancel := context.WithTimeout(context.Background(), timeout)
+							defer cancel()
+
+							delivery := job.Delivery
+							resultChan := make(chan struct {
+								output string
+								err    error
+							}, 1)
+
+							go func() {
+								resolver := func(agent types.StepAgent) (string, string, bool) {
+									if agent.Name != nil {
+										agentID, ok := k.FindAgentByName(ctxTimeout, *agent.Name)
+										if ok {
+											return agentID, *agent.Name, true
+										}
+									}
+									if agent.ID != nil {
+										return *agent.ID, "", true
+									}
+									return "", "", false
+								}
+
+								sender := func(agentID, prompt string) (string, uint64, uint64, error) {
+									response, _, inputTokens, outputTokens, err := k.SendMessageWithUsage(ctxTimeout, agentID, prompt)
+									return response, inputTokens, outputTokens, err
+								}
+
+								output, err := k.workflowEngine.ExecuteRun(*runID, resolver, sender)
+								resultChan <- struct {
+									output string
+									err    error
+								}{output, err}
+							}()
+
+							select {
+							case <-ctxTimeout.Done():
+								log.Warn().Str("job", jobName).Uint64("timeout_s", timeoutSecs).Msg("Cron workflow job timed out")
+								k.cronScheduler.RecordFailure(jobID, fmt.Sprintf("workflow timed out after %ds", timeoutSecs))
+							case res := <-resultChan:
+								if res.err != nil {
+									errMsg := res.err.Error()
+									log.Warn().Str("job", jobName).Err(res.err).Msg("Cron workflow job failed")
+									k.cronScheduler.RecordFailure(jobID, errMsg)
+								} else {
+									log.Info().Str("job", jobName).Msg("Cron workflow job completed successfully")
+									k.cronScheduler.RecordSuccess(jobID)
+
+									summary := fmt.Sprintf("✅ Workflow executed (triggered by cron '%s')", jobName)
+									k.deliverCronResultToProjects(jobID, jobName, job.AgentID, summary, "success")
+
+									if delivery.Kind == types.CronDeliveryKindChannel && delivery.ChannelName != nil {
+										recipient := ""
+										if delivery.Recipient != nil {
+											recipient = *delivery.Recipient
+										}
+										deliveryConfig := &types.DeliveryConfig{
+											Type: types.DeliveryTypeChannel,
+											ChannelConfig: &types.DeliveryChannelConfig{
+												ChannelName: *delivery.ChannelName,
+												Recipient:   recipient,
+											},
+										}
+										if deliveryErr := k.workflowEngine.DeliverResult(workflowID, res.output, deliveryConfig); deliveryErr != nil {
+											log.Warn().Err(deliveryErr).Str("workflow_id", string(workflowID)).Msg("Failed to deliver workflow result")
+										}
+									} else if delivery.Kind == types.CronDeliveryKindWebhook && delivery.Url != nil {
+										deliveryConfig := &types.DeliveryConfig{
+											Type: types.DeliveryTypeWebhook,
+											WebhookConfig: &types.DeliveryWebhookConfig{
+												URL: *delivery.Url,
+											},
+										}
+										if deliveryErr := k.workflowEngine.DeliverResult(workflowID, res.output, deliveryConfig); deliveryErr != nil {
+											log.Warn().Err(deliveryErr).Str("workflow_id", string(workflowID)).Msg("Failed to deliver workflow result via webhook")
+										}
+									}
+
+									payload := map[string]interface{}{
+										"type":         fmt.Sprintf("cron.%s", jobName),
+										"workflow_id":  string(workflowID),
+										"run_id":       string(*runID),
+										"job_id":       jobID.String(),
+										"agent_id":     job.AgentID.String(),
+										"agent_result": res.output,
+									}
+									event := eventbus.NewEvent(
+										eventbus.EventTypeSystem,
+										"cron",
+										eventbus.EventTargetBroadcast,
+									).WithPayload(payload)
+									k.PublishEvent(event)
+								}
+							}
+						}
 					}
 				}
 
@@ -1223,6 +1341,124 @@ func (k *Kernel) RunCronJob(ctx context.Context, jobID types.CronJobID) error {
 					}
 					k.cronDeliverResponse(job.AgentID, fullResult, &delivery)
 					k.deliverCronResultToProjects(jobID, job.Name, job.AgentID, fullResult, "success")
+				}
+			}
+		}
+	case types.CronActionKindWorkflow:
+		log.Info().Str("job", job.Name).Msg("Cron: firing workflow")
+		if job.Action.WorkflowID != nil {
+			workflowID := types.WorkflowID(*job.Action.WorkflowID)
+			input := ""
+			if job.Action.WorkflowInput != nil {
+				input = *job.Action.WorkflowInput
+			}
+
+			triggerSource := fmt.Sprintf("cron:%s", job.Name)
+			runID := k.workflowEngine.CreateRunWithTrigger(workflowID, input, &triggerSource)
+			if runID == nil {
+				errMsg := fmt.Sprintf("workflow not found: %s", workflowID)
+				log.Warn().Str("job", job.Name).Str("workflow_id", string(workflowID)).Msg(errMsg)
+				k.cronScheduler.RecordFailure(jobID, errMsg)
+				return nil
+			}
+
+			timeoutSecs := uint64(300)
+			if job.Action.TimeoutSecs != nil {
+				timeoutSecs = *job.Action.TimeoutSecs
+			}
+			timeout := time.Duration(timeoutSecs) * time.Second
+			ctxTimeout, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+
+			delivery := job.Delivery
+			resultChan := make(chan struct {
+				output string
+				err    error
+			}, 1)
+
+			go func() {
+				resolver := func(agent types.StepAgent) (string, string, bool) {
+					if agent.Name != nil {
+						agentID, ok := k.FindAgentByName(ctxTimeout, *agent.Name)
+						if ok {
+							return agentID, *agent.Name, true
+						}
+					}
+					if agent.ID != nil {
+						return *agent.ID, "", true
+					}
+					return "", "", false
+				}
+
+				sender := func(agentID, prompt string) (string, uint64, uint64, error) {
+					response, _, inputTokens, outputTokens, err := k.SendMessageWithUsage(ctxTimeout, agentID, prompt)
+					return response, inputTokens, outputTokens, err
+				}
+
+				output, err := k.workflowEngine.ExecuteRun(*runID, resolver, sender)
+				resultChan <- struct {
+					output string
+					err    error
+				}{output, err}
+			}()
+
+			select {
+			case <-ctxTimeout.Done():
+				log.Warn().Str("job", job.Name).Uint64("timeout_s", timeoutSecs).Msg("Cron workflow job timed out")
+				k.cronScheduler.RecordFailure(jobID, fmt.Sprintf("workflow timed out after %ds", timeoutSecs))
+			case res := <-resultChan:
+				if res.err != nil {
+					errMsg := res.err.Error()
+					log.Warn().Str("job", job.Name).Err(res.err).Msg("Cron workflow job failed")
+					k.cronScheduler.RecordFailure(jobID, errMsg)
+				} else {
+					log.Info().Str("job", job.Name).Msg("Cron workflow job completed successfully")
+					k.cronScheduler.RecordSuccess(jobID)
+
+					summary := fmt.Sprintf("✅ Workflow executed (triggered by cron '%s')", job.Name)
+					k.deliverCronResultToProjects(jobID, job.Name, job.AgentID, summary, "success")
+
+					if delivery.Kind == types.CronDeliveryKindChannel && delivery.ChannelName != nil {
+						recipient := ""
+						if delivery.Recipient != nil {
+							recipient = *delivery.Recipient
+						}
+						deliveryConfig := &types.DeliveryConfig{
+							Type: types.DeliveryTypeChannel,
+							ChannelConfig: &types.DeliveryChannelConfig{
+								ChannelName: *delivery.ChannelName,
+								Recipient:   recipient,
+							},
+						}
+						if deliveryErr := k.workflowEngine.DeliverResult(workflowID, res.output, deliveryConfig); deliveryErr != nil {
+							log.Warn().Err(deliveryErr).Str("workflow_id", string(workflowID)).Msg("Failed to deliver workflow result")
+						}
+					} else if delivery.Kind == types.CronDeliveryKindWebhook && delivery.Url != nil {
+						deliveryConfig := &types.DeliveryConfig{
+							Type: types.DeliveryTypeWebhook,
+							WebhookConfig: &types.DeliveryWebhookConfig{
+								URL: *delivery.Url,
+							},
+						}
+						if deliveryErr := k.workflowEngine.DeliverResult(workflowID, res.output, deliveryConfig); deliveryErr != nil {
+							log.Warn().Err(deliveryErr).Str("workflow_id", string(workflowID)).Msg("Failed to deliver workflow result via webhook")
+						}
+					}
+
+					payload := map[string]interface{}{
+						"type":         fmt.Sprintf("cron.%s", job.Name),
+						"workflow_id":  string(workflowID),
+						"run_id":       string(*runID),
+						"job_id":       jobID.String(),
+						"agent_id":     job.AgentID.String(),
+						"agent_result": res.output,
+					}
+					event := eventbus.NewEvent(
+						eventbus.EventTypeSystem,
+						"cron",
+						eventbus.EventTargetBroadcast,
+					).WithPayload(payload)
+					k.PublishEvent(event)
 				}
 			}
 		}

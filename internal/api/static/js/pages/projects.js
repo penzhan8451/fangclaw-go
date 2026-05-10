@@ -39,6 +39,7 @@ function projectsPage() {
     showBindCronModal: false,
     bindCronJobId: '',
     cronResults: [],
+    workflowRunHistory: [],
 
     async init() {
       await this.refresh();
@@ -539,6 +540,15 @@ function projectsPage() {
       }
     },
 
+    async loadWorkflowRunHistory() {
+      try {
+        this.workflowRunHistory = await FangClawGoAPI.get('/api/workflow-runs');
+      } catch (e) {
+        console.error('Failed to load workflow run history:', e);
+        this.workflowRunHistory = [];
+      }
+    },
+
     async loadAvailableCronJobs() {
       try {
         var data = await FangClawGoAPI.get('/api/cron/jobs');
@@ -560,6 +570,8 @@ function projectsPage() {
     isCronAgentMember(jobId) {
       var job = this.getCronJobDetail(jobId);
       if (!job || !this.currentProject) return false;
+      var actionKind = (job._raw_action && job._raw_action.kind) || job.action_kind || '';
+      if (actionKind !== 'agent_turn') return true;
       var members = this.currentProject.members || [];
       return members.some(function(m) { return m.active && m.id === job.agent_id; });
     },

@@ -34,6 +34,8 @@ function schedulerPage() {
       event_text: '',
       shell_command: '',
       shell_args: '',
+      workflow_id: '',
+      workflow_input: '',
       enabled: true,
       delivery_kind: 'last_channel',
       delivery_channel_name: '',
@@ -54,6 +56,8 @@ function schedulerPage() {
       event_text: '',
       shell_command: '',
       shell_args: '',
+      workflow_id: '',
+      workflow_input: '',
       enabled: true,
       delivery_kind: 'none',
       delivery_channel_name: '',
@@ -85,6 +89,9 @@ function schedulerPage() {
     // -- Shell security config --
     shellSecurity: null,
 
+    // -- Workflows for workflow action --
+    availableWorkflows: [],
+
     // Cron presets
     cronPresets: [
       { label: 'Every minute', cron: '* * * * *' },
@@ -109,6 +116,7 @@ function schedulerPage() {
         await this.loadJobs();
         await this.loadChannels();
         await this.loadShellSecurity();
+        await this.loadWorkflows();
       } catch(e) {
         this.loadError = e.message || 'Could not load scheduler data.';
       }
@@ -170,6 +178,15 @@ function schedulerPage() {
         this.shellSecurity = await FangClawGoAPI.get('/api/cron/shell-security');
       } catch(e) {
         this.shellSecurity = null;
+      }
+    },
+
+    async loadWorkflows() {
+      try {
+        var data = await FangClawGoAPI.get('/api/workflows');
+        this.availableWorkflows = data || [];
+      } catch(e) {
+        this.availableWorkflows = [];
       }
     },
 
@@ -258,6 +275,16 @@ function schedulerPage() {
           if (this.newJob.shell_args.trim()) {
             action.args = this.newJob.shell_args.trim().split(/\s+/);
           }
+        } else if (this.newJob.action_kind === 'workflow') {
+          if (!this.newJob.workflow_id) {
+            FangClawGoToast.warn('Please select a workflow');
+            this.creating = false;
+            return;
+          }
+          action.workflow_id = this.newJob.workflow_id;
+          if (this.newJob.workflow_input && this.newJob.workflow_input.trim()) {
+            action.workflow_input = this.newJob.workflow_input.trim();
+          }
         }
         var delivery = { kind: this.newJob.delivery_kind };
         if (this.newJob.delivery_kind === 'channel') {
@@ -276,7 +303,7 @@ function schedulerPage() {
         };
         await FangClawGoAPI.post('/api/cron/jobs', body);
         this.showCreateForm = false;
-        this.newJob = { name: '', cron: '', action_kind: 'agent_turn', agent_id: '', message: '', event_text: '', shell_command: '', shell_args: '', enabled: true, delivery_kind: 'last_channel', delivery_channel_name: '', delivery_recipient: '', delivery_webhook_url: '' };
+        this.newJob = { name: '', cron: '', action_kind: 'agent_turn', agent_id: '', message: '', event_text: '', shell_command: '', shell_args: '', workflow_id: '', workflow_input: '', enabled: true, delivery_kind: 'last_channel', delivery_channel_name: '', delivery_recipient: '', delivery_webhook_url: '' };
         FangClawGoToast.success('Schedule "' + jobName + '" created');
         await this.loadJobs();
       } catch(e) {
@@ -344,12 +371,16 @@ function schedulerPage() {
       var eventText = '';
       var shellCommand = '';
       var shellArgs = '';
+      var workflowId = '';
+      var workflowInput = '';
       if (job._raw_action) {
         actionKind = job._raw_action.kind || 'agent_turn';
         if (job._raw_action.message) message = job._raw_action.message;
         if (job._raw_action.text) eventText = job._raw_action.text;
         if (job._raw_action.command) shellCommand = job._raw_action.command;
         if (job._raw_action.args && job._raw_action.args.length) shellArgs = job._raw_action.args.join(' ');
+        if (job._raw_action.workflow_id) workflowId = job._raw_action.workflow_id;
+        if (job._raw_action.workflow_input) workflowInput = job._raw_action.workflow_input;
       }
       this.editJob = {
         name: job.name || '',
@@ -360,6 +391,8 @@ function schedulerPage() {
         event_text: eventText,
         shell_command: shellCommand,
         shell_args: shellArgs,
+        workflow_id: workflowId,
+        workflow_input: workflowInput,
         enabled: job.enabled !== false,
         delivery_kind: deliveryKind,
         delivery_channel_name: channelName,
@@ -390,6 +423,16 @@ function schedulerPage() {
           action.command = this.editJob.shell_command;
           if (this.editJob.shell_args.trim()) {
             action.args = this.editJob.shell_args.trim().split(/\s+/);
+          }
+        } else if (this.editJob.action_kind === 'workflow') {
+          if (!this.editJob.workflow_id) {
+            FangClawGoToast.warn('Please select a workflow');
+            this.editing = false;
+            return;
+          }
+          action.workflow_id = this.editJob.workflow_id;
+          if (this.editJob.workflow_input && this.editJob.workflow_input.trim()) {
+            action.workflow_input = this.editJob.workflow_input.trim();
           }
         }
         var delivery = { kind: this.editJob.delivery_kind };

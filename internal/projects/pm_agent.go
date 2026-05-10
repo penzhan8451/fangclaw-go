@@ -107,7 +107,7 @@ func (pm *PMAgent) ListCronBindings(ctx context.Context, projectID ProjectID) []
 			if job == nil {
 				binding.Status = CronBindingOrphaned
 				binding.Enabled = false
-			} else {
+			} else if job.Action.Kind == types.CronActionKindAgentTurn {
 				isMember := false
 				for _, m := range project.Members {
 					if m.Active && m.ID == job.AgentID {
@@ -120,6 +120,8 @@ func (pm *PMAgent) ListCronBindings(ctx context.Context, projectID ProjectID) []
 				} else {
 					binding.Status = CronBindingActive
 				}
+			} else {
+				binding.Status = CronBindingActive
 			}
 		} else {
 			binding.Status = CronBindingActive
