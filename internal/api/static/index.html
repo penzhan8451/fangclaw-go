@@ -7067,6 +7067,25 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                             </div>
                             <div class="chat-message-content" style="padding:12px;border-radius:12px;" :style="msg.role === 'user' ? 'background:var(--accent);color:white;' : 'background:var(--bg-secondary);'">
                               <p x-text="msg.content" style="white-space:pre-wrap;margin:0;"></p>
+                              <template x-if="msg.meta && msg.meta.workflow_source">
+                                <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;align-items:center;gap:6px;font-size:0.7rem;color:var(--text-dim);">
+                                  <template x-if="msg.meta.workflow_source === 'binding'">
+                                    <span class="badge" style="background:var(--success);color:white;font-size:0.55rem;padding:2px 6px;">workflow</span>
+                                  </template>
+                                  <template x-if="msg.meta.workflow_source === 'template'">
+                                    <span class="badge" style="background:var(--info, #3b82f6);color:white;font-size:0.55rem;padding:2px 6px;">template</span>
+                                  </template>
+                                  <template x-if="msg.meta.workflow_source === 'auto_generated'">
+                                    <span class="badge" style="background:var(--accent);color:white;font-size:0.55rem;padding:2px 6px;">auto-workflow</span>
+                                  </template>
+                                  <span x-text="(msg.meta.workflow_name || 'workflow') + (msg.meta.step_count ? ' (' + msg.meta.step_count + ' steps)' : '')"></span>
+                                </div>
+                              </template>
+                              <template x-if="msg.meta && msg.meta.rate_limit_warning">
+                                <div style="margin-top:6px;padding:6px 10px;background:var(--warning-bg, #fff3cd);border-radius:6px;font-size:0.7rem;color:var(--warning, #856404);">
+                                  ⚠ <span x-text="msg.meta.rate_limit_warning"></span>
+                                </div>
+                              </template>
                             </div>
                           </div>
                         </template>
@@ -7145,6 +7164,16 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                                 </div>
                               </template>
                             </div>
+                            <template x-if="aiGenResult.keywords && aiGenResult.keywords.length > 0">
+                              <div style="margin-bottom:8px;">
+                                <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:4px;">Trigger Keywords:</div>
+                                <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                                  <template x-for="kw in aiGenResult.keywords" :key="kw">
+                                    <span class="badge" style="background:var(--accent);color:var(--bg);font-size:0.7rem;" x-text="kw"></span>
+                                  </template>
+                                </div>
+                              </div>
+                            </template>
                             <div class="flex gap-2">
                               <button class="btn btn-primary btn-sm" @click="confirmGeneratedWorkflow()">Confirm & Add</button>
                               <button class="btn btn-ghost btn-sm" @click="cancelGeneratedWorkflow()">Cancel</button>
@@ -22135,7 +22164,7 @@ function projectsPage() {
           workflow_id: registered.id || workflow.id,
           workflow_name: workflow.name,
           trigger_mode: 'manual',
-          keywords: []
+          keywords: this.aiGenResult.keywords || []
         });
 
         var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);

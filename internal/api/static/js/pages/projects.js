@@ -451,7 +451,7 @@ function projectsPage() {
           workflow_id: registered.id || workflow.id,
           workflow_name: workflow.name,
           trigger_mode: 'manual',
-          keywords: []
+          keywords: this.aiGenResult.keywords || []
         });
 
         var updatedProject = await FangClawGoAPI.get('/api/projects/' + this.currentProject.id);

@@ -3113,6 +3113,10 @@ func (a *workflowEngineAdapter) CreateWorkflowFromTemplate(templateID string) (s
 	return string(workflow.ID), nil
 }
 
+func (a *workflowEngineAdapter) Register(workflow types.Workflow) types.WorkflowID {
+	return a.engine.Register(workflow)
+}
+
 type cronManagerAdapter struct {
 	scheduler *cron.CronScheduler
 }

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // AutoReplyChannel represents where to deliver the auto-reply result.
@@ -116,31 +118,31 @@ func (are *AutoReplyEngine) ExecuteReply(
 	sendFn func(response string, channel AutoReplyChannel) error,
 	sendToAgentFn func(ctx context.Context, agentID string, message string) (string, error),
 ) error {
-	fmt.Printf("[AutoReply] ExecuteReply called with agentID=%s\n", agentID)
-	
+	log.Debug().Str("agentID", agentID).Msg("[AutoReply] ExecuteReply called with agentID")
+
 	select {
 	case are.semaphore <- struct{}{}:
 	case <-ctx.Done():
-		fmt.Printf("[AutoReply] Context done, returning: %v\n", ctx.Err())
+		log.Debug().Err(ctx.Err()).Msg("[AutoReply] Context done, returning")
 		return ctx.Err()
 	default:
-		fmt.Printf("[AutoReply] No semaphore available, skipping\n")
+		log.Debug().Msg("[AutoReply] No semaphore available, skipping")
 		return nil
 	}
 
 	go func() {
-		defer func() { 
-			fmt.Printf("[AutoReply] Releasing semaphore\n")
-			<-are.semaphore 
+		defer func() {
+			log.Debug().Msg("[AutoReply] Releasing semaphore")
+			<-are.semaphore
 		}()
 
-		fmt.Printf("[AutoReply] Starting to send to agent...\n")
+		log.Debug().Msg("[AutoReply] Starting to send to agent...")
 		replyCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 
 		response, err := sendToAgentFn(replyCtx, agentID, message)
 		if err != nil {
-			fmt.Printf("[AutoReply] Error sending message to agent: %v\n", err)
+			log.Debug().Err(err).Msg("[AutoReply] Error sending message to agent")
 			return
 		}
 		fmt.Printf("[AutoReply] Received response from agent, len=%d\n", len(response))

@@ -3,11 +3,11 @@ package eventbus
 
 import (
 	"container/list"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 // EventType represents the type of an event.
@@ -181,12 +181,12 @@ func (eb *EventBus) Publish(event *Event) {
 
 	eb.addToHistory(event)
 
-	fmt.Printf("EventBus Publish to all handlers: %v\n", event.Payload)
+	log.Debug().Msg("EventBus Publish to all handlers")
 	for _, entry := range eb.allHandlers {
 		go entry.handler(event)
 	}
 
-	fmt.Printf("EventBus Publish type to specific handlers: %s, %v\n", event.Type, event.Payload)
+	log.Debug().Str("type", string(event.Type)).Msg("EventBus Publish type to specific handlers")
 	if handlers, ok := eb.handlers[event.Type]; ok {
 		for _, entry := range handlers {
 			go entry.handler(event)
