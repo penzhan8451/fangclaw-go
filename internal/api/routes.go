@@ -575,6 +575,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/projects/{id}/members/{agentId}", r.handleRemoveProjectMember)
 	mux.HandleFunc("POST /api/v1/projects/{id}/chat", r.handleProjectChat)
 	mux.HandleFunc("GET /api/v1/projects/{id}/chat", r.handleGetProjectChat)
+	mux.HandleFunc("POST /api/v1/projects/{id}/chat/cancel", r.handleCancelProjectChat)
 
 	// Project endpoints (aliases without v1)
 	mux.HandleFunc("GET /api/projects", r.handleListProjects)
@@ -585,6 +586,7 @@ func (r *Router) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/projects/{id}/members/{agentId}", r.handleRemoveProjectMember)
 	mux.HandleFunc("POST /api/projects/{id}/chat", r.handleProjectChat)
 	mux.HandleFunc("GET /api/projects/{id}/chat", r.handleGetProjectChat)
+	mux.HandleFunc("POST /api/projects/{id}/chat/cancel", r.handleCancelProjectChat)
 	mux.HandleFunc("GET /api/projects/{id}/workflows", r.handleListProjectWorkflows)
 	mux.HandleFunc("POST /api/projects/{id}/workflows", r.handleBindProjectWorkflow)
 	mux.HandleFunc("PATCH /api/projects/{id}/workflows/{workflowId}", r.handleUpdateProjectWorkflow)
@@ -3781,9 +3783,23 @@ func (r *Router) handleAgentMessage(w http.ResponseWriter, req *http.Request) {
 	// Process attachments
 	message := ResolveAttachments(reqBody.Attachments, reqBody.Message)
 
-	ctx := context.Background()
+	ctx, cancelRun := context.WithCancel(req.Context())
+	wsManager.RegisterRunningAgent(actualAgentID, cancelRun)
+	defer func() {
+		cancelRun()
+		wsManager.UnregisterRunningAgent(actualAgentID)
+	}()
 	response, reasoningContent, inputTokens, outputTokens, err := r.getKernel(req).SendMessageWithUsage(ctx, actualAgentID, message)
 	if err != nil {
+		if ctx.Err() == context.Canceled {
+			respondJSON(w, http.StatusOK, map[string]interface{}{
+				"message": map[string]interface{}{
+					"role":    "system",
+					"content": "Run cancelled by user",
+				},
+			})
+			return
+		}
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -3873,7 +3889,12 @@ func getHandSystemPrompt(handID string) string {
 }
 
 func (r *Router) handleStopAgent(w http.ResponseWriter, req *http.Request) {
-	respondJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
+	id := req.PathValue("id")
+	if wsManager.CancelRunningAgent(id) {
+		respondJSON(w, http.StatusOK, map[string]string{"message": "Agent run cancelled"})
+	} else {
+		respondJSON(w, http.StatusOK, map[string]string{"message": "No running agent to cancel"})
+	}
 }
 
 func (r *Router) handleUpdateAgentModel(w http.ResponseWriter, req *http.Request) {
@@ -7584,14 +7605,30 @@ func (r *Router) handleProjectChat(w http.ResponseWriter, req *http.Request) {
 
 	pmAgent := r.getKernel(req).GetPMAgent()
 
+	ctx, cancel := context.WithCancel(req.Context())
+	pmAgent.RegisterChatCancel(projectID, cancel)
+	defer func() {
+		cancel()
+		pmAgent.UnregisterChatCancel(projectID)
+	}()
+
 	var result *projects.ChatMessage
 	if reqBody.WorkflowID != "" {
-		result, err = pmAgent.ExecuteWorkflowDirectly(req.Context(), projectID, reqBody.WorkflowID, reqBody.Content)
+		result, err = pmAgent.ExecuteWorkflowDirectly(ctx, projectID, reqBody.WorkflowID, reqBody.Content)
 	} else {
-		result, err = pmAgent.HandleUserInput(req.Context(), projectID, reqBody.Content)
+		result, err = pmAgent.HandleUserInput(ctx, projectID, reqBody.Content)
 	}
 
 	if err != nil {
+		if ctx.Err() == context.Canceled {
+			respondJSON(w, http.StatusOK, &projects.ChatMessage{
+				ID:        uuid.NewString(),
+				Role:      "system",
+				Content:   "Chat cancelled by user",
+				Timestamp: time.Now(),
+			})
+			return
+		}
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to process message: %v", err))
 		return
 	}
@@ -7614,6 +7651,22 @@ func (r *Router) handleGetProjectChat(w http.ResponseWriter, req *http.Request) 
 	}
 
 	respondJSON(w, http.StatusOK, project.ChatHistory)
+}
+
+func (r *Router) handleCancelProjectChat(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	projectID, err := projects.ParseProjectID(idStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid project ID")
+		return
+	}
+
+	pmAgent := r.getKernel(req).GetPMAgent()
+	if pmAgent.CancelProjectChat(projectID) {
+		respondJSON(w, http.StatusOK, map[string]string{"message": "Chat cancelled"})
+	} else {
+		respondJSON(w, http.StatusOK, map[string]string{"message": "No running chat to cancel"})
+	}
 }
 
 func (r *Router) handleListProjectWorkflows(w http.ResponseWriter, req *http.Request) {

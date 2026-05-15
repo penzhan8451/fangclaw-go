@@ -348,20 +348,20 @@ function settingsPage() {
 
     providerAuthClass(p) {
       if (p.auth_status === 'configured') return 'auth-configured';
-      if (p.auth_status === 'not_set' || p.auth_status === 'missing') return 'auth-not-set';
-      return 'auth-no-key';
+      if (p.auth_status === 'not_required') return 'auth-no-key';
+      return 'auth-not-set';
     },
 
     providerAuthText(p) {
       if (p.auth_status === 'configured') return 'Configured';
-      if (p.auth_status === 'not_set' || p.auth_status === 'missing') return 'Not Set';
-      return 'No Key Needed';
+      if (p.auth_status === 'not_required') return 'No Key Needed';
+      return 'Not Set';
     },
 
     providerCardClass(p) {
       if (p.auth_status === 'configured') return 'configured';
-      if (p.auth_status === 'not_set' || p.auth_status === 'missing') return 'not-configured';
-      return 'no-key';
+      if (p.auth_status === 'not_required') return 'no-key';
+      return 'not-configured';
     },
 
     tierBadgeClass(tier) {

@@ -13,7 +13,7 @@ func configCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Show or edit configuration",
-		Long:  "Manage OpenFang configuration.",
+		Long:  "Manage FangClawGo configuration.",
 	}
 
 	cmd.AddCommand(configShowCmd())

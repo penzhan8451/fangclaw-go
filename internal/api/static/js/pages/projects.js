@@ -412,6 +412,24 @@ function projectsPage() {
       }
     },
 
+    async cancelChat() {
+      if (!this.currentProject) return;
+      try {
+        var res = await FangClawGoAPI.post('/api/projects/' + this.currentProject.id + '/chat/cancel', {});
+        var cancelMsg = {
+          id: 'sys-' + Date.now(),
+          role: 'system',
+          content: res.message || 'Chat cancelled',
+          timestamp: new Date().toISOString()
+        };
+        this.currentProject.chat_history = (this.currentProject.chat_history || []).concat(cancelMsg);
+        this.chatLoading = false;
+      } catch (e) {
+        console.error('Failed to cancel chat:', e);
+        this.chatLoading = false;
+      }
+    },
+
     formatDate(dateStr) {
       if (!dateStr) return '';
       var d = new Date(dateStr);
@@ -478,9 +496,31 @@ function projectsPage() {
       } else {
         this.showWorkflowCommands = false;
       }
+      this.$nextTick(function() {
+        var el = document.querySelector('.project-chat-textarea');
+        if (el) {
+          el.style.height = 'auto';
+          el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+        }
+      });
     },
 
     onChatKeydown(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        if (this.showWorkflowCommands) {
+          var workflows = this.currentProject.workflow_bindings || [];
+          if (this.hoverCommandIndex >= 0 && this.hoverCommandIndex < workflows.length) {
+            this.selectWorkflowFromCommand(workflows[this.hoverCommandIndex]);
+            return;
+          }
+        }
+        if (!this.chatLoading && this.chatMessage.trim()) {
+          this.sendMessage();
+        }
+        return;
+      }
+
       if (!this.showWorkflowCommands) return;
 
       var workflows = this.currentProject.workflow_bindings || [];
@@ -494,12 +534,6 @@ function projectsPage() {
         case 'ArrowUp':
           event.preventDefault();
           this.hoverCommandIndex = (this.hoverCommandIndex - 1 + workflows.length) % workflows.length;
-          break;
-        case 'Enter':
-          event.preventDefault();
-          if (this.hoverCommandIndex >= 0 && this.hoverCommandIndex < workflows.length) {
-            this.selectWorkflowFromCommand(workflows[this.hoverCommandIndex]);
-          }
           break;
         case 'Escape':
           event.preventDefault();

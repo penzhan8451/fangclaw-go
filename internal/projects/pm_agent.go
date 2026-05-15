@@ -76,6 +76,8 @@ type PMAgent struct {
 	eventChan      chan ProjectEvent
 	autoGenMu      sync.Mutex
 	autoGenUsage   map[string]*autoGenCounter
+	runningChats   map[ProjectID]context.CancelFunc
+	runningChatsMu sync.Mutex
 }
 
 const autoGenDailyLimit = 10
@@ -91,6 +93,7 @@ func NewPMAgent(registry *Registry, runner AgentRunner) *PMAgent {
 		runner:       runner,
 		eventChan:    make(chan ProjectEvent, 100),
 		autoGenUsage: make(map[string]*autoGenCounter),
+		runningChats: make(map[ProjectID]context.CancelFunc),
 	}
 }
 
@@ -104,6 +107,39 @@ func (pm *PMAgent) SetAgentFinder(finder AgentFinder) {
 
 func (pm *PMAgent) SetCronManager(manager CronJobManager) {
 	pm.cronManager = manager
+}
+
+func (pm *PMAgent) RegisterChatCancel(projectID ProjectID, cancel context.CancelFunc) {
+	pm.runningChatsMu.Lock()
+	defer pm.runningChatsMu.Unlock()
+	pm.runningChats[projectID] = cancel
+}
+
+func (pm *PMAgent) UnregisterChatCancel(projectID ProjectID) {
+	pm.runningChatsMu.Lock()
+	defer pm.runningChatsMu.Unlock()
+	delete(pm.runningChats, projectID)
+}
+
+func (pm *PMAgent) CancelProjectChat(projectID ProjectID) bool {
+	pm.runningChatsMu.Lock()
+	cancel, ok := pm.runningChats[projectID]
+	if ok {
+		delete(pm.runningChats, projectID)
+	}
+	pm.runningChatsMu.Unlock()
+	if ok && cancel != nil {
+		cancel()
+		return true
+	}
+	return false
+}
+
+func (pm *PMAgent) IsChatRunning(projectID ProjectID) bool {
+	pm.runningChatsMu.Lock()
+	defer pm.runningChatsMu.Unlock()
+	_, ok := pm.runningChats[projectID]
+	return ok
 }
 
 func (pm *PMAgent) ListCronBindings(ctx context.Context, projectID ProjectID) []ProjectCronBinding {
@@ -756,8 +792,8 @@ func (pm *PMAgent) matchAgentName(input string, validNames []string) string {
 
 func parseKeywordsFromLLMOutput(output string) []string {
 	lines := strings.Split(output, "\n")
-	kwHeaderRegex := regexp.MustCompile(`(?i)^\d+\.\s*(trigger\s*)?keywords?\s*:?\s*$`)
-	kwInlineRegex := regexp.MustCompile(`(?i)^\d+\.\s*(trigger\s*)?keywords?\s*:\s*(.+)$`)
+	kwHeaderRegex := regexp.MustCompile(`(?i)^(?:#{1,4}\s*|\d+\.\s*)?(trigger\s*)?keywords?\s*:?\s*$`)
+	kwInlineRegex := regexp.MustCompile(`(?i)^(?:#{1,4}\s*|\d+\.\s*)?(trigger\s*)?keywords?\s*:\s*(.+)$`)
 	kwPlainRegex := regexp.MustCompile(`(?i)^(trigger\s*)?keywords?\s*:\s*(.+)$`)
 
 	inKeywordsSection := false
@@ -770,7 +806,7 @@ func parseKeywordsFromLLMOutput(output string) []string {
 		}
 
 		if matches := kwInlineRegex.FindStringSubmatch(trimmed); len(matches) >= 3 {
-			return parseKeywordList(matches[2])
+			return parseKeywordList(matches[len(matches)-1])
 		}
 
 		if matches := kwPlainRegex.FindStringSubmatch(trimmed); len(matches) >= 3 {
@@ -778,7 +814,7 @@ func parseKeywordsFromLLMOutput(output string) []string {
 		}
 
 		if inKeywordsSection {
-			stripped := regexp.MustCompile(`^\d+\.\s*`).ReplaceAllString(trimmed, "")
+			stripped := regexp.MustCompile(`^#{1,4}\s*|^\d+\.\s*`).ReplaceAllString(trimmed, "")
 			stripped = strings.Trim(stripped, "- ")
 			if stripped != "" {
 				return parseKeywordList(stripped)

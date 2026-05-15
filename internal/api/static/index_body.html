@@ -2099,7 +2099,7 @@
                         </div>
                       </div>
                       <div class="form-group">
-                        <label>Input (optional)</label>
+                        <label>Input</label>
                         <textarea class="form-textarea" x-model="newJob.workflow_input" placeholder="Input data for the workflow..." rows="2"></textarea>
                         <div class="text-xs text-dim mt-1">This text will be passed as input to the first step of the workflow.</div>
                       </div>
@@ -2897,7 +2897,7 @@
                         </button>
                       </div>
                     </div>
-                    <div class="flex flex-wrap gap-2 mt-3" style="overflow:visible;">
+                    <div class="flex flex-wrap gap-2 mt-3" style="overflow:auto;max-height:120px;">
                       <template x-for="member in currentProject.members" :key="member.id">
                         <div class="project-member-badge" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--bg-secondary);border-radius:20px;font-size:0.8rem;">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>
@@ -2981,15 +2981,18 @@
                           </div>
                         </template>
                         <div class="flex gap-2">
-                          <input class="form-input" type="text" placeholder="Type a message or '/' to run workflow..." x-model="chatMessage" @keydown.enter="sendMessage()" @input="onChatInput()" @keydown="onChatKeydown($event)" :disabled="chatLoading">
-                          <button class="btn btn-primary" @click="sendMessage()" :disabled="chatLoading || !chatMessage.trim()">
-                            <template x-if="chatLoading">
-                              <span>Sending...</span>
-                            </template>
-                            <template x-if="!chatLoading">
+                          <textarea class="form-input project-chat-textarea" placeholder="Type a message or '/' to run workflow... (Enter to send, Shift+Enter for new line)" x-model="chatMessage" @keydown="onChatKeydown($event)" @input="onChatInput()" :disabled="chatLoading" rows="1" style="resize:none;min-height:38px;max-height:120px;overflow-y:auto;"></textarea>
+                          <template x-if="chatLoading">
+                            <button class="btn btn-danger" @click="cancelChat()" style="white-space:nowrap;">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                              Stop
+                            </button>
+                          </template>
+                          <template x-if="!chatLoading">
+                            <button class="btn btn-primary" @click="sendMessage()" :disabled="!chatMessage.trim()">
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-                            </template>
-                          </button>
+                            </button>
+                          </template>
                         </div>
                       </div>
                     </div>
@@ -4621,9 +4624,6 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/path"]</pre>
                       <input type="password" :placeholder="'Enter ' + p.api_key_env" x-model="providerKeyInputs[p.id]">
                       <button class="btn btn-primary btn-sm" @click="saveProviderKey(p)">Save</button>
                     </div>
-                  </template>
-                  <template x-if="p.auth_status !== 'configured' && p.api_key_env">
-                    <div class="text-xs text-dim mt-2">Or set <code style="color:var(--accent-light);background:var(--bg);padding:1px 4px;border-radius:2px" x-text="p.api_key_env"></code> in your environment and restart</div>
                   </template>
                   <!-- Copilot OAuth button -->
                   <template x-if="p.id === 'github-copilot' && p.auth_status !== 'configured'">

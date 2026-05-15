@@ -534,12 +534,14 @@ type WSClient struct {
 
 // WSManager manages WebSocket connections.
 type WSManager struct {
-	clients map[string]map[string][]*WSClient
-	mu      sync.RWMutex
+	clients       map[string]map[string][]*WSClient
+	runningAgents map[string]context.CancelFunc
+	mu            sync.RWMutex
 }
 
 var wsManager = &WSManager{
-	clients: make(map[string]map[string][]*WSClient),
+	clients:       make(map[string]map[string][]*WSClient),
+	runningAgents: make(map[string]context.CancelFunc),
 }
 
 // AddClient adds a new WebSocket client.
@@ -581,6 +583,32 @@ func (m *WSManager) RemoveClient(agentID, clientID string) {
 			return
 		}
 	}
+}
+
+func (m *WSManager) RegisterRunningAgent(agentID string, cancel context.CancelFunc) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.runningAgents[agentID] = cancel
+}
+
+func (m *WSManager) UnregisterRunningAgent(agentID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.runningAgents, agentID)
+}
+
+func (m *WSManager) CancelRunningAgent(agentID string) bool {
+	m.mu.Lock()
+	cancel, ok := m.runningAgents[agentID]
+	if ok {
+		delete(m.runningAgents, agentID)
+	}
+	m.mu.Unlock()
+	if ok && cancel != nil {
+		cancel()
+		return true
+	}
+	return false
 }
 
 // Broadcast sends a message to all clients for an agent.
@@ -1050,7 +1078,12 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 
 						// Run agent with full loop
 						runner := agent.NewAgentRunner(agentRuntime)
-						ctx := context.Background()
+						ctx, cancelRun := context.WithCancel(r.Context())
+						wsManager.RegisterRunningAgent(actualAgentID, cancelRun)
+						defer func() {
+							cancelRun()
+							wsManager.UnregisterRunningAgent(actualAgentID)
+						}()
 						result, err := runner.RunAgent(ctx, actualAgentID, text, onPhase, streamCb)
 
 						// Send typing stop
@@ -1058,13 +1091,20 @@ func WSHandler(k *kernel.Kernel) http.HandlerFunc {
 						client.Send <- typingStop
 
 						if err != nil {
-							fmt.Fprintf(os.Stderr, "[WebSocket] Agent error: %v\n", err)
-							// Send error
-							errorData := map[string]string{"content": "Error: " + err.Error()}
-							errorDataBytes, _ := json.Marshal(errorData)
-							errorResp := WSMessage{Type: "error", Data: errorDataBytes}
-							errorRespBytes, _ := json.Marshal(errorResp)
-							client.Send <- errorRespBytes
+							if ctx.Err() == context.Canceled {
+								cancelledData := map[string]string{"content": "Run cancelled by user"}
+								cancelledDataBytes, _ := json.Marshal(cancelledData)
+								cancelledResp := WSMessage{Type: "response", Data: cancelledDataBytes}
+								cancelledRespBytes, _ := json.Marshal(cancelledResp)
+								client.Send <- cancelledRespBytes
+							} else {
+								fmt.Fprintf(os.Stderr, "[WebSocket] Agent error: %v\n", err)
+								errorData := map[string]string{"content": "Error: " + err.Error()}
+								errorDataBytes, _ := json.Marshal(errorData)
+								errorResp := WSMessage{Type: "error", Data: errorDataBytes}
+								errorRespBytes, _ := json.Marshal(errorResp)
+								client.Send <- errorRespBytes
+							}
 						} else {
 							// Send final response
 							type ResponseData struct {
@@ -1208,7 +1248,11 @@ func handleCommand(client *WSClient, msg WSMessage, k *kernel.Kernel, agentID st
 		responseText = "Context compaction not yet implemented"
 
 	case "/stop":
-		responseText = "Stop not yet implemented"
+		if wsManager.CancelRunningAgent(agentID) {
+			responseText = "Agent run cancelled"
+		} else {
+			responseText = "No running agent to cancel"
+		}
 
 	default:
 		responseText = "Unknown command: " + command

@@ -93,6 +93,8 @@ func (m *UserKernelManager) loadUserEnvAndConfig(userID, username string) (types
 
 	userKernelConfig.A2a = userConfig.A2a
 
+	userKernelConfig.CronShellSecurity = userConfig.CronShellSecurity
+
 	return userKernelConfig, userSecrets, nil
 }
 

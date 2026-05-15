@@ -1640,8 +1640,9 @@ func Boot(dataDir string) (*Kernel, error) {
 	}
 
 	kernelConfig := types.KernelConfig{
-		DataDir:    dataDir,
-		McpServers: cfg.McpServers,
+		DataDir:           dataDir,
+		McpServers:        cfg.McpServers,
+		CronShellSecurity: cfg.CronShellSecurity,
 		Browser: types.BrowserConfig{
 			Enabled:        cfg.Browser.Enabled,
 			ChromiumPath:   cfg.Browser.ChromiumPath,

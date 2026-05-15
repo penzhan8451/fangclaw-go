@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/penzhan8451/fangclaw-go/internal/config"
 	"github.com/rs/zerolog/log"
@@ -36,6 +37,14 @@ func (h *UserConfigHandler) handleGetUserConfig(w http.ResponseWriter, req *http
 			"provider":    userCfg.DefaultModel.Provider,
 			"model":       userCfg.DefaultModel.Model,
 			"api_key_env": userCfg.DefaultModel.APIKeyEnv,
+		},
+		"cron_shell_security": map[string]interface{}{
+			"enable_execute_shell": userCfg.CronShellSecurity.EnableExecuteShell,
+			// "security_mode":           userCfg.CronShellSecurity.SecurityMode,
+			// "allowed_commands":        strings.Join(userCfg.CronShellSecurity.AllowedCommands, ", "),
+			// "allowed_paths":           strings.Join(userCfg.CronShellSecurity.AllowedPaths, ", "),
+			// "forbidden_commands":      strings.Join(userCfg.CronShellSecurity.ForbiddenCommands, ", "),
+			// "forbidden_args_patterns": strings.Join(userCfg.CronShellSecurity.ForbiddenArgsPatterns, ", "),
 		},
 		"theme":             "system",
 		"language":          "en",
@@ -85,6 +94,30 @@ func (h *UserConfigHandler) handleSetUserConfig(w http.ResponseWriter, req *http
 		if v, ok := reqBody.Value.(string); ok {
 			userCfg.DefaultModel.APIKeyEnv = v
 		}
+	case "cron_shell_security.enable_execute_shell":
+		if v, ok := reqBody.Value.(bool); ok {
+			userCfg.CronShellSecurity.EnableExecuteShell = v
+		}
+	case "cron_shell_security.security_mode":
+		if v, ok := reqBody.Value.(string); ok {
+			userCfg.CronShellSecurity.SecurityMode = v
+		}
+	case "cron_shell_security.allowed_commands":
+		if v, ok := reqBody.Value.(string); ok {
+			userCfg.CronShellSecurity.AllowedCommands = parseCommaList(v)
+		}
+	case "cron_shell_security.allowed_paths":
+		if v, ok := reqBody.Value.(string); ok {
+			userCfg.CronShellSecurity.AllowedPaths = parseCommaList(v)
+		}
+	case "cron_shell_security.forbidden_commands":
+		if v, ok := reqBody.Value.(string); ok {
+			userCfg.CronShellSecurity.ForbiddenCommands = parseCommaList(v)
+		}
+	case "cron_shell_security.forbidden_args_patterns":
+		if v, ok := reqBody.Value.(string); ok {
+			userCfg.CronShellSecurity.ForbiddenArgsPatterns = parseCommaList(v)
+		}
 	}
 
 	if IsOwner(user) {
@@ -104,6 +137,11 @@ func (h *UserConfigHandler) handleSetUserConfig(w http.ResponseWriter, req *http
 		if err := k.ReloadSecrets(); err != nil {
 			log.Warn().Err(err).Str("user", user.Username).Msg("Failed to reload secrets")
 		}
+		if strings.HasPrefix(reqBody.Path, "cron_shell_security.") {
+			newKernelConfig := k.Config()
+			newKernelConfig.CronShellSecurity = userCfg.CronShellSecurity
+			k.ReloadConfig(newKernelConfig)
+		}
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -120,8 +158,27 @@ func (h *UserConfigHandler) handleGetUserConfigSchema(w http.ResponseWriter, req
 				{"name": "model", "type": "string", "label": "Model"},
 				{"name": "api_key_env", "type": "string", "label": "API Key Env"},
 			},
+			"cron_shell_security": []map[string]interface{}{
+				{"name": "enable_execute_shell", "type": "boolean", "label": "Enable Shell Execution", "description": "Allow cron jobs to execute shell commands"},
+				// {"name": "security_mode", "type": "select", "label": "Security Mode", "options": []string{"strict", "path", "none"}, "description": "strict: only allowed commands | path: only from allowed paths | none: no restrictions"},
+				// {"name": "allowed_commands", "type": "string", "label": "Allowed Commands", "description": "Comma-separated list of allowed commands (used in strict mode)"},
+				// {"name": "allowed_paths", "type": "string", "label": "Allowed Paths", "description": "Comma-separated list of allowed binary paths (used in path mode)"},
+				// {"name": "forbidden_commands", "type": "string", "label": "Forbidden Commands", "description": "Comma-separated list of forbidden commands (always enforced)"},
+				// {"name": "forbidden_args_patterns", "type": "string", "label": "Forbidden Arg Patterns", "description": "Comma-separated regex patterns for forbidden arguments"},
+			},
 		},
 	})
+}
+
+func parseCommaList(s string) []string {
+	var result []string
+	for _, item := range strings.Split(s, ",") {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func RegisterUserConfigRoutes(mux *http.ServeMux, router *Router) {

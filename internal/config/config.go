@@ -15,18 +15,19 @@ import (
 
 // config.toml: Config represents the FangClaw-Go configuration.
 type Config struct {
-	APIListen    string                   `toml:"api_listen"`
-	DefaultModel ModelSettings            `toml:"default_model"`
-	DefaultAgent string                   `toml:"default_agent"`
-	Memory       MemorySettings           `toml:"memory"`
-	Security     SecuritySettings         `toml:"security"`
-	Log          LogSettings              `toml:"log"`
-	Channels     ChannelsConfig           `toml:"channels"`
-	McpServers   []types.McpServerConfig  `toml:"mcp_servers,omitempty"`
-	Browser      BrowserSettings          `toml:"browser"`
-	A2a          types.A2aConfig          `toml:"a2a"`
-	Auth         types.AuthConfig         `toml:"auth"`
-	Approvals    approvals.ApprovalPolicy `toml:"approvals"`
+	APIListen         string                        `toml:"api_listen"`
+	DefaultModel      ModelSettings                 `toml:"default_model"`
+	DefaultAgent      string                        `toml:"default_agent"`
+	Memory            MemorySettings                `toml:"memory"`
+	Security          SecuritySettings              `toml:"security"`
+	Log               LogSettings                   `toml:"log"`
+	Channels          ChannelsConfig                `toml:"channels"`
+	McpServers        []types.McpServerConfig       `toml:"mcp_servers,omitempty"`
+	Browser           BrowserSettings               `toml:"browser"`
+	A2a               types.A2aConfig               `toml:"a2a"`
+	Auth              types.AuthConfig              `toml:"auth"`
+	Approvals         approvals.ApprovalPolicy      `toml:"approvals"`
+	CronShellSecurity types.CronShellSecurityConfig `toml:"cron_shell_security"`
 }
 
 // config.toml: BrowserSettings represents the browser settings.
@@ -126,6 +127,21 @@ func DefaultConfig() *Config {
 		Log: LogSettings{
 			Level: "info",
 		},
+		Browser: BrowserSettings{
+			Enabled:        true,
+			ChromiumPath:   "",
+			Headless:       true,
+			ViewportWidth:  1920,
+			ViewportHeight: 1080,
+			MaxSessions:    5,
+		},
+		A2a: types.A2aConfig{
+			Enabled:        false,
+			ListenPath:     "/a2a",
+			ExternalAgents: []types.ExternalAgent{},
+		},
+		Channels:   ChannelsConfig{},
+		McpServers: []types.McpServerConfig{},
 		Auth: types.AuthConfig{
 			Enabled:    true,
 			DBPath:     "",
@@ -138,6 +154,23 @@ func DefaultConfig() *Config {
 			},
 		},
 		Approvals: approvals.DefaultApprovalPolicy(),
+		CronShellSecurity: types.CronShellSecurityConfig{
+			EnableExecuteShell: true,
+			SecurityMode:       "strict",
+			AllowedCommands: []string{
+				"date", "echo", "ls", "cat", "pwd", "whoami", "uptime", "df", "du",
+			},
+			AllowedPaths: []string{
+				"/bin", "/usr/bin", "/usr/local/bin",
+			},
+			ForbiddenCommands: []string{
+				"rm", "rmdir", "mkfs", "dd", "chmod", "chown", "su", "sudo",
+			},
+			ForbiddenArgsPatterns: []string{
+				"^/", "^\\.\\./", "&&", "\\|\\|", ";", ">", ">>", "<",
+				"\\$(", "`", "\\*", "\\?", "\\[", "\\]",
+			},
+		},
 	}
 }
 
