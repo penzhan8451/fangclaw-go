@@ -362,12 +362,46 @@ func (pm *PMAgent) buildProjectResolver(ctx context.Context, project *Project) A
 		if agent.Name != nil {
 			for _, member := range project.Members {
 				if member.Active && strings.EqualFold(member.Name, *agent.Name) {
-					return member.ID.String(), member.Name, true
+					if pm.agentFinder != nil {
+						runtimeAgentID, ok := pm.agentFinder.FindAgentByName(ctx, *agent.Name)
+						if ok {
+							if runtimeAgentID != member.ID.String() {
+								newParsedID, err := types.ParseAgentID(runtimeAgentID)
+								if err == nil {
+									if updateErr := pm.registry.UpdateMemberAgentID(project.ID, member.ID, newParsedID); updateErr != nil {
+										log.Warn().Err(updateErr).Str("agent", *agent.Name).Msg("Failed to update stale member agent ID")
+									} else {
+										log.Info().Str("agent", *agent.Name).Str("oldID", member.ID.String()).Str("newID", runtimeAgentID).Msg("Updated stale member agent ID")
+									}
+								}
+							}
+							return runtimeAgentID, member.Name, true
+						}
+					} else {
+						return member.ID.String(), member.Name, true
+					}
 				}
 			}
 			for _, member := range project.Members {
 				if member.Active && strings.EqualFold(member.Role, *agent.Name) {
-					return member.ID.String(), member.Name, true
+					if pm.agentFinder != nil {
+						runtimeAgentID, ok := pm.agentFinder.FindAgentByName(ctx, member.Name)
+						if ok {
+							if runtimeAgentID != member.ID.String() {
+								newParsedID, err := types.ParseAgentID(runtimeAgentID)
+								if err == nil {
+									if updateErr := pm.registry.UpdateMemberAgentID(project.ID, member.ID, newParsedID); updateErr != nil {
+										log.Warn().Err(updateErr).Str("agent", member.Name).Msg("Failed to update stale member agent ID")
+									} else {
+										log.Info().Str("agent", member.Name).Str("oldID", member.ID.String()).Str("newID", runtimeAgentID).Msg("Updated stale member agent ID")
+									}
+								}
+							}
+							return runtimeAgentID, member.Name, true
+						}
+					} else {
+						return member.ID.String(), member.Name, true
+					}
 				}
 			}
 			if pm.agentFinder != nil {

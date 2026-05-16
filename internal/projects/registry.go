@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/penzhan8451/fangclaw-go/internal/types"
+	"github.com/rs/zerolog/log"
 )
 
 // Registry 项目注册表，管理 Project 的持久化和检索
@@ -209,6 +211,16 @@ func (r *Registry) AddMember(projectID ProjectID, agentID types.AgentID, name, r
 		}
 	}
 
+	newMembers := make([]ProjectMember, 0, len(project.Members))
+	for _, m := range project.Members {
+		if !strings.EqualFold(m.Name, name) {
+			newMembers = append(newMembers, m)
+		} else {
+			log.Info().Str("agent", m.Name).Str("oldID", m.ID.String()).Str("newID", agentID.String()).Str("project", projectID.String()).Msg("Replacing existing member with same name")
+		}
+	}
+	project.Members = newMembers
+
 	member := ProjectMember{
 		ID:     agentID,
 		Name:   name,
@@ -248,6 +260,26 @@ func (r *Registry) RemoveMember(projectID ProjectID, agentID types.AgentID) erro
 	project.Members = newMembers
 	project.UpdatedAt = time.Now()
 	return r.saveProject(project)
+}
+
+func (r *Registry) UpdateMemberAgentID(projectID ProjectID, oldAgentID, newAgentID types.AgentID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	project, exists := r.projects[projectID]
+	if !exists {
+		return fmt.Errorf("project not found: %s", projectID)
+	}
+
+	for i, m := range project.Members {
+		if m.ID == oldAgentID {
+			project.Members[i].ID = newAgentID
+			project.UpdatedAt = time.Now()
+			return r.saveProject(project)
+		}
+	}
+
+	return fmt.Errorf("member not found: %s", oldAgentID)
 }
 
 // AddChatMessage 添加聊天消息
