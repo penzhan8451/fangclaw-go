@@ -2937,15 +2937,18 @@
                               <template x-if="msg.meta && msg.meta.workflow_source">
                                 <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;align-items:center;gap:6px;font-size:0.7rem;color:var(--text-dim);">
                                   <template x-if="msg.meta.workflow_source === 'binding'">
-                                    <span class="badge" style="background:var(--success);color:white;font-size:0.55rem;padding:2px 6px;">workflow</span>
-                                  </template>
-                                  <template x-if="msg.meta.workflow_source === 'template'">
-                                    <span class="badge" style="background:var(--info, #3b82f6);color:white;font-size:0.55rem;padding:2px 6px;">template</span>
+                                    <span class="badge" style="background:var(--success);color:white;font-size:0.55rem;padding:2px 6px;">T1 · bound workflow</span>
                                   </template>
                                   <template x-if="msg.meta.workflow_source === 'auto_generated'">
-                                    <span class="badge" style="background:var(--accent);color:white;font-size:0.55rem;padding:2px 6px;">auto-workflow</span>
+                                    <span class="badge" style="background:var(--accent);color:white;font-size:0.55rem;padding:2px 6px;">T2 · auto-workflow</span>
                                   </template>
-                                  <span x-text="(msg.meta.workflow_name || 'workflow') + (msg.meta.step_count ? ' (' + msg.meta.step_count + ' steps)' : '')"></span>
+                                  <template x-if="msg.meta.workflow_source === 'template'">
+                                    <span class="badge" style="background:var(--info, #3b82f6);color:white;font-size:0.55rem;padding:2px 6px;">T3 · template</span>
+                                  </template>
+                                  <template x-if="msg.meta.workflow_source === 'direct_reply'">
+                                    <span class="badge" style="background:var(--text-dim, #6b7280);color:white;font-size:0.55rem;padding:2px 6px;">direct reply</span>
+                                  </template>
+                                  <span x-text="(msg.meta.workflow_name || '') + (msg.meta.step_count ? ' (' + msg.meta.step_count + ' steps)' : '')"></span>
                                 </div>
                               </template>
                               <template x-if="msg.meta && msg.meta.rate_limit_warning">

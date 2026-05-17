@@ -219,6 +219,7 @@ func (pm *PMAgent) HandleUserInput(ctx context.Context, projectID ProjectID, use
 				}
 				msg.Meta["workflow_source"] = "binding"
 				msg.Meta["workflow_name"] = binding.WorkflowName
+				msg.Meta["tier"] = 1
 				return msg, nil
 			}
 		}
@@ -261,6 +262,7 @@ func (pm *PMAgent) HandleUserInput(ctx context.Context, projectID ProjectID, use
 				meta["workflow_source"] = "auto_generated"
 				meta["workflow_name"] = result.Workflow.Name
 				meta["step_count"] = len(result.Workflow.Steps)
+				meta["tier"] = 2
 				if rateLimitWarning != "" {
 					meta["rate_limit_warning"] = rateLimitWarning
 				}
@@ -300,6 +302,7 @@ func (pm *PMAgent) HandleUserInput(ctx context.Context, projectID ProjectID, use
 			}
 			msg.Meta["workflow_source"] = "template"
 			msg.Meta["workflow_name"] = matchedTemplate.Name
+			msg.Meta["tier"] = 3
 			return msg, nil
 		}
 	}
@@ -470,6 +473,10 @@ func (pm *PMAgent) directReply(ctx context.Context, projectID ProjectID, userInp
 		AgentName: &defaultMember.Name,
 		Content:   output,
 		Timestamp: time.Now(),
+		Meta: map[string]any{
+			"workflow_source": "direct_reply",
+			"tier":            0,
+		},
 	}
 
 	pm.registry.AddChatMessage(projectID, msg)
