@@ -3015,6 +3015,17 @@ func (f *kernelAgentFinder) FindAgentByName(ctx context.Context, name string) (s
 	return f.k.FindAgentByName(ctx, name)
 }
 
+func (f *kernelAgentFinder) GetAgentDescription(ctx context.Context, name string) (string, bool) {
+	entry := f.k.agentRegistry.FindByName(name)
+	if entry == nil {
+		return "", false
+	}
+	if entry.Manifest.Description != "" {
+		return entry.Manifest.Description, true
+	}
+	return "", false
+}
+
 type workflowEngineAdapter struct {
 	engine *WorkflowEngine
 }

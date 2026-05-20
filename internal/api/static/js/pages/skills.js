@@ -482,7 +482,7 @@ function skillsPage() {
           args: this.mcpForm.args.filter(function(a) { return a.trim(); }),
           url: this.mcpForm.url
         },
-        timeout_secs: this.mcpForm.timeout_secs,
+        timeout_secs: parseInt(this.mcpForm.timeout_secs, 10) || 30,
         env: this.mcpForm.env
           .filter(function(e) { return e.key && e.value; })
           .map(function(e) { return e.key + '=' + e.value; })

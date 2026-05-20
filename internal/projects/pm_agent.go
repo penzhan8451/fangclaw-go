@@ -59,6 +59,7 @@ type WorkflowExecutor interface {
 
 type AgentFinder interface {
 	FindAgentByName(ctx context.Context, name string) (string, bool)
+	GetAgentDescription(ctx context.Context, name string) (string, bool)
 }
 
 type CronJobManager interface {
@@ -243,7 +244,7 @@ func (pm *PMAgent) HandleUserInput(ctx context.Context, projectID ProjectID, use
 			binding := ProjectWorkflowBinding{
 				WorkflowID:   string(workflowID),
 				WorkflowName: result.Workflow.Name,
-				TriggerMode:  TriggerModeManual,
+				TriggerMode:  TriggerModeKeyword,
 				Keywords:     result.Keywords,
 				Enabled:      true,
 			}
@@ -682,9 +683,17 @@ func (pm *PMAgent) GenerateWorkflowByLLM(ctx context.Context, projectID ProjectI
 	}
 
 	var agentNames []string
+	var agentDescLines []string
 	for _, m := range project.Members {
 		if m.Active && m.Role != "pm" {
 			agentNames = append(agentNames, m.Name)
+			descLine := m.Name
+			if pm.agentFinder != nil {
+				if desc, ok := pm.agentFinder.GetAgentDescription(ctx, m.Name); ok && desc != "" {
+					descLine = m.Name + ": " + desc
+				}
+			}
+			agentDescLines = append(agentDescLines, descLine)
 		}
 	}
 
@@ -696,7 +705,7 @@ func (pm *PMAgent) GenerateWorkflowByLLM(ctx context.Context, projectID ProjectI
 - Use fan_out when 2+ steps can run simultaneously (no dependency between them)
 - fan_out steps MUST be consecutive (at least 2 in a row)
 
-Available agents:
+Available agents (name: description):
 %s
 
 User requirement: %s
@@ -718,7 +727,9 @@ Examples:
 
 IMPORTANT:
 - The agent name MUST be exactly one of the available agents from the list above.
-- Trigger keywords should be concise words or short phrases that capture the intent of this workflow.`, strings.Join(agentNames, "\n"), userDescription)
+- Select agents based on their descriptions — only include agents whose capabilities are relevant to the task.
+- Do NOT include agents that are not needed for this specific workflow.
+- Trigger keywords should be concise words or short phrases that capture the intent of this workflow.`, strings.Join(agentDescLines, "\n"), userDescription)
 
 	var llmMember *ProjectMember
 	for i := range project.Members {

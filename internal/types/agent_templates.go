@@ -55,7 +55,7 @@ func loadDefaultTemplates() {
 		"data-analyst",
 		"devops",
 		"support",
-		"tutor",
+		"content-publisher",
 		"api-designer",
 		"meeting-notes",
 		"code-with-opencode",

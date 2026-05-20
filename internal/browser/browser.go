@@ -39,8 +39,8 @@ func DefaultBrowserConfig() BrowserConfig {
 	}
 }
 
-// BrowserCommand represents a command sent from Go to Python bridge
-type BrowserCommand struct {
+// BrowserCommandSent represents a command sent from Go to Python bridge
+type BrowserCommandSent struct {
 	Action     string `json:"action"`
 	URL        string `json:"url,omitempty"`
 	Selector   string `json:"selector,omitempty"`
@@ -51,8 +51,8 @@ type BrowserCommand struct {
 	Expression string `json:"expression,omitempty"`
 }
 
-// BrowserResponse represents response from Python bridge
-type BrowserResponse struct {
+// BrowserResponseReceived represents response from Python bridge
+type BrowserResponseReceived struct {
 	Success bool            `json:"success"`
 	Data    json.RawMessage `json:"data,omitempty"`
 	Error   string          `json:"error,omitempty"`
