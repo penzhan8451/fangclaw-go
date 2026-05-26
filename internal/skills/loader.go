@@ -746,8 +746,22 @@ runtime:
 	return l.LoadSkill(name)
 }
 
-// UpdateSkill updates an existing skill using a patch (old content -> new content)
+// SkillVersion represents a saved version of a skill for rollback support.
+type SkillVersion struct {
+	Version     int       `json:"version"`
+	Timestamp   time.Time `json:"timestamp"`
+	Strategy    string    `json:"strategy,omitempty"`
+	Description string    `json:"description,omitempty"`
+}
+
+// UpdateSkill updates an existing skill using a patch (old content -> new content).
+// It saves the current version to .history/ before applying the patch.
 func (l *Loader) UpdateSkill(skillID, oldContent, newContent string) (*types.Skill, error) {
+	return l.UpdateSkillWithStrategy(skillID, oldContent, newContent, "", "")
+}
+
+// UpdateSkillWithStrategy updates a skill and records the mutation strategy and description.
+func (l *Loader) UpdateSkillWithStrategy(skillID, oldContent, newContent, strategy, description string) (*types.Skill, error) {
 	if skillID == "" {
 		return nil, fmt.Errorf("skill ID cannot be empty")
 	}
@@ -764,6 +778,12 @@ func (l *Loader) UpdateSkill(skillID, oldContent, newContent string) (*types.Ski
 	}
 	currentContent := string(currentContentBytes)
 
+	// Save current version to history before patching
+	if err := l.saveVersion(skill.InstallPath, currentContent, strategy, description); err != nil {
+		// Log but don't fail the update if history save fails
+		fmt.Printf("[WARN] failed to save skill version history: %v\n", err)
+	}
+
 	var updatedContent string
 	if oldContent != "" {
 		result := FuzzyFindAndReplace(currentContent, oldContent, newContent)
@@ -777,6 +797,127 @@ func (l *Loader) UpdateSkill(skillID, oldContent, newContent string) (*types.Ski
 
 	if err := os.WriteFile(skillMDPath, []byte(updatedContent), 0644); err != nil {
 		return nil, fmt.Errorf("failed to write SKILL.md: %w", err)
+	}
+
+	l.mu.Lock()
+	delete(l.registry, skillID)
+	l.mu.Unlock()
+
+	return l.LoadSkill(skillID)
+}
+
+// saveVersion saves the current SKILL.md content to the .history/ directory.
+func (l *Loader) saveVersion(skillDir, content, strategy, description string) error {
+	historyDir := filepath.Join(skillDir, ".history")
+	if err := os.MkdirAll(historyDir, 0755); err != nil {
+		return fmt.Errorf("failed to create history directory: %w", err)
+	}
+
+	// Determine next version number
+	versions := l.listVersionsFromDisk(historyDir)
+	nextVersion := 1
+	if len(versions) > 0 {
+		nextVersion = versions[len(versions)-1].Version + 1
+	}
+
+	// Save SKILL.md snapshot
+	snapshotName := fmt.Sprintf("v%d_SKILL.md", nextVersion)
+	snapshotPath := filepath.Join(historyDir, snapshotName)
+	if err := os.WriteFile(snapshotPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write version snapshot: %w", err)
+	}
+
+	// Update version index
+	versions = append(versions, SkillVersion{
+		Version:     nextVersion,
+		Timestamp:   time.Now(),
+		Strategy:    strategy,
+		Description: description,
+	})
+	indexData, _ := json.MarshalIndent(versions, "", "  ")
+	indexPath := filepath.Join(historyDir, "index.json")
+	if err := os.WriteFile(indexPath, indexData, 0644); err != nil {
+		return fmt.Errorf("failed to write version index: %w", err)
+	}
+
+	return nil
+}
+
+// listVersionsFromDisk reads the version index from the .history/ directory.
+func (l *Loader) listVersionsFromDisk(historyDir string) []SkillVersion {
+	indexPath := filepath.Join(historyDir, "index.json")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		return nil
+	}
+	var versions []SkillVersion
+	if err := json.Unmarshal(data, &versions); err != nil {
+		return nil
+	}
+	return versions
+}
+
+// ListSkillVersions lists all saved versions of a skill.
+func (l *Loader) ListSkillVersions(skillID string) ([]SkillVersion, error) {
+	skill, err := l.LoadSkill(skillID)
+	if err != nil {
+		return nil, fmt.Errorf("skill not found: %w", err)
+	}
+
+	historyDir := filepath.Join(skill.InstallPath, ".history")
+	if _, err := os.Stat(historyDir); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	versions := l.listVersionsFromDisk(historyDir)
+	return versions, nil
+}
+
+// RollbackSkill rolls back a skill to a specific version.
+func (l *Loader) RollbackSkill(skillID string, targetVersion int) (*types.Skill, error) {
+	skill, err := l.LoadSkill(skillID)
+	if err != nil {
+		return nil, fmt.Errorf("skill not found: %w", err)
+	}
+
+	historyDir := filepath.Join(skill.InstallPath, ".history")
+	versions := l.listVersionsFromDisk(historyDir)
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("no version history found for skill '%s'", skillID)
+	}
+
+	// Find the target version
+	var found bool
+	for _, v := range versions {
+		if v.Version == targetVersion {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("version %d not found for skill '%s'", targetVersion, skillID)
+	}
+
+	// Save current version before rollback
+	skillMDPath := filepath.Join(skill.InstallPath, "SKILL.md")
+	currentContentBytes, err := os.ReadFile(skillMDPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read current SKILL.md: %w", err)
+	}
+	if err := l.saveVersion(skill.InstallPath, string(currentContentBytes), "rollback", fmt.Sprintf("Rollback to v%d", targetVersion)); err != nil {
+		fmt.Printf("[WARN] failed to save pre-rollback version: %v\n", err)
+	}
+
+	// Restore the target version
+	snapshotName := fmt.Sprintf("v%d_SKILL.md", targetVersion)
+	snapshotPath := filepath.Join(historyDir, snapshotName)
+	snapshotContent, err := os.ReadFile(snapshotPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read version snapshot: %w", err)
+	}
+
+	if err := os.WriteFile(skillMDPath, snapshotContent, 0644); err != nil {
+		return nil, fmt.Errorf("failed to restore SKILL.md: %w", err)
 	}
 
 	l.mu.Lock()
