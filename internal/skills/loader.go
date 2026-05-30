@@ -754,14 +754,112 @@ type SkillVersion struct {
 	Description string    `json:"description,omitempty"`
 }
 
-// UpdateSkill updates an existing skill using a patch (old content -> new content).
-// It saves the current version to .history/ before applying the patch.
-func (l *Loader) UpdateSkill(skillID, oldContent, newContent string) (*types.Skill, error) {
-	return l.UpdateSkillWithStrategy(skillID, oldContent, newContent, "", "")
+// EditOp represents a structured edit operation on a skill document.
+type EditOp string
+
+const (
+	EditOpAppend      EditOp = "append"
+	EditOpInsertAfter EditOp = "insert_after"
+	EditOpReplace     EditOp = "replace"
+	EditOpDelete      EditOp = "delete"
+)
+
+// Edit represents a single edit operation on a skill document.
+type Edit struct {
+	Op      EditOp
+	Content string
+	Target  string
 }
 
-// UpdateSkillWithStrategy updates a skill and records the mutation strategy and description.
-func (l *Loader) UpdateSkillWithStrategy(skillID, oldContent, newContent, strategy, description string) (*types.Skill, error) {
+// ApplyEdit applies a single edit operation to the skill document content.
+// Returns the updated content and a report describing what happened.
+func ApplyEdit(skill string, edit Edit) (string, EditReport) {
+	report := EditReport{
+		Op:     string(edit.Op),
+		Target: truncateStr(edit.Target, 200),
+		Status: "unknown",
+	}
+
+	switch edit.Op {
+	case EditOpAppend:
+		report.Status = "applied_append"
+		return skill + "\n\n" + edit.Content + "\n", report
+
+	case EditOpInsertAfter:
+		if edit.Target == "" {
+			report.Status = "applied_insert_after_fallback_append"
+			return skill + "\n\n" + edit.Content + "\n", report
+		}
+		idx := strings.Index(skill, edit.Target)
+		if idx == -1 {
+			report.Status = "applied_insert_after_fallback_append"
+			return skill + "\n\n" + edit.Content + "\n", report
+		}
+		insertPos := idx + len(edit.Target)
+		newlineIdx := strings.Index(skill[insertPos:], "\n")
+		if newlineIdx != -1 {
+			insertPos += newlineIdx + 1
+		} else {
+			insertPos = len(skill)
+		}
+		report.Status = "applied_insert_after"
+		return skill[:insertPos] + edit.Content + "\n" + skill[insertPos:], report
+
+	case EditOpReplace:
+		if edit.Target == "" {
+			report.Status = "skipped_replace_missing_target"
+			return skill, report
+		}
+		idx := strings.Index(skill, edit.Target)
+		if idx == -1 {
+			report.Status = "skipped_replace_target_not_found"
+			return skill, report
+		}
+		report.Status = "applied_replace"
+		return skill[:idx] + edit.Content + skill[idx+len(edit.Target):], report
+
+	case EditOpDelete:
+		if edit.Target == "" {
+			report.Status = "skipped_delete_missing_target"
+			return skill, report
+		}
+		idx := strings.Index(skill, edit.Target)
+		if idx == -1 {
+			report.Status = "skipped_delete_target_not_found"
+			return skill, report
+		}
+		report.Status = "applied_delete"
+		return skill[:idx] + skill[idx+len(edit.Target):], report
+
+	default:
+		report.Status = "skipped_unknown_op"
+		return skill, report
+	}
+}
+
+// EditReport describes the result of applying a single edit operation.
+type EditReport struct {
+	Op             string `json:"op"`
+	Target         string `json:"target"`
+	ContentPreview string `json:"content_preview,omitempty"`
+	Status         string `json:"status"`
+}
+
+func truncateStr(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
+
+// UpdateSkill updates an existing skill using a structured edit operation.
+// It saves the current version to .history/ before applying the edit.
+func (l *Loader) UpdateSkill(skillID string, edit Edit) (*types.Skill, error) {
+	return l.UpdateSkillWithEdit(skillID, edit, "", "")
+}
+
+// UpdateSkillWithEdit updates a skill using a structured edit and records the mutation strategy.
+func (l *Loader) UpdateSkillWithEdit(skillID string, edit Edit, strategy, description string) (*types.Skill, error) {
 	if skillID == "" {
 		return nil, fmt.Errorf("skill ID cannot be empty")
 	}
@@ -778,21 +876,13 @@ func (l *Loader) UpdateSkillWithStrategy(skillID, oldContent, newContent, strate
 	}
 	currentContent := string(currentContentBytes)
 
-	// Save current version to history before patching
 	if err := l.saveVersion(skill.InstallPath, currentContent, strategy, description); err != nil {
-		// Log but don't fail the update if history save fails
 		fmt.Printf("[WARN] failed to save skill version history: %v\n", err)
 	}
 
-	var updatedContent string
-	if oldContent != "" {
-		result := FuzzyFindAndReplace(currentContent, oldContent, newContent)
-		if !result.Success {
-			return nil, fmt.Errorf("failed to apply patch: %s", result.Error)
-		}
-		updatedContent = result.NewContent
-	} else {
-		updatedContent = newContent
+	updatedContent, report := ApplyEdit(currentContent, edit)
+	if strings.HasPrefix(report.Status, "skipped") {
+		return nil, fmt.Errorf("edit operation '%s' could not be applied: %s (target not found in skill document)", edit.Op, report.Status)
 	}
 
 	if err := os.WriteFile(skillMDPath, []byte(updatedContent), 0644); err != nil {
@@ -804,6 +894,18 @@ func (l *Loader) UpdateSkillWithStrategy(skillID, oldContent, newContent, strate
 	l.mu.Unlock()
 
 	return l.LoadSkill(skillID)
+}
+
+// UpdateSkillWithStrategy is kept for backward compatibility.
+// It converts the old oldContent/newContent pattern into a structured Edit.
+func (l *Loader) UpdateSkillWithStrategy(skillID, oldContent, newContent, strategy, description string) (*types.Skill, error) {
+	var edit Edit
+	if oldContent != "" {
+		edit = Edit{Op: EditOpReplace, Target: oldContent, Content: newContent}
+	} else {
+		edit = Edit{Op: EditOpAppend, Content: newContent}
+	}
+	return l.UpdateSkillWithEdit(skillID, edit, strategy, description)
 }
 
 // saveVersion saves the current SKILL.md content to the .history/ directory.

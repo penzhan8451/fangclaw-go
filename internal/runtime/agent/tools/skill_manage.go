@@ -21,7 +21,7 @@ func (t *SkillManageTool) Name() string {
 }
 
 func (t *SkillManageTool) Description() string {
-	return "Manage skills: create, view, list, delete, patch, list_files, view_file. Use proactively to create and refine skills for repeated tasks."
+	return "Manage skills: create, view, list, delete, patch, list_files, view_file, history, rollback. Use proactively to create and refine skills for repeated tasks."
 }
 
 func (t *SkillManageTool) Schema() map[string]interface{} {
@@ -29,7 +29,7 @@ func (t *SkillManageTool) Schema() map[string]interface{} {
 		"type": "function",
 		"function": map[string]interface{}{
 			"name":        "skill_manage",
-			"description": "Create, view, list, delete, patch, list_files, view_file, history, rollback skills.\n\nWHEN TO USE (use proactively):\n- When you identify a repeated workflow or pattern\n- When a task requires multiple steps that could be standardized\n- When you create custom instructions for a specific project\n- When you want to capture and reuse successful problem-solving approaches\n\nWHEN TO CREATE A SKILL:\n- The task is performed more than once\n- The steps are consistent and repeatable\n- There's value in standardizing the approach\n\nSKILL CONTENT GUIDELINES:\n- Start with a clear purpose statement\n- Outline step-by-step instructions\n- Include examples when helpful\n- Keep it focused and actionable\n- Document any assumptions or prerequisites\n\nACTIONS:\n- list: List all available skills (grouped by category)\n- view: View a specific skill's content\n- create: Create a new skill\n- delete: Delete an existing skill\n- patch: Modify a skill (entire file or specific section) with a mutation strategy\n- list_files: List all files in a skill directory (including references/, templates/)\n- view_file: View a specific file from a skill directory\n- history: View version history of a skill (for rollback)\n- rollback: Roll back a skill to a previous version\n\nMUTATION STRATEGIES (for patch action):\n- add_example: Add a concrete example to illustrate instructions\n- add_constraint: Add a rule or constraint to prevent errors\n- restructure: Reorganize the structure or flow of instructions\n- add_edge_case: Add handling for a boundary or edge case\n- refine: Improve wording, clarity, or specificity of existing content",
+			"description": "Create, view, list, delete, patch, list_files, view_file, history, rollback skills.\n\nWHEN TO USE (use proactively):\n- When you identify a repeated workflow or pattern\n- When a task requires multiple steps that could be standardized\n- When you create custom instructions for a specific project\n- When you want to capture and reuse successful problem-solving approaches\n\nWHEN TO CREATE A SKILL:\n- The task is performed more than once\n- The steps are consistent and repeatable\n- There's value in standardizing the approach\n\nSKILL CONTENT GUIDELINES:\n- Start with a clear purpose statement\n- Outline step-by-step instructions\n- Include examples when helpful\n- Keep it focused and actionable\n- Document any assumptions or prerequisites\n\nACTIONS:\n- list: List all available skills (grouped by category)\n- view: View a specific skill's content\n- create: Create a new skill\n- delete: Delete an existing skill\n- patch: Modify a skill using a structured edit operation\n- list_files: List all files in a skill directory (including references/, templates/)\n- view_file: View a specific file from a skill directory\n- history: View version history of a skill (for rollback)\n- rollback: Roll back a skill to a previous version\n\nEDIT OPERATIONS (for patch action):\n- append: Add new content at the end of the skill document\n- insert_after: Insert new content after a specific target text (use 'target' param)\n- replace: Replace exact target text with new content (use 'target' param)\n- delete: Remove exact target text from the skill (use 'target' param, 'content' not needed)\n\nMUTATION STRATEGIES (for patch action, describes WHY you are editing):\n- add_example: Add a concrete example to illustrate instructions\n- add_constraint: Add a rule or constraint to prevent errors\n- restructure: Reorganize the structure or flow of instructions\n- add_edge_case: Add handling for a boundary or edge case\n- refine: Improve wording, clarity, or specificity of existing content",
 			"parameters": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -52,11 +52,16 @@ func (t *SkillManageTool) Schema() map[string]interface{} {
 					},
 					"content": map[string]interface{}{
 						"type":        "string",
-						"description": "Skill content (SKILL.md body, required for create, or new content for patch)",
+						"description": "Content for the edit operation. For create: skill body. For patch: new content to add/insert/replace. Not needed for delete.",
 					},
-					"old_content": map[string]interface{}{
+					"op": map[string]interface{}{
 						"type":        "string",
-						"description": "Old content to replace (for patch action. If empty, replaces entire file.",
+						"description": "Edit operation for patch action: append (add at end), insert_after (insert after target), replace (replace target with content), delete (remove target)",
+						"enum":        []string{"append", "insert_after", "replace", "delete"},
+					},
+					"target": map[string]interface{}{
+						"type":        "string",
+						"description": "Target text in the skill document (required for insert_after, replace, delete operations). Must be exact text that exists in the document.",
 					},
 					"strategy": map[string]interface{}{
 						"type":        "string",
@@ -100,10 +105,11 @@ func (t *SkillManageTool) Execute(ctx context.Context, args map[string]interface
 		return t.deleteSkill(name)
 	case "patch":
 		name, _ := args["name"].(string)
-		oldContent, _ := args["old_content"].(string)
+		op, _ := args["op"].(string)
+		target, _ := args["target"].(string)
 		content, _ := args["content"].(string)
 		strategy, _ := args["strategy"].(string)
-		return t.patchSkill(name, oldContent, content, strategy)
+		return t.patchSkill(name, op, target, content, strategy)
 	case "list_files":
 		name, _ := args["name"].(string)
 		return t.listSkillFiles(name)
@@ -194,30 +200,47 @@ func (t *SkillManageTool) deleteSkill(name string) (string, error) {
 	return fmt.Sprintf("Skill '%s' deleted successfully", name), nil
 }
 
-func (t *SkillManageTool) patchSkill(name, oldContent, newContent, strategy string) (string, error) {
+func (t *SkillManageTool) patchSkill(name, op, target, content, strategy string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("skill name required")
 	}
-	if newContent == "" {
-		return "", fmt.Errorf("new content required for patch")
+	if op == "" {
+		return "", fmt.Errorf("edit operation (op) required for patch: append, insert_after, replace, or delete")
 	}
 
-	// Build description from strategy
+	editOp := skills.EditOp(op)
+	switch editOp {
+	case skills.EditOpAppend, skills.EditOpInsertAfter, skills.EditOpReplace, skills.EditOpDelete:
+	default:
+		return "", fmt.Errorf("invalid edit operation '%s': must be append, insert_after, replace, or delete", op)
+	}
+
+	if editOp != skills.EditOpDelete && content == "" {
+		return "", fmt.Errorf("content is required for %s operation (only delete can omit content)", op)
+	}
+	if (editOp == skills.EditOpInsertAfter || editOp == skills.EditOpReplace || editOp == skills.EditOpDelete) && target == "" {
+		return "", fmt.Errorf("target is required for %s operation (specify the exact text in the skill document)", op)
+	}
+
+	edit := skills.Edit{
+		Op:      editOp,
+		Content: content,
+		Target:  target,
+	}
+
 	description := ""
 	if strategy != "" {
 		description = fmt.Sprintf("Strategy: %s", strategy)
 	}
 
-	skill, err := t.loader.UpdateSkillWithStrategy(name, oldContent, newContent, strategy, description)
+	skill, err := t.loader.UpdateSkillWithEdit(name, edit, strategy, description)
 	if err != nil {
 		return "", fmt.Errorf("failed to patch skill: %w", err)
 	}
 
-	// Post-patch validation
 	validationResult := validateSkillContent(skill.Manifest.PromptContext, strategy)
 
 	if !validationResult.Valid {
-		// Auto-rollback on validation failure
 		versions, histErr := t.loader.ListSkillVersions(name)
 		if histErr == nil && len(versions) > 0 {
 			latestVersion := versions[len(versions)-1].Version
@@ -230,9 +253,16 @@ func (t *SkillManageTool) patchSkill(name, oldContent, newContent, strategy stri
 		return "", fmt.Errorf("patch validation failed: %s (no version history available for rollback)", validationResult.Reason)
 	}
 
-	result := fmt.Sprintf("Skill '%s' patched successfully at %s", skill.Manifest.Name, skill.InstallPath)
+	result := fmt.Sprintf("Skill '%s' patched successfully (op=%s)", skill.Manifest.Name, op)
+	if target != "" {
+		displayTarget := target
+		if len(displayTarget) > 60 {
+			displayTarget = displayTarget[:60] + "..."
+		}
+		result += fmt.Sprintf(" target=\"%s\"", displayTarget)
+	}
 	if strategy != "" {
-		result += fmt.Sprintf("\nMutation strategy: %s", strategy)
+		result += fmt.Sprintf(" strategy=%s", strategy)
 	}
 	if len(validationResult.Warnings) > 0 {
 		result += fmt.Sprintf("\nWarnings: %s", strings.Join(validationResult.Warnings, "; "))
@@ -326,35 +356,26 @@ func (t *SkillManageTool) viewSkillFile(name, filePath string) (string, error) {
 	return content, nil
 }
 
-// validationResult holds the result of post-patch skill content validation.
 type validationResult struct {
 	Valid    bool
 	Reason   string
 	Warnings []string
 }
 
-// validateSkillContent checks the patched SKILL.md content for structural integrity
-// and strategy-specific keyword presence. Returns a validationResult.
-// This is a zero-token, pure-code validation — no LLM calls.
 func validateSkillContent(content, strategy string) validationResult {
 	result := validationResult{Valid: true}
 
-	// === 1. Structural integrity checks (hard failures) ===
-
-	// Content must not be empty
 	if strings.TrimSpace(content) == "" {
 		result.Valid = false
 		result.Reason = "SKILL.md content is empty after patch"
 		return result
 	}
 
-	// Content must have YAML frontmatter (--- ... ---)
 	if !strings.HasPrefix(strings.TrimSpace(content), "---") {
 		result.Valid = false
 		result.Reason = "SKILL.md is missing YAML frontmatter"
 		return result
 	}
-	// Check closing frontmatter delimiter
 	trimmed := strings.TrimSpace(content)
 	afterFirst := trimmed[3:]
 	closingIdx := strings.Index(afterFirst, "\n---")
@@ -364,7 +385,6 @@ func validateSkillContent(content, strategy string) validationResult {
 		return result
 	}
 
-	// Body after frontmatter must not be empty
 	bodyStart := closingIdx + 4
 	body := strings.TrimSpace(trimmed[bodyStart:])
 	if body == "" {
@@ -373,14 +393,11 @@ func validateSkillContent(content, strategy string) validationResult {
 		return result
 	}
 
-	// Body must have minimum length (at least 20 chars of actual content)
 	if len(body) < 20 {
 		result.Valid = false
 		result.Reason = fmt.Sprintf("SKILL.md body is too short (%d chars, minimum 20)", len(body))
 		return result
 	}
-
-	// === 2. Strategy-specific keyword checks (soft warnings) ===
 
 	switch strategy {
 	case "add_example":
@@ -396,7 +413,6 @@ func validateSkillContent(content, strategy string) validationResult {
 		}
 
 	case "restructure":
-		// Check for heading structure (## or ###)
 		headingCount := strings.Count(body, "\n## ")
 		if headingCount < 2 {
 			result.Warnings = append(result.Warnings, "strategy is 'restructure' but body has fewer than 2 subsection headings (##)")
@@ -409,8 +425,6 @@ func validateSkillContent(content, strategy string) validationResult {
 		}
 
 	case "refine":
-		// Refine is a general improvement, no specific keyword check needed
-		// But we can warn if the content is identical to a very short body
 		if len(body) < 50 {
 			result.Warnings = append(result.Warnings, "strategy is 'refine' but body is very short, consider adding more detail")
 		}
@@ -419,7 +433,6 @@ func validateSkillContent(content, strategy string) validationResult {
 	return result
 }
 
-// containsAny checks if the text contains any of the given keywords.
 func containsAny(text string, keywords []string) bool {
 	for _, kw := range keywords {
 		if strings.Contains(text, kw) {
