@@ -29,6 +29,7 @@ Traditional agent frameworks wait for you to type something. FangClaw-go runs **
 - 🤖 **Smart Agent Management** - Complete Agent lifecycle management
 - 💬 **Multi-Channel Communication** - Supports DingTalk, Feishu, QQ, WeChat Personal
 - 🎯 **Workflow Orchestration** - Flexible workflow definition and execution
+    - Multi Agent coordination to complete complex tasks
 - 🔧 **Skill System** - Extensible skill loading and execution
 - 📊 **Event Bus** - Complete publish/subscribe event system
 - 💾 **Memory Storage** - Structured and semantic memory support
