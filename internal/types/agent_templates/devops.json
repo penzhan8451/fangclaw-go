@@ -18,6 +18,7 @@
     "fetch",
     "json",
     "url_parse",
+    "skill_manage",
     "memory_manage"
   ],
   "skills": [],

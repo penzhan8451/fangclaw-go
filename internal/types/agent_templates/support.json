@@ -13,6 +13,7 @@
     "search",
     "fetch",
     "datetime",
+    "skill_manage",
     "memory_manage"
   ],
   "skills": [],

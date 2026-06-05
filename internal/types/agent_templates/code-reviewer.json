@@ -15,6 +15,7 @@
     "fetch",
     "shell",
     "json",
+    "skill_manage",
     "memory_manage"
   ],
   "skills": [

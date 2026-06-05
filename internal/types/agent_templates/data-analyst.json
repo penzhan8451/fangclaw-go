@@ -18,6 +18,7 @@
     "fetch",
     "json",
     "calculator",
+    "skill_manage",
     "memory_manage"
   ],
   "skills": [],

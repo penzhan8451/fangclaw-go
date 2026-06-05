@@ -14,6 +14,7 @@
     "search",
     "fetch",
     "json",
+    "skill_manage",
     "memory_manage"
   ],
   "skills": [],
