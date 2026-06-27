@@ -112,10 +112,12 @@ If you have binary already compiled for your OS platform, you can skip this step
 
 ### First-time Setup
 
-This step is **Only** for the case you can access CLI, mostly it is owner role user.
-For **user** role, you can use dashboard to configure your provider and model for the first time (Settings -> Provider and Config tab).
+This step is **Only** for the case you can access CLI, mostly it is ***owner*** role user.
+For **user** role, you use ***Dashboard*** to configure your provider and model for the first time (Settings -> Provider and Config tab).
 
-Run the setup wizard:
+Recommend the both Role to use ***Dashboard*** to work with your model and agents.
+
+(CLI) Run the setup wizard:
 
 ```bash
 ./fangclaw-go init
