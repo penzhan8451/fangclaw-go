@@ -18,7 +18,7 @@
 
 FangClaw-go is a **Go language implementation inspired by the OpenFang project**, (<https://github.com/RightNow-AI/openfang>)
 
-Traditional agent frameworks wait for you to type something. FangClaw-go runs **autonomous agents that work for you** — on schedules, 24/7, building knowledge graphs, monitoring targets, generating leads, managing your social media, and reporting results to your dashboard. **It supports multiple users, and the dashboard can almost complete all the operations that the CLI can do.**
+Traditional agent frameworks wait for you to type something. FangClaw-go runs **autonomous agents that work for you** — on schedules, 24/7, building knowledge graphs, monitoring targets, generating leads, managing your social media, and reporting results to your dashboard. **It supports multiple users, Multi-agent cooperation and the dashboard can almost complete all the operations that the CLI can do.**
 
 ## The entire system compiles to a single binary. One install, one command, your agents are live.
 
