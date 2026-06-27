@@ -127,7 +127,7 @@ The wizard will generate some default files, you can modify in the config.toml f
 2. Configuring Model (e.g., openai/gpt-34o, openai/gpt-4o, etc.)
 3. Selecting default model
 
-(After daemon started, you can also configure them by visit dashboard: <http://127.0.0.1:4200/>, Settings->Provider and Config tab.)
+(After daemon started, you can also configure them by visit dashboard: <http://127.0.0.1:8080/>, Settings->Provider and Config tab.)
 
 Then, start the daemon:
 
@@ -191,8 +191,8 @@ Activate autonomous capabilities that work for you 24/7:
 
 If you don't want to use CLI or cannot access CLI, you can use dashboard to manage your agents. You can create, activate, chat with agents or hands in the dashboard. Open your browser to:
 
-- **Dashboard**: <http://127.0.0.1:4200/>
-- **API Status**: <http://127.0.0.1:4200/api/health>
+- **Dashboard**: <http://127.0.0.1:8080/>
+- **API Status**: <http://127.0.0.1:8080/api/health>
 
 You can spawn and chat with agents in the dashboard.
 
